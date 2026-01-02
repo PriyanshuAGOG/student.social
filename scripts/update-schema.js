@@ -138,6 +138,7 @@ const collections = [
       { key: 'replyTo', type: 'string', size: 255 },
       { key: 'fileUrl', type: 'string', size: 500 },
       { key: 'reactions', type: 'string', size: 100, array: true },
+      { key: 'editedAt', type: 'string', size: 255 },
     ],
   },
   {
@@ -184,6 +185,9 @@ const collections = [
       { key: 'tags', type: 'string', size: 100, array: true },
       { key: 'category', type: 'string', size: 100 },
       { key: 'updatedAt', type: 'string', size: 255 },
+      { key: 'likes', type: 'integer' },
+      { key: 'views', type: 'integer' },
+      { key: 'isApproved', type: 'boolean', defaultValue: true },
     ],
   },
   {
@@ -433,17 +437,33 @@ async function ensureBucket(bucket) {
 
 async function main() {
   console.log('Starting Appwrite schema update...')
+  console.log(`Endpoint: ${ENDPOINT}`)
+  console.log(`Project: ${PROJECT_ID}`)
+  console.log(`Database: ${DATABASE_ID}`)
+  
   await ensureDatabase()
 
   for (const col of collections) {
-    await ensureCollection(col)
-    for (const attr of col.attrs) {
-      await ensureAttribute(col.id, attr)
+    try {
+      await ensureCollection(col)
+      for (const attr of col.attrs) {
+        try {
+          await ensureAttribute(col.id, attr)
+        } catch (attrErr) {
+          console.error(`Error creating attribute ${col.id}.${attr.key}:`, attrErr.message || attrErr)
+        }
+      }
+    } catch (colErr) {
+      console.error(`Error with collection ${col.id}:`, colErr.message || colErr)
     }
   }
 
   for (const bucket of buckets) {
-    await ensureBucket(bucket)
+    try {
+      await ensureBucket(bucket)
+    } catch (bucketErr) {
+      console.error(`Error with bucket ${bucket.id}:`, bucketErr.message || bucketErr)
+    }
   }
 
   console.log('Schema update complete.')
