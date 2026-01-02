@@ -1234,7 +1234,7 @@ export default function PodDetailPage() {
                         </div>
                         <div className="w-20">
                           <Progress value={Math.min(100, (member.streak || 0) * 3)} className="h-2" />
-                          <p className="text-[11px] text-muted-foreground text-right mt-1">{member.points || 0} pts</p>
+                          <p className="text-xs text-muted-foreground text-right mt-1">{member.points || 0} pts</p>
                         </div>
                       </div>
                     ))
