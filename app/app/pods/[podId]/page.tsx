@@ -851,18 +851,7 @@ export default function PodDetailPage() {
     </div>
   )
 }
-            <div className="lg:col-span-2 space-y-6">
-              {/* Your Progress */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Target className="w-5 h-5 mr-2" />
-                    Your Progress
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
+
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Overall Progress</span>
                         <span className="text-sm text-muted-foreground">{pod.progress || 0}%</span>
