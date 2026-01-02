@@ -1205,9 +1205,9 @@ export default function PodDetailPage() {
                       </div>
                     )}
                     {yourRank && (
-                      <div className="p-2 border rounded-md col-span-2 bg-muted/60">
+                      <div className="p-2 border rounded-md col-span-2 bg-muted opacity-60">
                         <p className="font-semibold text-foreground">Your rank</p>
-                        <p className="text-sm text-muted-foreground">#{yourRank.rank} • Streak {yourRank.streak} • {yourRank.points} pts</p>
+                        <p className="text-sm text-muted-foreground">Rank {yourRank.rank} • Streak {yourRank.streak} • {yourRank.points} pts</p>
                       </div>
                     )}
                   </div>
@@ -1226,7 +1226,7 @@ export default function PodDetailPage() {
                       return (
                       <div key={member.id} className="flex items-center gap-3 p-2 border rounded-lg">
                         <div className={cn("w-6 text-xs font-semibold", getRankColor())}>
-                          #{idx + 1}
+                          {idx + 1}
                         </div>
                         <Avatar className="h-8 w-8">
                           <AvatarImage src={member.avatar} alt={member.name} />
