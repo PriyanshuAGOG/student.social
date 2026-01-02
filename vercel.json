@@ -4,74 +4,24 @@
   "installCommand": "pnpm install",
   "framework": "nextjs",
   "outputDirectory": ".next",
-  "env": [
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_ENDPOINT",
-      "value": "https://fra.cloud.appwrite.io/v1"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_PROJECT_ID",
-      "value": "68921a0d00146e65d29b"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_DATABASE_ID",
-      "value": "peerspark-main-db"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_STORAGE_ID",
-      "value": "peerspark-storage"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_PROFILES_COLLECTION",
-      "value": "profiles"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_POSTS_COLLECTION",
-      "value": "posts"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION",
-      "value": "messages"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_RESOURCES_COLLECTION",
-      "value": "resources"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION",
-      "value": "notifications"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_PODS_COLLECTION",
-      "value": "pods"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_CALENDAR_EVENTS_COLLECTION",
-      "value": "calendar_events"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_CHAT_ROOMS_COLLECTION",
-      "value": "chat_rooms"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_AVATARS_BUCKET",
-      "value": "avatars"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_RESOURCES_BUCKET",
-      "value": "resources"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_ATTACHMENTS_BUCKET",
-      "value": "attachments"
-    },
-    {
-      "key": "NEXT_PUBLIC_APPWRITE_POST_IMAGES_BUCKET",
-      "value": "post_images"
-    },
-    {
-      "key": "NEXT_PUBLIC_APP_URL",
-      "value": ""
-    }
-  ]
+  "env": {
+    "NEXT_PUBLIC_APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
+    "NEXT_PUBLIC_APPWRITE_PROJECT_ID": "68921a0d00146e65d29b",
+    "NEXT_PUBLIC_APPWRITE_DATABASE_ID": "peerspark-main-db",
+    "NEXT_PUBLIC_APPWRITE_STORAGE_ID": "peerspark-storage",
+    "NEXT_PUBLIC_APPWRITE_PROFILES_COLLECTION": "profiles",
+    "NEXT_PUBLIC_APPWRITE_POSTS_COLLECTION": "posts",
+    "NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION": "messages",
+    "NEXT_PUBLIC_APPWRITE_RESOURCES_COLLECTION": "resources",
+    "NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION": "notifications",
+    "NEXT_PUBLIC_APPWRITE_PODS_COLLECTION": "pods",
+    "NEXT_PUBLIC_APPWRITE_CALENDAR_EVENTS_COLLECTION": "calendar_events",
+    "NEXT_PUBLIC_APPWRITE_CHAT_ROOMS_COLLECTION": "chat_rooms",
+    "NEXT_PUBLIC_APPWRITE_AVATARS_BUCKET": "avatars",
+    "NEXT_PUBLIC_APPWRITE_RESOURCES_BUCKET": "resources",
+    "NEXT_PUBLIC_APPWRITE_ATTACHMENTS_BUCKET": "attachments",
+    "NEXT_PUBLIC_APPWRITE_POST_IMAGES_BUCKET": "post_images",
+    "NEXT_PUBLIC_APP_NAME": "PeerSpark",
+    "APPWRITE_LOG_DEBUG": "false"
+  }
 }
