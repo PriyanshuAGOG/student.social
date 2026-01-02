@@ -1215,13 +1215,17 @@ export default function PodDetailPage() {
                   {leaderboard.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Members will appear here once profiles are loaded.</p>
                   ) : (
-                    leaderboard.map((member, idx) => (
+                    leaderboard.map((member, idx) => {
+                      const getRankColor = () => {
+                        if (idx === 0) return "text-primary";
+                        if (idx === 1) return "text-muted-foreground";
+                        if (idx === 2) return "text-amber-600";
+                        return "text-muted-foreground";
+                      };
+                      
+                      return (
                       <div key={member.id} className="flex items-center gap-3 p-2 border rounded-lg">
-                        <div
-                          className={`w-6 text-xs font-semibold ${
-                            idx === 0 ? "text-primary" : idx === 1 ? "text-muted-foreground" : idx === 2 ? "text-amber-600" : "text-muted-foreground"
-                          }`}
-                        >
+                        <div className={cn("w-6 text-xs font-semibold", getRankColor())}>
                           #{idx + 1}
                         </div>
                         <Avatar className="h-8 w-8">
@@ -1237,7 +1241,8 @@ export default function PodDetailPage() {
                           <p className="text-xs text-muted-foreground text-right mt-1">{member.points || 0} pts</p>
                         </div>
                       </div>
-                    ))
+                      );
+                    })
                   )}
                 </CardContent>
               </Card>
