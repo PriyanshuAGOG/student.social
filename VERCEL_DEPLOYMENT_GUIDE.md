@@ -137,16 +137,45 @@ APPWRITE_LOG_DEBUG=false
 OPENROUTER_API_KEY=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
 ```
 
-### Step 4: Update Appwrite CORS Settings
+### Step 4: Add Vercel Domain to Appwrite Platforms (CRITICAL!)
 
-**Important**: Update Appwrite to allow your Vercel domain.
+⚠️ **THIS STEP IS REQUIRED** - Without this, you'll get CORS errors like:
+```
+Access to fetch at 'https://fra.cloud.appwrite.io/v1/account' from origin 
+'https://your-app.vercel.app' has been blocked by CORS policy
+```
+
+**Follow these steps to fix CORS:**
 
 1. Go to https://cloud.appwrite.io
-2. Navigate to your Project Settings
-3. Go to "Domains & CORS"
-4. Add your Vercel URL: `https://peerspark.vercel.app` (or your custom domain)
-5. Add `http://localhost:3000` for local development
-6. Save
+2. Click on your project (ID: `68921a0d00146e65d29b`)
+3. Click **"Settings"** (gear icon) in the left sidebar OR go to **"Overview"**
+4. Scroll down to **"Integrations"** section → Click **"Platforms"**
+5. Click **"+ Add Platform"** button
+6. Select **"Web App"**
+7. Configure the platform:
+   - **Name**: `Vercel Production`
+   - **Hostname**: Your Vercel domain (e.g., `studentsocial-iin0su9fw-priyanshus-projects-61ab6498.vercel.app`)
+   - ⚠️ **DO NOT include `https://`** - just the domain name!
+8. Click **"Register"** → **"Skip optional steps"** → **"Go to dashboard"**
+
+**Add these additional platforms for full coverage:**
+
+| Name | Hostname | Purpose |
+|------|----------|---------|
+| `Vercel Production` | `studentsocial-iin0su9fw-priyanshus-projects-61ab6498.vercel.app` | Main deployment |
+| `Vercel Previews` | `*.vercel.app` | Preview deployments |
+| `Local Development` | `localhost` | Local testing |
+
+**Visual Path:**
+```
+Appwrite Console
+└── Your Project
+    └── Settings (⚙️) OR Overview
+        └── Integrations → Platforms
+            └── + Add Platform → Web App
+                └── Hostname: your-app.vercel.app (no https://)
+```
 
 ### Step 5: Deploy!
 
@@ -181,11 +210,21 @@ Check the "Deployment" tab in Vercel for build logs.
    - Solution: Check they're added in Vercel dashboard
    - Verify NEXT_PUBLIC_ prefix for client-side vars
 
-3. **Appwrite connection error**
-   - Solution: Verify Appwrite credentials are correct
-   - Check CORS settings in Appwrite
+3. **CORS Error: "Access to fetch blocked by CORS policy"** ⚠️ COMMON
+   - Error looks like: `Access to fetch at 'https://fra.cloud.appwrite.io/v1/account' from origin 'https://your-app.vercel.app' has been blocked by CORS policy`
+   - **ROOT CAUSE**: Your Vercel domain is NOT added as a platform in Appwrite
+   - **Solution**: 
+     1. Go to Appwrite Console → Your Project → Settings → Platforms
+     2. Add a **Web App** platform with your exact Vercel hostname
+     3. **DO NOT include `https://`** in the hostname field
+     4. Wait 1-2 minutes for changes to propagate
+     5. Hard refresh your browser (Ctrl+Shift+R)
 
-4. **Module not found errors**
+4. **Appwrite connection error**
+   - Solution: Verify Appwrite credentials are correct
+   - Check CORS settings in Appwrite (see issue #3 above)
+
+5. **Module not found errors**
    - Solution: Run `pnpm install` locally to update lock file
    - Commit and push changes
 

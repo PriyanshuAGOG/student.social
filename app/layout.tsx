@@ -11,7 +11,12 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "PeerSpark - Collaborative Learning Platform",
   description: "Connect, learn, and grow with peers through collaborative study sessions and AI-powered insights.",
-    generator: 'v0.dev'
+  generator: 'v0.dev',
+  icons: {
+    icon: '/placeholder-icon.png',
+    shortcut: '/placeholder-icon.png',
+    apple: '/placeholder-icon.png',
+  },
 }
 
 export default function RootLayout({

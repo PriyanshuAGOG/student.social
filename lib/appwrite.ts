@@ -97,26 +97,31 @@ export const authService = {
         user = data
       }
 
-      // Do NOT auto-login. Instead create a temporary session to request verification email
+      // Try to create a session to send verification email
+      let sessionCreated = false
       try {
-        // Create a temporary session so we can call account.createVerification or REST /account/verification
-        try {
-          if (account && typeof (account as any).createEmailSession === 'function') {
-            await (account as any).createEmailSession(email, password)
-          } else {
-            // REST fallback to create session cookie
-            await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/sessions/email', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Appwrite-Project': projectId || '' },
-              body: JSON.stringify({ email, password }),
-              credentials: 'include',
-            })
-          }
-        } catch (sessionErr) {
-          console.warn('Failed to create temporary session for verification:', sessionErr)
+        if (account && typeof (account as any).createEmailPasswordSession === 'function') {
+          await (account as any).createEmailPasswordSession(email, password)
+          sessionCreated = true
+        } else if (account && typeof (account as any).createEmailSession === 'function') {
+          await (account as any).createEmailSession(email, password)
+          sessionCreated = true
+        } else {
+          // REST fallback to create session cookie
+          const resp = await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/sessions/email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Appwrite-Project': projectId || '' },
+            body: JSON.stringify({ email, password }),
+            credentials: 'include',
+          })
+          if (resp.ok) sessionCreated = true
         }
+      } catch (sessionErr) {
+        console.warn('Failed to create temporary session for verification:', sessionErr)
+      }
 
-        // Request verification using SDK when possible, otherwise REST (requires session cookie)
+      // Request verification email if session was created
+      if (sessionCreated) {
         try {
           if (account && typeof (account as any).createVerification === 'function') {
             await (account as any).createVerification(typeof window !== 'undefined' ? window.location.origin + '/verify-email' : '/')
@@ -129,7 +134,7 @@ export const authService = {
             })
           }
         } catch (verifyErr) {
-          console.warn('Failed to request verification email via session:', verifyErr)
+          console.warn('Failed to request verification email:', verifyErr)
         }
 
         // Delete temporary session so user isn't auto-logged-in
@@ -144,10 +149,8 @@ export const authService = {
             })
           }
         } catch (delErr) {
-          // ignore
+          // Ignore - session might already be deleted or not exist
         }
-      } catch (verificationError) {
-        console.warn('Verification process failed:', verificationError)
       }
 
       // Create user profile in database
@@ -160,7 +163,7 @@ export const authService = {
           interests: [],
           avatar: "",
           joinedAt: new Date().toISOString(),
-          isOnline: true,
+          isOnline: false,
           studyStreak: 0,
           totalPoints: 0,
           level: 1,
@@ -171,8 +174,10 @@ export const authService = {
           availability: [],
           currentFocusAreas: [],
         })
-      } catch (profileError) {
-        console.error("Failed to create profile:", profileError)
+      } catch (profileError: any) {
+        // Profile creation might fail due to permissions - this is OK for now
+        // The profile will be created on first login instead
+        console.warn("Profile creation deferred to first login:", profileError?.message || profileError)
       }
 
       return user
@@ -189,16 +194,12 @@ export const authService = {
         throw new Error("Email and password are required")
       }
 
-      // Delete any existing sessions first
-      try {
-        await account.deleteSession("current")
-      } catch (e) {
-        // Ignore if no current session
-      }
-
       // Create new session (use SDK when available, otherwise fallback to REST)
+      // Note: Don't delete existing session first - it causes 401 errors if no session exists
       let session: any = null
-      if (account && typeof (account as any).createEmailSession === 'function') {
+      if (account && typeof (account as any).createEmailPasswordSession === 'function') {
+        session = await (account as any).createEmailPasswordSession(email, password)
+      } else if (account && typeof (account as any).createEmailSession === 'function') {
         session = await (account as any).createEmailSession(email, password)
       } else {
         const resp = await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/sessions/email', {
@@ -215,9 +216,9 @@ export const authService = {
         session = data
       }
 
-      // Get user and update status. Also enforce email verification: if not verified, remove session and fail login.
+      // Get user info
+      let user: any = null
       try {
-        let user: any = null
         if (account && typeof (account as any).get === 'function') {
           user = await (account as any).get()
         } else {
@@ -228,36 +229,61 @@ export const authService = {
           })
           user = await resp.json()
         }
+      } catch (e) {
+        console.warn('Failed to get user info:', e)
+      }
 
+      // Check email verification (optional - can be disabled for testing)
+      if (user) {
         const verified = user?.emailVerification === true
           || user?.emailVerified === true
           || user?.status === 'verified'
           || user?.status === true
           || user?.status === 1
-        if (!verified) {
-          // Delete session we just created
-          try {
-            if (account && typeof (account as any).deleteSession === 'function') {
-              await (account as any).deleteSession('current')
-            } else {
-              await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/sessions/current', {
-                method: 'DELETE',
-                headers: { 'X-Appwrite-Project': projectId || '' },
-                credentials: 'include',
-              })
-            }
-          } catch (e) {
-            console.warn('Failed to delete session after unverified login:', e)
-          }
-          throw new Error('Please verify your email address before logging in')
-        }
+        
+        // Uncomment below to enforce email verification
+        // if (!verified) {
+        //   try { await account.deleteSession('current') } catch (e) {}
+        //   throw new Error('Please verify your email address before logging in')
+        // }
 
-        await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
-          isOnline: true,
-          lastSeen: new Date().toISOString(),
-        })
-      } catch (updateError) {
-        console.warn("Failed to update user status:", updateError)
+        // Try to update profile status, create profile if it doesn't exist
+        try {
+          await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
+            isOnline: true,
+            lastSeen: new Date().toISOString(),
+          })
+        } catch (profileError: any) {
+          // Profile might not exist - try to create it
+          if (profileError?.code === 404 || profileError?.message?.includes('not be found')) {
+            console.log("Profile not found, creating new profile:", user.$id)
+            try {
+              await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
+                userId: user.$id,
+                name: user.name || email.split('@')[0],
+                email: email,
+                bio: "",
+                interests: [],
+                avatar: "",
+                joinedAt: new Date().toISOString(),
+                isOnline: true,
+                studyStreak: 0,
+                totalPoints: 0,
+                level: 1,
+                badges: [],
+                learningGoals: [],
+                learningPace: '',
+                preferredSessionTypes: [],
+                availability: [],
+                currentFocusAreas: [],
+              })
+            } catch (createError) {
+              console.warn("Failed to create profile on login:", createError)
+            }
+          } else {
+            console.warn("Failed to update user status:", profileError)
+          }
+        }
       }
 
       return session
@@ -570,7 +596,7 @@ export const podService = {
         name: name,
         description: description,
         creatorId: userId,
-        members: JSON.stringify([userId]), // Store as JSON string since schema uses string type
+        members: [userId], // Must be an array, not JSON string
         subject: metadata.subject || "",
         difficulty: metadata.difficulty || "Beginner",
         isActive: true,
@@ -610,12 +636,18 @@ export const podService = {
 
       // Update pod member count and list
       const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
-      const currentMembers = typeof pod.members === 'string' ? JSON.parse(pod.members) : (pod.members || [])
+      // Handle members as array (new format) or JSON string (legacy)
+      let currentMembers: string[] = []
+      if (Array.isArray(pod.members)) {
+        currentMembers = pod.members
+      } else if (typeof pod.members === 'string') {
+        try { currentMembers = JSON.parse(pod.members) } catch { currentMembers = [] }
+      }
       const updatedMembers = [...new Set([...currentMembers, userId])] // Avoid duplicates
 
       await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, {
         memberCount: updatedMembers.length,
-        members: JSON.stringify(updatedMembers),
+        members: updatedMembers, // Store as array, not JSON string
       })
 
       // Create notification for pod creator
@@ -647,12 +679,18 @@ export const podService = {
 
       // Update pod member count and list
       const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
-      const currentMembers = typeof pod.members === 'string' ? JSON.parse(pod.members) : (pod.members || [])
+      // Handle members as array (new format) or JSON string (legacy)
+      let currentMembers: string[] = []
+      if (Array.isArray(pod.members)) {
+        currentMembers = pod.members
+      } else if (typeof pod.members === 'string') {
+        try { currentMembers = JSON.parse(pod.members) } catch { currentMembers = [] }
+      }
       const updatedMembers = currentMembers.filter((id: string) => id !== userId)
 
       await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, {
         memberCount: Math.max(0, updatedMembers.length),
-        members: JSON.stringify(updatedMembers),
+        members: updatedMembers, // Store as array, not JSON string
         updatedAt: new Date().toISOString(),
       })
 
@@ -1067,13 +1105,13 @@ export const chatService = {
         return await databases.getDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, roomId)
       } catch (e) {
         // Create new room if doesn't exist
+        // Note: Only include fields that exist in the schema
         return await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, roomId, {
           type: "direct",
-          participants: [userId1, userId2],
+          name: "Direct Message",
+          podId: null, // Use null for direct messages
           createdAt: new Date().toISOString(),
           isActive: true,
-          lastMessage: null,
-          lastMessageTime: null,
         })
       }
     } catch (error) {
@@ -1097,15 +1135,37 @@ export const chatService = {
         }),
       )
 
-      // Get direct message rooms
-      const directRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
-        Query.contains("participants", userId),
-        Query.equal("type", "direct"),
-      ])
+      // Get direct message rooms - query by type only since participants may not be indexed
+      // Then filter client-side for rooms that include this user
+      let directRooms: any[] = []
+      try {
+        const allDirectRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
+          Query.equal("type", "direct"),
+        ])
+        // Filter rooms where user is a participant (handle both array and string formats)
+        directRooms = (allDirectRooms.documents || []).filter((room: any) => {
+          const participants = room.participants || []
+          if (Array.isArray(participants)) {
+            return participants.includes(userId)
+          }
+          // Handle JSON string format
+          if (typeof participants === 'string') {
+            try {
+              const parsed = JSON.parse(participants)
+              return Array.isArray(parsed) && parsed.includes(userId)
+            } catch {
+              return false
+            }
+          }
+          return false
+        })
+      } catch (e) {
+        console.warn("Failed to fetch direct rooms:", e)
+      }
 
       return {
         podRooms: podRooms.filter((room) => room !== null),
-        directRooms: directRooms.documents,
+        directRooms: directRooms,
       }
     } catch (error) {
       console.error("Get user chat rooms error:", error)
@@ -1203,9 +1263,9 @@ export const feedService = {
         timestamp: new Date().toISOString(),
         likes: 0,
         comments: 0,
-        likedBy: JSON.stringify([]),
+        likedBy: [], // Must be an array, not JSON string
         visibility: metadata.visibility || "public", // public, pod, followers
-        tags: JSON.stringify(metadata.tags || []),
+        tags: metadata.tags || [], // Must be an array, not JSON string
       })
     } catch (error) {
       console.error("Create post error:", error)

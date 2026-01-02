@@ -103,20 +103,20 @@ const collections = [
       ['email', 'string', 255, true],
       ['bio', 'string', 1000, false],
       ['avatar', 'string', 500, false],
-      ['interests', 'string', 2000, false],
+      ['interests', 'array-string', 255, false], // Array of strings
       ['joinedAt', 'string', 255, true],
       ['isOnline', 'boolean', null, false],
       ['lastSeen', 'string', 255, false],
       ['studyStreak', 'integer', null, false],
       ['totalPoints', 'integer', null, false],
       ['level', 'integer', null, false],
-      ['badges', 'string', 2000, false],
+      ['badges', 'array-string', 255, false], // Array of strings
       // Matching + learning preferences
-      ['learningGoals', 'string', 2000, false],
+      ['learningGoals', 'array-string', 255, false], // Array of strings
       ['learningPace', 'string', 50, false],
-      ['preferredSessionTypes', 'string', 500, false],
-      ['availability', 'string', 500, false],
-      ['currentFocusAreas', 'string', 2000, false],
+      ['preferredSessionTypes', 'array-string', 100, false], // Array of strings
+      ['availability', 'array-string', 100, false], // Array of strings
+      ['currentFocusAreas', 'array-string', 255, false], // Array of strings
     ],
   },
   {
@@ -132,8 +132,8 @@ const collections = [
       ['comments', 'integer', null, false],
       ['imageUrl', 'string', 500, false],
       ['visibility', 'string', 50, false],
-      ['tags', 'string', 1000, false],
-      ['likedBy', 'string', 5000, false],
+      ['tags', 'array-string', 100, false], // Array of strings
+      ['likedBy', 'array-string', 255, false], // Array of user IDs
     ],
   },
   {
@@ -148,7 +148,7 @@ const collections = [
       ['isEdited', 'boolean', null, false],
       ['replyTo', 'string', 255, false],
       ['fileUrl', 'string', 500, false],
-      ['reactions', 'string', 2000, false],
+      ['reactions', 'string', 2000, false], // JSON string for reactions object
     ],
   },
   {
@@ -159,7 +159,7 @@ const collections = [
       ['name', 'string', 255, true],
       ['description', 'string', 2000, true],
       ['creatorId', 'string', 255, true],
-      ['members', 'string', 5000, true],
+      ['members', 'array-string', 255, true], // Array of user IDs
       ['subject', 'string', 100, false],
       ['difficulty', 'string', 50, false],
       ['isActive', 'boolean', null, false],
@@ -167,11 +167,11 @@ const collections = [
       ['createdAt', 'string', 255, true],
       ['memberCount', 'integer', null, false],
       // Matching metadata
-      ['idealLearnerType', 'string', 500, false],
-      ['sessionType', 'string', 500, false],
+      ['idealLearnerType', 'array-string', 100, false], // Array of strings
+      ['sessionType', 'array-string', 100, false], // Array of strings
       ['averageSessionLength', 'integer', null, false],
-      ['commonAvailability', 'string', 500, false],
-      ['matchingTags', 'string', 2000, false],
+      ['commonAvailability', 'array-string', 100, false], // Array of strings
+      ['matchingTags', 'array-string', 100, false], // Array of strings
     ],
   },
   {
@@ -226,8 +226,11 @@ const collections = [
       ['type', 'string', 50, true],
       ['podId', 'string', 255, false],
       ['name', 'string', 255, false],
+      ['participants', 'array-string', 255, false], // Array of user IDs for direct chats
       ['createdAt', 'string', 255, true],
       ['isActive', 'boolean', null, false],
+      ['lastMessage', 'string', 500, false],
+      ['lastMessageTime', 'string', 255, false],
     ],
   },
 ];
@@ -263,46 +266,89 @@ async function setup() {
     // Create collections
     console.log('📋 Creating collections...\n');
     for (const col of collections) {
+      let collectionExists = false;
       try {
         await makeRequest('GET', `/databases/${DATABASE_ID}/collections/${col.id}`);
-        console.log(`   ✅ ${col.id}`);
+        console.log(`   ✅ ${col.id} (exists)`);
+        collectionExists = true;
       } catch {
         console.log(`   📦 Creating ${col.id}...`);
         await makeRequest('POST', `/databases/${DATABASE_ID}/collections`, {
           collectionId: col.id,
           name: col.name,
+          permissions: [
+            'read("users")',
+            'create("users")',
+            'update("users")',
+            'delete("users")',
+          ],
         });
+      }
 
-        let attrCount = 0;
-        for (const [key, type, size, required] of col.attrs) {
-          try {
-            const payload = { key, required };
-            if (type === 'string') {
-              payload.size = size;
-              await makeRequest(
-                'POST',
-                `/databases/${DATABASE_ID}/collections/${col.id}/attributes/string`,
-                payload
-              );
-            } else if (type === 'integer') {
-              await makeRequest(
-                'POST',
-                `/databases/${DATABASE_ID}/collections/${col.id}/attributes/integer`,
-                payload
-              );
-            } else if (type === 'boolean') {
-              await makeRequest(
-                'POST',
-                `/databases/${DATABASE_ID}/collections/${col.id}/attributes/boolean`,
-                payload
-              );
-            }
+      // Create attributes (even for existing collections to add missing ones)
+      let attrCount = 0;
+      for (const [key, type, size, required] of col.attrs) {
+        try {
+          const payload = { key, required: required || false };
+          
+          if (type === 'string') {
+            payload.size = size || 255;
+            await makeRequest(
+              'POST',
+              `/databases/${DATABASE_ID}/collections/${col.id}/attributes/string`,
+              payload
+            );
             attrCount++;
-          } catch (e) {
-            // Ignore attribute exists error
+          } else if (type === 'array-string') {
+            // Create string array attribute
+            payload.size = size || 255;
+            await makeRequest(
+              'POST',
+              `/databases/${DATABASE_ID}/collections/${col.id}/attributes/string`,
+              { ...payload, array: true }
+            );
+            attrCount++;
+          } else if (type === 'integer') {
+            await makeRequest(
+              'POST',
+              `/databases/${DATABASE_ID}/collections/${col.id}/attributes/integer`,
+              payload
+            );
+            attrCount++;
+          } else if (type === 'boolean') {
+            payload.default = false;
+            await makeRequest(
+              'POST',
+              `/databases/${DATABASE_ID}/collections/${col.id}/attributes/boolean`,
+              payload
+            );
+            attrCount++;
+          }
+        } catch (e) {
+          // Ignore if attribute already exists
+          if (e?.data?.message && !e.data.message.includes('already exists')) {
+            console.log(`      ⚠️  ${key}: ${e?.data?.message || 'error'}`);
           }
         }
+      }
+      
+      if (!collectionExists) {
         console.log(`   ✅ ${col.id} (${attrCount} attributes)`);
+      }
+
+      // Update collection permissions if needed
+      try {
+        await makeRequest('PUT', `/databases/${DATABASE_ID}/collections/${col.id}`, {
+          name: col.name,
+          permissions: [
+            'read("users")',
+            'create("users")',
+            'update("users")',
+            'delete("users")',
+          ],
+        });
+      } catch (e) {
+        // Ignore permission update errors
       }
     }
 
@@ -311,12 +357,36 @@ async function setup() {
     for (const bucket of buckets) {
       try {
         await makeRequest('GET', `/storage/buckets/${bucket.id}`);
-        console.log(`   ✅ ${bucket.id}`);
+        console.log(`   ✅ ${bucket.id} (exists)`);
+        // Update bucket permissions
+        try {
+          await makeRequest('PUT', `/storage/buckets/${bucket.id}`, {
+            name: bucket.name,
+            permissions: [
+              'read("users")',
+              'create("users")',
+              'update("users")',
+              'delete("users")',
+            ],
+            fileSecurity: true,
+            maximumFileSize: 10485760, // 10MB
+          });
+        } catch (e) {
+          // Ignore permission update errors
+        }
       } catch {
         console.log(`   📦 Creating ${bucket.id}...`);
         await makeRequest('POST', '/storage/buckets', {
           bucketId: bucket.id,
           name: bucket.name,
+          permissions: [
+            'read("users")',
+            'create("users")',
+            'update("users")',
+            'delete("users")',
+          ],
+          fileSecurity: true,
+          maximumFileSize: 10485760, // 10MB
         });
         console.log(`   ✅ ${bucket.id}`);
       }
@@ -324,8 +394,13 @@ async function setup() {
 
     console.log('\n🎉 Setup completed successfully!\n');
     console.log('📝 Next steps:');
-    console.log('   1. pnpm dev');
-    console.log('   2. Open http://localhost:3000\n');
+    console.log('   1. Add your domain to Appwrite Platforms (Settings → Platforms)');
+    console.log('   2. Run: pnpm dev');
+    console.log('   3. Open http://localhost:3000\n');
+    console.log('⚠️  IMPORTANT: Add these hostnames to Appwrite Platforms:');
+    console.log('   - localhost');
+    console.log('   - your-app.vercel.app');
+    console.log('   - *.vercel.app (for preview deployments)\n');
   } catch (error) {
     console.error('\n❌ Setup failed:');
     console.error('Error:', error.message || error.data || error);
