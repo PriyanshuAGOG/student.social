@@ -1179,63 +1179,6 @@ export default function PodDetailPage() {
                   </div>
                 </CardContent>
               </Card>
-
-              {/* Leaderboard */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Trophy className="w-4 h-4" />
-                    Pod Leaderboard
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
-                    <div className="p-2 border rounded-md">
-                      <p className="font-semibold text-foreground">Avg streak</p>
-                      <p className="text-lg font-bold text-primary">{leaderboardStats.avgStreak} days</p>
-                    </div>
-                    <div className="p-2 border rounded-md">
-                      <p className="font-semibold text-foreground">Avg points</p>
-                      <p className="text-lg font-bold text-primary">{leaderboardStats.avgPoints}</p>
-                    </div>
-                    {leaderboardStats.topName && (
-                      <div className="p-2 border rounded-md col-span-2">
-                        <p className="font-semibold text-foreground">Top performer</p>
-                        <p className="text-sm text-muted-foreground">{leaderboardStats.topName}</p>
-                      </div>
-                    )}
-                    {yourRank && (
-                      <div className="p-2 border rounded-md col-span-2 bg-muted opacity-60">
-                        <p className="font-semibold text-foreground">Your rank</p>
-                        <p className="text-sm text-muted-foreground">Rank {yourRank.rank} • Streak {yourRank.streak} • {yourRank.points} pts</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {leaderboard.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Members will appear here once profiles are loaded.</p>
-                  ) : (
-                    leaderboard.map((member, idx) => (
-                      <div key={member.id} className="flex items-center gap-3 p-2 border rounded-lg">
-                        <div className="w-6 text-xs font-semibold text-primary">
-                          {idx + 1}
-                        </div>
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={member.avatar} alt={member.name} />
-                          <AvatarFallback>M</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{member.name}</p>
-                          <p className="text-xs text-muted-foreground truncate">Streak {member.streak || 0}</p>
-                        </div>
-                        <div className="w-20 text-right">
-                          <p className="text-xs text-muted-foreground">{member.points || 0} pts</p>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </CardContent>
-              </Card>
             </div>
           </div>
         )}
