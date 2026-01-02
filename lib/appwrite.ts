@@ -63,6 +63,9 @@ export const COLLECTIONS = {
   POD_COMMITMENTS: "pod_commitments",
   POD_CHECK_INS: "pod_check_ins",
   POD_RSVPS: "pod_rsvps",
+  POD_MEETINGS: "pod_meetings",
+  POD_WHITEBOARDS: "pod_whiteboards",
+  POD_MEETING_PARTICIPANTS: "pod_meeting_participants",
 }
 
 // Storage Bucket IDs - You'll need to create these in Appwrite
@@ -593,7 +596,7 @@ export const profileService = {
   // Get all profiles (for search, leaderboard, etc.)
   async getAllProfiles(limit = 50, offset = 0) {
     try {
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.PROFILES, [], limit, offset)
+      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.PROFILES, [])
     } catch (error) {
       console.error("Get all profiles error:", error)
       throw error
@@ -740,7 +743,7 @@ export const podService = {
       if (filters.difficulty) queries.push(Query.equal('difficulty', filters.difficulty))
       if (filters.search) queries.push(Query.contains('name', filters.search))
 
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.PODS, queries, limit, offset, ["createdAt"])
+      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.PODS, queries)
     } catch (error) {
       console.error("Get all pods error:", error)
       return { documents: [] }
@@ -841,7 +844,7 @@ export const podService = {
 
   async getReactions(podId: string) {
     try {
-      const res = await databases.listDocuments(DATABASE_ID, "pod_reactions", [Query.equal("podId", podId)], 200)
+      const res = await databases.listDocuments(DATABASE_ID, "pod_reactions", [Query.equal("podId", podId)])
       const counts: Record<string, number> = {}
       ;(res.documents || []).forEach((doc: any) => {
         const key = doc.itemId
@@ -861,7 +864,7 @@ export const podService = {
         Query.equal("podId", podId),
         Query.equal("itemId", itemId),
         Query.equal("userId", userId),
-      ], 1)
+      ])
 
       if (existing.documents.length > 0) {
         const doc = existing.documents[0]
@@ -890,7 +893,7 @@ export const podService = {
       const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.POD_COMMITMENTS, [
         Query.equal("podId", podId),
         Query.equal("userId", userId),
-      ], 1)
+      ])
       return res.documents[0] || null
     } catch (err: any) {
       // Gracefully handle missing collection
@@ -938,7 +941,7 @@ export const podService = {
         Query.equal("podId", podId),
         Query.orderDesc("createdAt"),
       ]
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.POD_CHECK_INS, queries, limit, offset)
+      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.POD_CHECK_INS, queries)
     } catch (err: any) {
       // Gracefully handle missing collection
       if (err?.code === 404 || err?.message?.includes('could not be found')) {
@@ -975,7 +978,7 @@ export const podService = {
         Query.equal("podId", podId),
         Query.orderDesc("updatedAt"),
       ]
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.POD_RSVPS, queries, 200, 0)
+      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.POD_RSVPS, queries)
     } catch (err: any) {
       // Gracefully handle missing collection
       if (err?.code === 404 || err?.message?.includes('could not be found')) {
@@ -992,7 +995,7 @@ export const podService = {
         Query.equal("podId", podId),
         Query.equal("eventId", eventId),
         Query.equal("userId", userId),
-      ], 1)
+      ])
 
       if (existing.documents.length > 0) {
         const doc = existing.documents[0]
@@ -1015,7 +1018,7 @@ export const podService = {
         Query.equal("podId", podId),
         Query.equal("eventId", eventId),
         Query.equal("isGoing", true),
-      ], 200)
+      ])
 
       return { isGoing, count: (countRes.documents || []).length }
     } catch (err: any) {
@@ -1037,7 +1040,7 @@ export const studyPlanService = {
       const res = await databases.listDocuments(DATABASE_ID, "study_plans", [
         Query.equal("userId", userId),
         Query.equal("date", date),
-      ], 1)
+      ])
       return res.documents[0] || null
     } catch (err) {
       console.warn("getPlan failed", err)
@@ -1096,7 +1099,7 @@ export const chatService = {
   // Get messages for a room/chat
   async getMessages(roomId: string, limit = 50, offset = 0) {
     try {
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.MESSAGES, [Query.equal('roomId', roomId)], limit, offset)
+      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.MESSAGES, [Query.equal('roomId', roomId)])
     } catch (error) {
       console.error("Get messages error:", error)
       return { documents: [] }
@@ -1323,7 +1326,7 @@ export const feedService = {
   // Get posts by user ID
   async getUserPosts(userId: string, limit = 50, offset = 0) {
     try {
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.POSTS, [Query.equal('authorId', userId)], limit, offset)
+      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.POSTS, [Query.equal('authorId', userId)])
     } catch (error) {
       console.error("Get user posts error:", error)
       return { documents: [] }
@@ -1337,9 +1340,7 @@ export const feedService = {
       const publicPosts = await databases.listDocuments(
         DATABASE_ID,
         COLLECTIONS.POSTS,
-        [Query.equal('visibility', 'public')],
-        limit,
-        offset,
+        [Query.equal('visibility', 'public')]
       )
 
       // Optionally fetch pod posts if user has pods
@@ -1351,9 +1352,7 @@ export const feedService = {
           podPosts = await databases.listDocuments(
             DATABASE_ID,
             COLLECTIONS.POSTS,
-            [Query.equal('visibility', 'pod')],
-            limit,
-            offset,
+            [Query.equal('visibility', 'pod')]
           )
         }
       }
@@ -1416,9 +1415,7 @@ export const feedService = {
       const posts = await databases.listDocuments(
         DATABASE_ID,
         COLLECTIONS.POSTS,
-        [],
-        limit,
-        offset
+        []
       )
       
       // Filter posts that the user has saved (bookmarked)
@@ -1489,10 +1486,10 @@ export const calendarService = {
     try {
       const queries = [Query.equal('userId', userId)]
 
-      if (startDate) queries.push(Query.greaterThanOrEqual('startTime', startDate))
-      if (endDate) queries.push(Query.lessThanOrEqual('endTime', endDate))
+      if (startDate) queries.push(Query.greaterThanEqual('startTime', startDate))
+      if (endDate) queries.push(Query.lessThanEqual('endTime', endDate))
 
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.CALENDAR_EVENTS, queries, 100, 0, ["startTime"])
+      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.CALENDAR_EVENTS, queries)
     } catch (error) {
       console.error("Get user events error:", error)
       return { documents: [] }
@@ -1503,7 +1500,7 @@ export const calendarService = {
   async getPodEvents(podId: string, limit = 50, offset = 0) {
     try {
       const queries = [Query.equal('podId', podId)]
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.CALENDAR_EVENTS, queries, limit, offset, ["startTime"])
+      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.CALENDAR_EVENTS, queries)
     } catch (error) {
       console.error("Get pod events error:", error)
       return { documents: [] }
@@ -1690,6 +1687,10 @@ export const jitsiService = {
     try {
       const pod = await podService.getPodDetails(podId)
       const user = await profileService.getProfile(userId)
+      
+      if (!user) {
+        throw new Error("User profile not found")
+      }
 
       const roomName = `peerspark-${podId}-${Date.now()}`
       const meeting = this.generateMeetingUrl(roomName, user.name, {
@@ -1701,15 +1702,13 @@ export const jitsiService = {
       await calendarService.createEvent(
         userId,
         `${title} - ${pod.name}`,
-        `Video meeting for ${pod.name} pod`,
         new Date().toISOString(),
         new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour duration
         {
-          type: "meeting",
           podId: podId,
           meetingUrl: meeting.url,
-          attendees: pod.members,
-        },
+          type: "meeting",
+        }
       )
 
       // Notify pod members
@@ -1724,9 +1723,8 @@ export const jitsiService = {
               "meeting",
               {
                 actionUrl: meeting.url,
-                actionText: "Join Meeting",
                 podId: podId,
-              },
+              }
             ),
           ),
       )
@@ -1743,6 +1741,10 @@ export const jitsiService = {
     try {
       const user1 = await profileService.getProfile(userId1)
       const user2 = await profileService.getProfile(userId2)
+      
+      if (!user1 || !user2) {
+        throw new Error("One or both users not found")
+      }
 
       const roomName = `peerspark-direct-${[userId1, userId2].sort().join("-")}-${Date.now()}`
       const meeting = this.generateMeetingUrl(roomName, user1.name)
@@ -1750,7 +1752,6 @@ export const jitsiService = {
       // Notify the other user
       await notificationService.createNotification(userId2, "Video Call", `${user1.name} is calling you`, "call", {
         actionUrl: meeting.url,
-        actionText: "Join Call",
         callerId: userId1,
       })
 

@@ -509,8 +509,8 @@ export function WhiteboardCanvas({ podId, readOnly = false, onSave }: Whiteboard
   ]
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="pb-2 px-3 sm:px-6">
+    <Card className="overflow-hidden dark:bg-gray-950 dark:border-gray-800">
+      <CardHeader className="pb-2 px-3 sm:px-6 dark:bg-gray-900">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <PenTool className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -536,11 +536,11 @@ export function WhiteboardCanvas({ podId, readOnly = false, onSave }: Whiteboard
         </div>
       </CardHeader>
       
-      <CardContent className="p-2 sm:p-4">
-        {/* Toolbar */}
+      <CardContent className="p-2 sm:p-4 dark:bg-gray-950">
+        {/* Toolbar with Enhanced Dark Mode */}
         <div className={`
           flex flex-wrap items-center gap-1 sm:gap-2 mb-2 sm:mb-4 p-2 
-          bg-secondary/50 rounded-lg transition-all
+          bg-secondary/50 dark:bg-gray-800/50 rounded-lg transition-all border border-gray-200 dark:border-gray-700
           ${isToolbarCollapsed && isMobile ? "justify-between" : ""}
         `}>
           {/* Mobile collapsed toolbar */}
@@ -799,10 +799,10 @@ export function WhiteboardCanvas({ podId, readOnly = false, onSave }: Whiteboard
           )}
         </div>
 
-        {/* Canvas Container */}
+        {/* Canvas Container with Enhanced Dark Mode */}
         <div 
           ref={containerRef}
-          className="relative w-full h-40 sm:h-64 lg:h-96 bg-white border-2 border-gray-200 rounded-lg overflow-hidden touch-none"
+          className="relative w-full h-40 sm:h-64 lg:h-96 bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden touch-none focus-within:ring-2 focus-within:ring-blue-500 transition-all"
           style={{ cursor: selectedTool === "select" ? "grab" : "crosshair" }}
         >
           <canvas

@@ -386,45 +386,45 @@ export function VideoConference({
   }, [joinMeeting])
 
   return (
-    <Card className="overflow-hidden bg-gray-900 text-white">
+    <Card className="overflow-hidden bg-gray-900 dark:bg-black text-white border-0 focus-within:ring-2 focus-within:ring-blue-500 transition-all">
       <CardContent className="p-0 relative">
-        {/* Video Container */}
+        {/* Video Container with Enhanced Dark Mode */}
         <div 
           ref={containerRef}
           className={`
-            w-full bg-gradient-to-br from-gray-900 to-gray-800 
+            w-full bg-gradient-to-br from-gray-900 via-gray-800 to-black dark:from-black dark:via-gray-950 dark:to-gray-900
             ${isJoined ? "min-h-[300px] sm:min-h-[400px] lg:min-h-[500px]" : "aspect-video"}
           `}
         >
           {/* Pre-join State */}
           {!isJoined && !isConnecting && !error && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center p-4 sm:p-8">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-blue-600/20 flex items-center justify-center mb-4 sm:mb-6">
-                <Video className="w-8 h-8 sm:w-10 sm:h-10 text-blue-400" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-3 sm:p-6 md:p-8">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full bg-blue-600/20 flex items-center justify-center mb-3 sm:mb-4 md:mb-6">
+                <Video className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 text-blue-400" />
               </div>
-              <h3 className="text-lg sm:text-xl font-semibold mb-2 text-center">{podName} Classroom</h3>
-              <p className="text-gray-400 text-sm sm:text-base mb-6 text-center max-w-md">
+              <h3 className="text-base sm:text-lg md:text-xl font-semibold mb-1 sm:mb-2 text-center">{podName} Classroom</h3>
+              <p className="text-gray-400 text-xs sm:text-sm md:text-base mb-4 sm:mb-6 text-center max-w-xs sm:max-w-md">
                 Join the live video session to collaborate with your pod members
               </p>
               <Button
                 onClick={joinMeeting}
                 size="lg"
-                className="bg-green-600 hover:bg-green-700 text-white px-6 sm:px-8 py-2 sm:py-3 text-base sm:text-lg h-auto"
+                className="bg-green-600 hover:bg-green-700 text-white px-4 sm:px-6 md:px-8 py-2 sm:py-2.5 md:py-3 text-sm sm:text-base md:text-lg h-auto"
                 disabled={!jitsiLoaded}
               >
                 {jitsiLoaded ? (
                   <>
-                    <Video className="w-5 h-5 mr-2" />
+                    <Video className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
                     Join Session
                   </>
                 ) : (
                   <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 mr-2 animate-spin" />
                     Loading...
                   </>
                 )}
               </Button>
-              <p className="text-gray-500 text-xs sm:text-sm mt-4 text-center">
+              <p className="text-gray-500 text-xs sm:text-sm mt-3 sm:mt-4 text-center">
                 Camera and microphone access required
               </p>
             </div>
@@ -476,20 +476,20 @@ export function VideoConference({
 
         {/* Control Bar - Only visible when in session */}
         {isJoined && (
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-3 sm:p-4">
-            <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 to-black/50 p-2 sm:p-3 md:p-4">
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2 md:gap-3 flex-wrap px-2">
               {/* Audio Toggle */}
               <Button
                 onClick={toggleAudio}
                 variant={isAudioMuted ? "destructive" : "secondary"}
                 size="icon"
-                className="w-10 h-10 sm:w-12 sm:h-12 rounded-full"
+                className="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full"
                 title={isAudioMuted ? "Unmute" : "Mute"}
               >
                 {isAudioMuted ? (
-                  <MicOff className="w-5 h-5" />
+                  <MicOff className="w-4 h-4 sm:w-5 sm:h-5" />
                 ) : (
-                  <Mic className="w-5 h-5" />
+                  <Mic className="w-4 h-4 sm:w-5 sm:h-5" />
                 )}
               </Button>
 
@@ -498,13 +498,13 @@ export function VideoConference({
                 onClick={toggleVideo}
                 variant={isVideoMuted ? "destructive" : "secondary"}
                 size="icon"
-                className="w-10 h-10 sm:w-12 sm:h-12 rounded-full"
+                className="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full"
                 title={isVideoMuted ? "Turn on camera" : "Turn off camera"}
               >
                 {isVideoMuted ? (
-                  <VideoOff className="w-5 h-5" />
+                  <VideoOff className="w-4 h-4 sm:w-5 sm:h-5" />
                 ) : (
-                  <Video className="w-5 h-5" />
+                  <Video className="w-4 h-4 sm:w-5 sm:h-5" />
                 )}
               </Button>
 
@@ -513,10 +513,10 @@ export function VideoConference({
                 onClick={toggleScreenShare}
                 variant={isScreenSharing ? "default" : "secondary"}
                 size="icon"
-                className="w-10 h-10 sm:w-12 sm:h-12 rounded-full hidden sm:flex"
+                className="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full hidden sm:flex"
                 title={isScreenSharing ? "Stop sharing" : "Share screen"}
               >
-                <Monitor className="w-5 h-5" />
+                <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
 
               {/* Hang Up */}
@@ -524,51 +524,53 @@ export function VideoConference({
                 onClick={handleLeave}
                 variant="destructive"
                 size="icon"
-                className="w-10 h-10 sm:w-12 sm:h-12 rounded-full"
+                className="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full"
                 title="Leave session"
               >
-                <PhoneOff className="w-5 h-5" />
+                <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
 
-              {/* Fullscreen - Desktop only */}
+              {/* Fullscreen - Tablet and desktop only */}
               <Button
                 onClick={toggleFullscreen}
                 variant="secondary"
                 size="icon"
-                className="w-10 h-10 sm:w-12 sm:h-12 rounded-full hidden md:flex"
+                className="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full hidden md:flex"
                 title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
               >
                 {isFullscreen ? (
-                  <Minimize className="w-5 h-5" />
+                  <Minimize className="w-4 h-4 sm:w-5 sm:h-5" />
                 ) : (
-                  <Maximize className="w-5 h-5" />
+                  <Maximize className="w-4 h-4 sm:w-5 sm:h-5" />
                 )}
               </Button>
             </div>
 
             {/* Participant Count */}
             {participantCount > 0 && (
-              <div className="absolute top-4 left-4 bg-black/60 rounded-full px-3 py-1 flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                <span className="text-sm">{participantCount + 1}</span>
+              <div className="absolute top-3 left-3 sm:top-4 sm:left-4 bg-black/70 rounded-full px-2 sm:px-3 py-1 flex items-center gap-2 text-xs sm:text-sm">
+                <Users className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span>{participantCount + 1}</span>
               </div>
             )}
 
             {/* Connection Quality Indicator */}
             {connectionQuality && (
-              <div className={`absolute top-4 right-4 rounded-full px-3 py-1 flex items-center gap-2 text-xs font-medium ${
-                connectionQuality === "good" ? "bg-green-600/40 text-green-200" :
-                connectionQuality === "moderate" ? "bg-amber-600/40 text-amber-200" :
-                "bg-red-600/40 text-red-200"
+              <div className={`absolute top-3 right-3 sm:top-4 sm:right-4 rounded-full px-2 sm:px-3 py-1 flex items-center gap-2 text-xs sm:text-sm font-medium ${
+                connectionQuality === "good" ? "bg-green-600/50 text-green-200" :
+                connectionQuality === "moderate" ? "bg-amber-600/50 text-amber-200" :
+                "bg-red-600/50 text-red-200"
               }`}>
-                <span className={`w-2 h-2 rounded-full ${
+                <span className={`w-1.5 h-1.5 rounded-full ${
                   connectionQuality === "good" ? "bg-green-400" :
                   connectionQuality === "moderate" ? "bg-amber-400" :
                   "bg-red-400"
                 }`} />
-                {connectionQuality === "good" && "Good connection"}
-                {connectionQuality === "moderate" && "Moderate connection"}
-                {connectionQuality === "poor" && "Weak connection"}
+                <span className="hidden sm:inline">
+                  {connectionQuality === "good" && "Good"}
+                  {connectionQuality === "moderate" && "Moderate"}
+                  {connectionQuality === "poor" && "Weak"}
+                </span>
               </div>
             )}
           </div>
