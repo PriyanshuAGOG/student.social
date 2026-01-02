@@ -1215,34 +1215,24 @@ export default function PodDetailPage() {
                   {leaderboard.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Members will appear here once profiles are loaded.</p>
                   ) : (
-                    leaderboard.map((member, idx) => {
-                      const getRankColor = () => {
-                        if (idx === 0) return "text-primary";
-                        if (idx === 1) return "text-muted-foreground";
-                        if (idx === 2) return "text-amber-600";
-                        return "text-muted-foreground";
-                      };
-                      
-                      return (
+                    leaderboard.map((member, idx) => (
                       <div key={member.id} className="flex items-center gap-3 p-2 border rounded-lg">
-                        <div className={cn("w-6 text-xs font-semibold", getRankColor())}>
+                        <div className="w-6 text-xs font-semibold text-primary">
                           {idx + 1}
                         </div>
                         <Avatar className="h-8 w-8">
                           <AvatarImage src={member.avatar} alt={member.name} />
-                          <AvatarFallback>{member.name?.slice(0, 2)?.toUpperCase?.() || "M"}</AvatarFallback>
+                          <AvatarFallback>M</AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{member.name}</p>
-                          <p className="text-xs text-muted-foreground truncate">Streak {member.streak || 0} • {member.points || 0} pts</p>
+                          <p className="text-xs text-muted-foreground truncate">Streak {member.streak || 0}</p>
                         </div>
-                        <div className="w-20">
-                          <Progress value={Math.min(100, (member.streak || 0) * 3)} className="h-2" />
-                          <p className="text-xs text-muted-foreground text-right mt-1">{member.points || 0} pts</p>
+                        <div className="w-20 text-right">
+                          <p className="text-xs text-muted-foreground">{member.points || 0} pts</p>
                         </div>
                       </div>
-                      );
-                    })
+                    ))
                   )}
                 </CardContent>
               </Card>
