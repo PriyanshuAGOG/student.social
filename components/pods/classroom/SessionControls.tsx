@@ -1,5 +1,12 @@
 "use client"
 
+/**
+ * SessionControls Component
+ * 
+ * Provides join/leave buttons and media toggle controls (camera, mic, screen share).
+ * Shows appropriate controls based on session state.
+ */
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {

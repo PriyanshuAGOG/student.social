@@ -3,19 +3,23 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useMemo, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Users, Settings, Crown, Video, MessageSquare, FolderOpen, Share2, Star, Target, Download, Clock, Play, Pause, Volume2, Maximize, PenTool, Square, Circle, Type, Eraser, Undo, Redo, Save, Upload, ImageIcon, Mic, MicOff, Camera, CameraOff, ScreenShare, Hand, ChevronRight, BookOpen, Calendar, Home, ArrowLeft, Trophy, Zap } from 'lucide-react'
+import { Users, Settings, Crown, Video, MessageSquare, FolderOpen, Share2, Star, Calendar, Home, ArrowLeft, Zap } from 'lucide-react'
 import { useParams, useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { podService, resourceService, calendarService, profileService, client, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite"
+import { 
+  ClassroomTab, 
+  OverviewTab, 
+  ActivityTab, 
+  VaultTab, 
+  MembersTab, 
+  CalendarTab, 
+  ChatTab 
+} from "@/components/pods/tabs"
 
 const FALLBACK_POD = {
   name: "Loading pod...",
@@ -758,7 +762,93 @@ export default function PodDetailPage() {
 
         {/* Tab Content */}
         {activeTab === "overview" && (
-          <div className="grid gap-6 lg:grid-cols-3">
+          <OverviewTab
+            pod={pod}
+            memberProfiles={memberProfiles}
+            computedStats={computedStats}
+            upcomingEvent={upcomingEvent}
+            podStreak={podStreak}
+            pledge={pledge}
+            setPledge={setPledge}
+            pledgeSaved={pledgeSaved}
+            checkIns={checkIns}
+            checkInNote={checkInNote}
+            setCheckInNote={setCheckInNote}
+            studyWithMeEvents={studyWithMeEvents}
+            rsvps={rsvps}
+            rsvpCounts={rsvpCounts}
+            leaderboard={leaderboard}
+            leaderboardStats={leaderboardStats}
+            yourRank={yourRank}
+            activityItems={activityItems}
+            handleSavePledge={handleSavePledge}
+            handleAddCheckIn={handleAddCheckIn}
+            handleToggleRsvp={handleToggleRsvp}
+            handleJoinUpcoming={handleJoinUpcoming}
+            handleOpenChat={handleOpenChat}
+            handleOpenCalendar={handleOpenCalendar}
+            handleOpenVault={handleOpenVault}
+            onTabChange={setActiveTab}
+          />
+        )}
+
+        {activeTab === "activity" && (
+          <ActivityTab
+            activityFeed={activityFeed}
+            upcomingEvent={upcomingEvent}
+            resources={resources}
+            cheers={cheers}
+            reactionCounts={reactionCounts}
+            handleCheer={handleCheer}
+            handleJoinUpcoming={handleJoinUpcoming}
+            handleOpenCalendar={handleOpenCalendar}
+            handleOpenVault={handleOpenVault}
+            formatAgo={formatAgo}
+          />
+        )}
+
+        {activeTab === "classroom" && (
+          <ClassroomTab
+            podId={podId}
+            podName={pod.name}
+            members={memberProfiles}
+            resources={resources}
+            onOpenChat={handleOpenChat}
+            onOpenVault={handleOpenVault}
+          />
+        )}
+
+        {activeTab === "chat" && (
+          <ChatTab handleOpenChat={handleOpenChat} />
+        )}
+
+        {activeTab === "vault" && (
+          <VaultTab
+            resources={resources}
+            resourceFilter={resourceFilter}
+            selectedTag={selectedTag}
+            resourceSearch={resourceSearch}
+            availableTypes={availableTypes}
+            availableTags={availableTags}
+            filteredResources={filteredResources}
+            setResourceFilter={setResourceFilter}
+            setSelectedTag={setSelectedTag}
+            setResourceSearch={setResourceSearch}
+            handleOpenVault={handleOpenVault}
+          />
+        )}
+
+        {activeTab === "members" && (
+          <MembersTab pod={pod} memberProfiles={memberProfiles} />
+        )}
+
+        {activeTab === "calendar" && (
+          <CalendarTab handleOpenCalendar={handleOpenCalendar} />
+        )}
+      </div>
+    </div>
+  )
+}
             <div className="lg:col-span-2 space-y-6">
               {/* Your Progress */}
               <Card>

@@ -1,8 +1,40 @@
 "use client"
 
+/**
+ * WhiteboardCanvas Component
+ * 
+ * Provides a collaborative whiteboard using HTML5 Canvas API.
+ * Features drawing tools, touch support, undo/redo, and export capabilities.
+ * 
+ * Features:
+ * - Multiple drawing tools (pen, shapes, text, eraser)
+ * - Color picker for customization
+ * - Line width/opacity adjustments
+ * - Full undo/redo stack
+ * - Zoom and pan controls
+ * - Touch gesture support for mobile
+ * - Export to PNG
+ * - LocalStorage persistence per pod
+ * - Responsive sizing (h-40 sm:h-64 lg:h-96)
+ * 
+ * @example
+ * <WhiteboardCanvas 
+ *   podId="pod-123"
+ *   onSave={(data) => console.log('saved', data)}
+ * />
+ */
+
 import { useEffect, useRef, useState, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   PenTool,
   Square,
@@ -77,6 +109,7 @@ export function WhiteboardCanvas({ podId, readOnly = false, onSave }: Whiteboard
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
 
   // Check for mobile viewport
   useEffect(() => {
@@ -311,10 +344,16 @@ export function WhiteboardCanvas({ podId, readOnly = false, onSave }: Whiteboard
 
   const handleClear = useCallback(() => {
     if (history.length === 0) return
+    // Show confirmation dialog
+    setShowClearConfirm(true)
+  }, [history])
+
+  const confirmClear = useCallback(() => {
     setHistory([])
     setRedoStack([])
+    setShowClearConfirm(false)
     toast({ title: "Canvas cleared" })
-  }, [history, toast])
+  }, [toast])
 
   const handleZoomIn = useCallback(() => {
     setScale((prev) => Math.min(prev * 1.2, 3))
@@ -368,6 +407,83 @@ export function WhiteboardCanvas({ podId, readOnly = false, onSave }: Whiteboard
     navigator.clipboard?.writeText(`Check out this whiteboard from Pod ${podId}`)
     toast({ title: "Share link copied to clipboard" })
   }, [podId, toast])
+
+  // Template shapes for quick insertion
+  const addTemplate = useCallback((templateType: "grid" | "flowchart" | "mindmap") => {
+    const centerX = 200
+    const centerY = 150
+    const newActions: DrawAction[] = []
+
+    switch (templateType) {
+      case "grid":
+        // Draw a 3x3 grid
+        for (let i = 0; i < 4; i++) {
+          newActions.push({
+            tool: "square",
+            points: [
+              { x: centerX + i * 60, y: centerY },
+              { x: centerX + i * 60 + 60, y: centerY + 180 },
+            ],
+            color: "#000000",
+            lineWidth: 2,
+          })
+        }
+        break
+      case "flowchart":
+        // Draw a simple flowchart (start -> process -> end)
+        newActions.push({
+          tool: "circle",
+          points: [
+            { x: centerX, y: centerY },
+            { x: centerX + 30, y: centerY },
+          ],
+          color: "#000000",
+          lineWidth: 2,
+        })
+        newActions.push({
+          tool: "square",
+          points: [
+            { x: centerX + 80, y: centerY - 30 },
+            { x: centerX + 160, y: centerY + 30 },
+          ],
+          color: "#000000",
+          lineWidth: 2,
+        })
+        break
+      case "mindmap":
+        // Draw a simple mind map center node
+        newActions.push({
+          tool: "circle",
+          points: [
+            { x: centerX, y: centerY },
+            { x: centerX + 40, y: centerY },
+          ],
+          color: "#3b82f6",
+          lineWidth: 3,
+        })
+        for (let i = 0; i < 4; i++) {
+          const angle = (i / 4) * Math.PI * 2
+          const branchEnd = {
+            x: centerX + Math.cos(angle) * 120,
+            y: centerY + Math.sin(angle) * 120,
+          }
+          newActions.push({
+            tool: "pen",
+            points: [
+              { x: centerX, y: centerY },
+              branchEnd,
+            ],
+            color: "#8b5cf6",
+            lineWidth: 2,
+          })
+        }
+        break
+    }
+
+    setHistory((prev) => [...prev, ...newActions])
+    setRedoStack([])
+    toast({ title: `${templateType} template added` })
+  }, [toast])
 
   // Load saved whiteboard from localStorage
   useEffect(() => {
@@ -469,6 +585,18 @@ export function WhiteboardCanvas({ podId, readOnly = false, onSave }: Whiteboard
                   <DropdownMenuItem onClick={handleRedo}>
                     <Redo className="w-4 h-4 mr-2" />
                     Redo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => addTemplate("grid")}>
+                    <Square className="w-4 h-4 mr-2" />
+                    Grid Template
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => addTemplate("flowchart")}>
+                    <Square className="w-4 h-4 mr-2" />
+                    Flowchart
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => addTemplate("mindmap")}>
+                    <Circle className="w-4 h-4 mr-2" />
+                    Mind Map
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleClear}>
                     <Trash2 className="w-4 h-4 mr-2" />
@@ -629,6 +757,31 @@ export function WhiteboardCanvas({ podId, readOnly = false, onSave }: Whiteboard
                 </Button>
               </div>
 
+              <div className="h-6 w-px bg-border mx-1 sm:mx-2 hidden sm:block" />
+
+              {/* Templates */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="ghost" className="h-8 px-2">
+                    Templates <ChevronDown className="w-3 h-3 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => addTemplate("grid")}>
+                    <Square className="w-4 h-4 mr-2" />
+                    Grid (3×3)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => addTemplate("flowchart")}>
+                    <Square className="w-4 h-4 mr-2" />
+                    Flowchart
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => addTemplate("mindmap")}>
+                    <Circle className="w-4 h-4 mr-2" />
+                    Mind Map
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               {/* Clear button */}
               <div className="ml-auto">
                 <Button
@@ -677,6 +830,22 @@ export function WhiteboardCanvas({ podId, readOnly = false, onSave }: Whiteboard
           )}
         </div>
       </CardContent>
+
+      {/* Clear Confirmation Dialog */}
+      <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <AlertDialogContent>
+          <AlertDialogTitle>Clear Whiteboard</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to clear the entire whiteboard? This action cannot be undone.
+          </AlertDialogDescription>
+          <div className="flex justify-end gap-3">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmClear} className="bg-destructive text-white">
+              Clear
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

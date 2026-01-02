@@ -1,5 +1,8 @@
-// Pod component TypeScript interfaces
+/** Pod component TypeScript interfaces and type definitions */
 
+/**
+ * Represents a pod member with presence and performance metrics
+ */
 export interface PodMember {
   id: string
   name: string
@@ -12,6 +15,9 @@ export interface PodMember {
   lastSeen?: string
 }
 
+/**
+ * Represents a pod event (session, meeting, etc.)
+ */
 export interface PodEvent {
   $id?: string
   id?: string
@@ -24,6 +30,9 @@ export interface PodEvent {
   podId?: string
 }
 
+/**
+ * Represents a learning resource (video, document, link, etc.)
+ */
 export interface PodResource {
   $id?: string
   id?: string
@@ -168,32 +177,30 @@ export interface ClassroomTabProps {
 export interface OverviewTabProps {
   pod: Pod
   memberProfiles: PodMember[]
-  events: PodEvent[]
-  resources: PodResource[]
   computedStats: { studyHours: number; totalSessions: number; completionRate: number }
   upcomingEvent: PodEvent | null
   podStreak: number
   pledge: string
   pledgeSaved: boolean
   checkIns: CheckIn[]
+  checkInNote: string
   rsvps: Record<string, boolean>
   rsvpCounts: Record<string, number>
   leaderboard: PodMember[]
   leaderboardStats: LeaderboardStats
   yourRank: YourRank | null
   studyWithMeEvents: PodEvent[]
-  onSavePledge: () => void
-  onAddCheckIn: () => void
-  onToggleRsvp: (eventId: string) => void
-  onSetActiveTab: (tab: string) => void
-  onOpenChat: () => void
-  onOpenCalendar: () => void
-  onOpenVault: () => void
-  onJoinUpcoming: () => void
-  setPledge: (value: string) => void
-  checkInNote: string
-  setCheckInNote: (value: string) => void
   activityItems: ActivityItem[]
+  setPledge: (value: string) => void
+  setCheckInNote: (value: string) => void
+  handleSavePledge: () => void
+  handleAddCheckIn: () => void
+  handleToggleRsvp: (eventId: string) => void
+  handleJoinUpcoming: () => void
+  handleOpenChat: () => void
+  handleOpenCalendar: () => void
+  handleOpenVault: () => void
+  onTabChange: (tab: string) => void
 }
 
 export interface ActivityTabProps {
@@ -202,11 +209,11 @@ export interface ActivityTabProps {
   resources: PodResource[]
   cheers: Record<string, number>
   reactionCounts: Record<string, number>
-  onCheer: (itemId: string, itemType: string) => void
-  onJoinUpcoming: () => void
-  onOpenCalendar: () => void
-  onOpenVault: () => void
-  formatAgo: (date: string | number | Date) => string
+  handleCheer: (itemId: string, itemType: string) => void
+  handleJoinUpcoming: () => void
+  handleOpenCalendar: () => void
+  handleOpenVault: () => void
+  formatAgo: (timestamp: number) => string
 }
 
 export interface VaultTabProps {
@@ -217,16 +224,23 @@ export interface VaultTabProps {
   availableTypes: string[]
   availableTags: string[]
   filteredResources: PodResource[]
-  onFilterChange: (filter: string) => void
-  onTagChange: (tag: string) => void
-  onSearchChange: (search: string) => void
-  onClearFilters: () => void
-  onOpenVault: () => void
+  setResourceFilter: (filter: string) => void
+  setSelectedTag: (tag: string) => void
+  setResourceSearch: (search: string) => void
+  handleOpenVault: () => void
 }
 
 export interface MembersTabProps {
-  members: PodMember[]
-  totalCount: number
+  pod: Pod
+  memberProfiles: PodMember[]
+}
+
+export interface CalendarTabProps {
+  handleOpenCalendar: () => void
+}
+
+export interface ChatTabProps {
+  handleOpenChat: () => void
 }
 
 export interface PodSidebarProps {
@@ -235,5 +249,5 @@ export interface PodSidebarProps {
   leaderboard: PodMember[]
   leaderboardStats: LeaderboardStats
   yourRank: YourRank | null
-  onOpenChat: () => void
+  handleOpenChat: () => void
 }

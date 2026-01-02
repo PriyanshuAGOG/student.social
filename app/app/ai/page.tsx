@@ -317,9 +317,10 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4 pb-4">
-        <div className="space-y-4 max-w-4xl mx-auto pb-2">
-          {messages.map((message) => (
+      <div className="flex-1 overflow-hidden relative">
+        <ScrollArea className="h-full">
+          <div className="p-4 pb-4 space-y-4 max-w-4xl mx-auto">
+            {messages.map((message) => (
             <div
               key={message.id}
               className={`flex gap-3 ${message.sender === "user" ? "justify-end" : "justify-start"}`}
@@ -402,9 +403,10 @@ export default function AIAssistantPage() {
               </div>
             </div>
           )}
-        </div>
-        <div ref={messagesEndRef} />
-      </ScrollArea>
+          <div ref={messagesEndRef} className="h-1" />
+          </div>
+        </ScrollArea>
+      </div>
 
       {/* Input Area */}
       <div className="sticky bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm supports-[backdrop-filter]:bg-card/80 p-3 md:p-4 pb-[calc(env(safe-area-inset-bottom,0px)+68px)] md:pb-4">

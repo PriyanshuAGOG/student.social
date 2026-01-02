@@ -1,5 +1,28 @@
 "use client"
 
+/**
+ * VideoConference Component
+ * 
+ * Integrates Jitsi Meet for real-time video conferencing within pods.
+ * Handles camera/microphone permissions, join/leave flows, media controls.
+ * 
+ * Features:
+ * - Full video call with multiple participants via Jitsi
+ * - Camera and microphone toggle controls
+ * - Screen sharing support
+ * - Permission request handling with error recovery
+ * - Mobile-responsive design with touch targets
+ * - Connection state management (connecting, connected, error)
+ * 
+ * @example
+ * <VideoConference 
+ *   podId="pod-123" 
+ *   podName="Advanced Calculus" 
+ *   onJoin={() => console.log('joined')}
+ *   onLeave={() => console.log('left')}
+ * />
+ */
+
 import { useEffect, useRef, useState, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -59,6 +82,11 @@ export function VideoConference({
   const [participantCount, setParticipantCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [jitsiLoaded, setJitsiLoaded] = useState(false)
+  const [connectionQuality, setConnectionQuality] = useState<"good" | "moderate" | "poor" | null>(null)
+  const [isWaitingForHost, setIsWaitingForHost] = useState(false)
+  const [isReconnecting, setIsReconnecting] = useState(false)
+  const reconnectAttempts = useRef(0)
+  const maxReconnectAttempts = 3
 
   // Load Jitsi External API script
   useEffect(() => {
@@ -250,14 +278,41 @@ export function VideoConference({
         setIsScreenSharing(data.on)
       })
 
+      api.addListener("connectionQualityChanged", (data: { connectionQuality: string }) => {
+        // Map Jitsi quality levels to simple states
+        if (data.connectionQuality === "good" || data.connectionQuality === "2") {
+          setConnectionQuality("good")
+        } else if (data.connectionQuality === "moderate" || data.connectionQuality === "1") {
+          setConnectionQuality("moderate")
+        } else {
+          setConnectionQuality("poor")
+        }
+      })
+
+      api.addListener("conferenceWillJoin", () => {
+        // Will join the conference (waiting for host or other conditions)
+        setIsWaitingForHost(true)
+      })
+
       api.addListener("readyToClose", () => {
         handleLeave()
       })
 
       api.addListener("errorOccurred", (error: any) => {
         console.error("Jitsi error:", error)
-        setError("Connection error occurred. Please try again.")
-        setIsConnecting(false)
+        
+        // Attempt to reconnect on connection errors
+        if (error?.type === "CONNECTION_ERROR" && reconnectAttempts.current < maxReconnectAttempts) {
+          reconnectAttempts.current += 1
+          setIsReconnecting(true)
+          setTimeout(() => {
+            setIsReconnecting(false)
+            joinMeeting()
+          }, 3000 + (reconnectAttempts.current * 1000)) // Exponential backoff
+        } else {
+          setError("Connection error occurred. Please try again.")
+          setIsConnecting(false)
+        }
       })
 
     } catch (e: any) {
@@ -383,6 +438,26 @@ export function VideoConference({
             </div>
           )}
 
+          {/* Waiting for Host State */}
+          {isWaitingForHost && !isConnecting && isJoined && (
+            <div className="absolute bottom-4 left-4 right-4 bg-amber-600/20 border border-amber-600/50 rounded-lg p-3 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-amber-200 text-sm font-medium">Waiting for session to start</p>
+                <p className="text-amber-100/70 text-xs mt-1">The instructor will begin shortly</p>
+              </div>
+            </div>
+          )}
+
+          {/* Reconnecting State */}
+          {isReconnecting && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 z-10">
+              <Loader2 className="w-12 h-12 text-amber-400 animate-spin mb-4" />
+              <p className="text-gray-300">Reconnecting...</p>
+              <p className="text-gray-500 text-sm mt-2">Attempt {reconnectAttempts.current} of {maxReconnectAttempts}</p>
+            </div>
+          )}
+
           {/* Error State */}
           {error && (
             <div className="absolute inset-0 flex flex-col items-center justify-center p-4 sm:p-8">
@@ -476,6 +551,24 @@ export function VideoConference({
               <div className="absolute top-4 left-4 bg-black/60 rounded-full px-3 py-1 flex items-center gap-2">
                 <Users className="w-4 h-4" />
                 <span className="text-sm">{participantCount + 1}</span>
+              </div>
+            )}
+
+            {/* Connection Quality Indicator */}
+            {connectionQuality && (
+              <div className={`absolute top-4 right-4 rounded-full px-3 py-1 flex items-center gap-2 text-xs font-medium ${
+                connectionQuality === "good" ? "bg-green-600/40 text-green-200" :
+                connectionQuality === "moderate" ? "bg-amber-600/40 text-amber-200" :
+                "bg-red-600/40 text-red-200"
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${
+                  connectionQuality === "good" ? "bg-green-400" :
+                  connectionQuality === "moderate" ? "bg-amber-400" :
+                  "bg-red-400"
+                }`} />
+                {connectionQuality === "good" && "Good connection"}
+                {connectionQuality === "moderate" && "Moderate connection"}
+                {connectionQuality === "poor" && "Weak connection"}
               </div>
             )}
           </div>

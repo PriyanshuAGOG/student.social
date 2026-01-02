@@ -1,5 +1,12 @@
 "use client"
 
+/**
+ * ParticipantsList Component
+ * 
+ * Displays list of pod members in session with online status indicators.
+ * Supports both compact and full display modes.
+ */
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"

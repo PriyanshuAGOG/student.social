@@ -1,5 +1,21 @@
 "use client"
 
+/**
+ * ClassroomTab Component
+ * 
+ * Main container for live session activities combining video conferencing
+ * and collaborative whiteboarding. Provides controls, participant management,
+ * and resource access during active study sessions.
+ * 
+ * Features:
+ * - Toggle between video and whiteboard views
+ * - Live participant counter
+ * - Quick action buttons (raise hand, chat, share file, notes)
+ * - Responsive grid layout for different screen sizes
+ * - Resource player integration
+ * - Session status indicators
+ */
+
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,9 +31,9 @@ import {
   BookOpen,
   FolderOpen,
 } from "lucide-react"
-import { VideoConference } from "./VideoConference"
-import { WhiteboardCanvas } from "./WhiteboardCanvas"
-import { ParticipantsList } from "./ParticipantsList"
+import { VideoConference } from "../classroom/VideoConference"
+import { WhiteboardCanvas } from "../classroom/WhiteboardCanvas"
+import { ParticipantsList } from "../classroom/ParticipantsList"
 import type { ClassroomTabProps } from "../types"
 
 export function ClassroomTab({
@@ -79,7 +95,7 @@ export function ClassroomTab({
           ) : (
             <WhiteboardCanvas
               podId={podId}
-              onSave={(data) => console.log("Whiteboard saved:", data)}
+              onSave={(data: unknown) => console.log("Whiteboard saved:", data)}
             />
           )}
 

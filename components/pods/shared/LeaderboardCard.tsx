@@ -1,5 +1,12 @@
 "use client"
 
+/**
+ * LeaderboardCard Component
+ * 
+ * Displays pod member rankings with medals for top 3, stats, and progress bars.
+ * Shows average metrics and current user ranking.
+ */
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"

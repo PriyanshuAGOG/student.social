@@ -679,9 +679,10 @@ export default function ChatPage() {
             </div>
 
             {/* Messages */}
-            <ScrollArea className="flex-1 p-4 pb-4 md:pb-4">
-              <div className="space-y-4 max-w-4xl mx-auto pb-2">
-                {messages.map((message) => {
+            <div className="flex-1 overflow-hidden relative">
+              <ScrollArea className="h-full">
+                <div className="p-4 pb-4 space-y-4 max-w-4xl mx-auto">
+                  {messages.map((message) => {
                   const isCurrent = message.authorId === user?.$id
                   const isAI = message.authorId === "ai"
                   const bubbleClass = isCurrent
@@ -756,9 +757,10 @@ export default function ChatPage() {
                 {isLoading && (
                   <div className="flex gap-3 justify-start text-muted-foreground text-sm">Sending...</div>
                 )}
-              </div>
-              <div ref={messagesEndRef} />
-            </ScrollArea>
+                <div ref={messagesEndRef} className="h-1" />
+                </div>
+              </ScrollArea>
+            </div>
 
             {/* Message Input */}
             <div className="sticky bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm supports-[backdrop-filter]:bg-card/80 p-3 md:p-4 pb-[calc(env(safe-area-inset-bottom,0px)+68px)] md:pb-4">

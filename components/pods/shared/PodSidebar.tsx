@@ -1,5 +1,12 @@
 "use client"
 
+/**
+ * PodSidebar Component
+ * 
+ * Right sidebar displaying pod mentor information, participant list preview,
+ * tags, and member leaderboard. Used on pod overview and detail pages.
+ */
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -14,7 +21,7 @@ interface PodSidebarProps {
   leaderboard: PodMember[]
   leaderboardStats: LeaderboardStats
   yourRank: YourRank | null
-  onOpenChat: () => void
+  handleOpenChat: () => void
 }
 
 export function PodSidebar({
@@ -23,7 +30,7 @@ export function PodSidebar({
   leaderboard,
   leaderboardStats,
   yourRank,
-  onOpenChat,
+  handleOpenChat,
 }: PodSidebarProps) {
   const displayMembers = memberProfiles.slice(0, 6)
   const remainingCount = Math.max(0, memberProfiles.length - 6)
@@ -111,7 +118,7 @@ export function PodSidebar({
             </div>
           )}
           
-          <Button variant="outline" className="w-full" onClick={onOpenChat}>
+          <Button variant="outline" className="w-full" onClick={handleOpenChat}>
             <MessageSquare className="w-4 h-4 mr-2" />
             Open pod chat
           </Button>
