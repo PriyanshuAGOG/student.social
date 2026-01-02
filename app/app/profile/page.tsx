@@ -315,11 +315,6 @@ export default function ProfilePage() {
       })
     }
   }
-    toast({
-      title: "Profile Updated",
-      description: "Your profile information has been saved successfully.",
-    })
-  }
 
   const handleSettings = () => {
     router.push('/app/settings')
