@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -10,16 +10,68 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Search } from 'lucide-react'
+import { ArrowLeft, Search, Loader2 } from 'lucide-react'
 import { useRouter } from "next/navigation"
 import { settingsSections, type SettingSection, type SettingItem } from "./sections"
 import { toast } from "@/hooks/use-toast"
+import { useAuth } from "@/lib/auth-context"
+import { profileService, authService } from "@/lib/appwrite"
+import { useTheme } from "next-themes"
 
 export default function SettingsPage() {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedSection, setSelectedSection] = useState<string | null>(null)
   const [settings, setSettings] = useState<Record<string, any>>({})
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const { user, refreshUser, logout } = useAuth()
+  const { theme, setTheme } = useTheme()
+
+  // Load user settings on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      if (!user?.$id) {
+        setIsLoading(false)
+        return
+      }
+      
+      try {
+        const profile = await profileService.getProfile(user.$id)
+        
+        // Initialize settings with user data
+        const initialSettings: Record<string, any> = {
+          'profile.display-name': user.name || profile?.name || '',
+          'profile.bio': profile?.bio || '',
+          'profile.profile-visibility': profile?.privacySettings?.profileVisibility || 'public',
+          'profile.show-online-status': profile?.privacySettings?.showOnlineStatus ?? true,
+          'notifications.push-notifications': profile?.notificationSettings?.pushNotifications ?? true,
+          'notifications.email-notifications': profile?.notificationSettings?.emailNotifications ?? false,
+          'notifications.notification-frequency': profile?.notificationSettings?.notificationFrequency || 'daily',
+          'notifications.pod-notifications': profile?.notificationSettings?.podNotifications ?? true,
+          'notifications.message-notifications': profile?.notificationSettings?.messageNotifications ?? true,
+          'notifications.calendar-reminders': profile?.notificationSettings?.calendarReminders ?? true,
+          'privacy.two-factor-auth': profile?.securitySettings?.twoFactorEnabled ?? false,
+          'privacy.login-alerts': profile?.securitySettings?.loginAlerts ?? true,
+          'privacy.data-sharing': profile?.privacySettings?.dataSharing ?? false,
+          'privacy.search-visibility': profile?.privacySettings?.searchVisibility ?? true,
+          'privacy.activity-status': profile?.privacySettings?.activityStatus ?? true,
+          'appearance.theme': theme || 'system',
+          'appearance.font-size': profile?.appearanceSettings?.fontSize || 'medium',
+          'appearance.compact-mode': profile?.appearanceSettings?.compactMode ?? false,
+          'appearance.animations': profile?.appearanceSettings?.animations ?? true,
+        }
+        
+        setSettings(initialSettings)
+      } catch (error) {
+        console.error("Failed to load settings:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    
+    loadSettings()
+  }, [user, theme])
 
   const filteredSections = settingsSections.filter(section =>
     section.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -30,21 +82,117 @@ export default function SettingsPage() {
     )
   )
 
-  const handleSettingChange = (sectionId: string, itemId: string, value: any) => {
+  const handleSettingChange = async (sectionId: string, itemId: string, value: any) => {
+    const settingKey = `${sectionId}.${itemId}`
+    
+    // Update local state immediately
     setSettings(prev => ({
       ...prev,
-      [`${sectionId}.${itemId}`]: value
+      [settingKey]: value
     }))
     
-    toast({
-      title: "Setting updated",
-      description: "Your preference has been saved.",
-    })
+    // Handle theme change immediately
+    if (sectionId === 'appearance' && itemId === 'theme') {
+      setTheme(value)
+    }
+    
+    // Persist to database
+    if (user?.$id) {
+      setIsSaving(true)
+      try {
+        // Handle special cases
+        if (sectionId === 'profile' && itemId === 'display-name') {
+          await authService.updateName(value)
+          await profileService.updateProfile(user.$id, { name: value })
+          await refreshUser()
+        } else if (sectionId === 'profile') {
+          await profileService.updateProfile(user.$id, { [itemId]: value })
+        } else {
+          // Group settings by category
+          const settingsData: any = {}
+          if (sectionId === 'notifications') {
+            settingsData.notificationSettings = {
+              ...settings,
+              [itemId]: value,
+            }
+          } else if (sectionId === 'privacy') {
+            settingsData.privacySettings = {
+              ...settings,
+              [itemId]: value,
+            }
+          } else if (sectionId === 'appearance') {
+            settingsData.appearanceSettings = {
+              ...settings,
+              [itemId]: value,
+            }
+          }
+          
+          if (Object.keys(settingsData).length > 0) {
+            await profileService.updateProfile(user.$id, settingsData)
+          }
+        }
+        
+        toast({
+          title: "Setting updated",
+          description: "Your preference has been saved.",
+        })
+      } catch (error: any) {
+        console.error("Failed to save setting:", error)
+        toast({
+          title: "Error",
+          description: error?.message || "Failed to save setting. Please try again.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsSaving(false)
+      }
+    } else {
+      toast({
+        title: "Setting updated",
+        description: "Your preference has been saved.",
+      })
+    }
+  }
+
+  // Handle logout action
+  const handleLogout = async () => {
+    try {
+      await logout()
+      toast({
+        title: "Logged out",
+        description: "You have been logged out successfully.",
+      })
+      router.push("/login")
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to logout.",
+        variant: "destructive",
+      })
+    }
   }
 
   const renderSettingItem = (sectionId: string, item: SettingItem) => {
     const settingKey = `${sectionId}.${item.id}`
     const currentValue = settings[settingKey] ?? item.value
+
+    // Handle special action buttons
+    if (item.type === 'button' && item.id === 'logout') {
+      return (
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label>{item.title}</Label>
+            <p className="text-sm text-muted-foreground">{item.description}</p>
+          </div>
+          <Button
+            variant={item.destructive ? "destructive" : "outline"}
+            onClick={handleLogout}
+          >
+            {item.title}
+          </Button>
+        </div>
+      )
+    }
 
     switch (item.type) {
       case 'toggle':
@@ -58,6 +206,7 @@ export default function SettingsPage() {
               id={item.id}
               checked={currentValue}
               onCheckedChange={(checked) => handleSettingChange(sectionId, item.id, checked)}
+              disabled={isSaving}
             />
           </div>
         )
@@ -70,6 +219,7 @@ export default function SettingsPage() {
             <Select
               value={currentValue}
               onValueChange={(value) => handleSettingChange(sectionId, item.id, value)}
+              disabled={isSaving}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -95,6 +245,7 @@ export default function SettingsPage() {
               value={currentValue}
               onChange={(e) => handleSettingChange(sectionId, item.id, e.target.value)}
               placeholder={item.description}
+              disabled={isSaving}
             />
           </div>
         )

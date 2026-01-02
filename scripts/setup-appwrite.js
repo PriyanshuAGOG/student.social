@@ -103,12 +103,25 @@ const collections = [
       ['email', 'string', 255, true],
       ['bio', 'string', 1000, false],
       ['avatar', 'string', 500, false],
+      ['avatarFileId', 'string', 255, false],
+      ['location', 'string', 255, false],
+      ['website', 'string', 500, false],
       ['interests', 'array-string', 255, false], // Array of strings
+      ['identity', 'string', 100, false], // Learning identity
+      ['vibes', 'array-string', 100, false], // Array of learning vibes
       ['joinedAt', 'string', 255, true],
+      ['updatedAt', 'string', 255, false],
       ['isOnline', 'boolean', null, false],
       ['lastSeen', 'string', 255, false],
       ['studyStreak', 'integer', null, false],
       ['totalPoints', 'integer', null, false],
+      ['totalHours', 'integer', null, false],
+      ['podsJoined', 'integer', null, false],
+      ['resourcesShared', 'integer', null, false],
+      ['postsCreated', 'integer', null, false],
+      ['helpfulVotes', 'integer', null, false],
+      ['followers', 'integer', null, false],
+      ['following', 'integer', null, false],
       ['level', 'integer', null, false],
       ['badges', 'array-string', 255, false], // Array of strings
       // Matching + learning preferences
@@ -117,6 +130,11 @@ const collections = [
       ['preferredSessionTypes', 'array-string', 100, false], // Array of strings
       ['availability', 'array-string', 100, false], // Array of strings
       ['currentFocusAreas', 'array-string', 255, false], // Array of strings
+      // Settings (stored as JSON strings)
+      ['privacySettings', 'string', 2000, false], // JSON object for privacy settings
+      ['notificationSettings', 'string', 2000, false], // JSON object for notification settings
+      ['appearanceSettings', 'string', 2000, false], // JSON object for appearance settings
+      ['securitySettings', 'string', 2000, false], // JSON object for security settings
     ],
   },
   {
@@ -130,10 +148,15 @@ const collections = [
       ['timestamp', 'string', 255, true],
       ['likes', 'integer', null, false],
       ['comments', 'integer', null, false],
+      ['shares', 'integer', null, false],
       ['imageUrl', 'string', 500, false],
       ['visibility', 'string', 50, false],
       ['tags', 'array-string', 100, false], // Array of strings
       ['likedBy', 'array-string', 255, false], // Array of user IDs
+      ['savedBy', 'array-string', 255, false], // Array of user IDs who bookmarked this post
+      ['authorName', 'string', 255, false], // Denormalized author name for display
+      ['authorAvatar', 'string', 500, false], // Denormalized author avatar for display
+      ['authorUsername', 'string', 255, false], // Denormalized author username for display
     ],
   },
   {

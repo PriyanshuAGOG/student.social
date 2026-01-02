@@ -16,6 +16,7 @@ import {
 import { Search, MessageCircle, User, LogOut, BarChart3, UserIcon } from "lucide-react"
 import { useRouter, usePathname } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/lib/auth-context"
 
 interface MobileHeaderProps {
   searchQuery?: string
@@ -34,12 +35,12 @@ export function MobileHeader({
   const router = useRouter()
   const pathname = usePathname()
   const { toast } = useToast()
+  const { user, logout } = useAuth()
 
-  const user = {
-    name: "Alex Johnson",
-    email: "alex@peerspark.com",
-    avatar: "/placeholder.svg?height=32&width=32",
-  }
+  // Get user initials for avatar fallback
+  const userInitials = user?.name
+    ? user.name.split(" ").map(n => n[0]).join("").toUpperCase()
+    : "U"
 
   // Only show mobile header on feed/home page
   const shouldShowMobileHeader = pathname === "/app/feed" || pathname === "/app/home" || pathname === "/app"
@@ -52,12 +53,22 @@ export function MobileHeader({
     router.push("/app/chat")
   }
 
-  const handleLogout = () => {
-    toast({
-      title: "Logged out successfully",
-      description: "You have been logged out of your account",
-    })
-    router.push("/")
+  const handleLogout = async () => {
+    try {
+      await logout()
+      toast({
+        title: "Logged out successfully",
+        description: "You have been logged out of your account",
+      })
+      router.push("/login")
+    } catch (error) {
+      console.error("Logout error:", error)
+      toast({
+        title: "Logout failed",
+        description: "There was an error logging out. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   if (!shouldShowMobileHeader) {
@@ -72,9 +83,9 @@ export function MobileHeader({
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="p-0 h-10 w-10 rounded-full">
               <Avatar className="h-8 w-8">
-                <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
+                <AvatarImage src={user?.prefs?.avatar || "/placeholder.svg"} alt={user?.name || "User"} />
                 <AvatarFallback>
-                  <UserIcon className="h-4 w-4" />
+                  {userInitials}
                 </AvatarFallback>
               </Avatar>
             </Button>
@@ -83,12 +94,12 @@ export function MobileHeader({
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
-                  <AvatarFallback>AJ</AvatarFallback>
+                  <AvatarImage src={user?.prefs?.avatar || "/placeholder.svg"} alt={user?.name || "User"} />
+                  <AvatarFallback>{userInitials}</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{user.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+                  <span className="truncate font-semibold">{user?.name || "User"}</span>
+                  <span className="truncate text-xs text-muted-foreground">{user?.email || "email@example.com"}</span>
                 </div>
               </div>
             </DropdownMenuLabel>

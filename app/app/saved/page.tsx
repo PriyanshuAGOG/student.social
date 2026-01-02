@@ -1,15 +1,17 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Heart, MessageCircle, Share2, Bookmark, Search, Filter, ArrowLeft, Trash2 } from 'lucide-react'
+import { Heart, MessageCircle, Share2, Bookmark, Search, Filter, ArrowLeft, Trash2, Loader2 } from 'lucide-react'
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/lib/auth-context"
+import { feedService } from "@/lib/appwrite"
 
 interface SavedPost {
   id: string
@@ -29,48 +31,58 @@ interface SavedPost {
   isLiked: boolean
 }
 
-const SAVED_POSTS: SavedPost[] = [
-  {
-    id: "1",
-    title: "Complete Guide to System Design Interviews",
-    content: "After months of preparation, here's everything you need to know about system design interviews...",
-    author: {
-      name: "Arjun Patel",
-      avatar: "/placeholder.svg?height=40&width=40",
-      username: "@arjun_codes",
-    },
-    timestamp: "2h",
-    likes: 24,
-    comments: 8,
-    shares: 3,
-    tags: ["SystemDesign", "Interview", "FAANG"],
-    savedAt: "2 days ago",
-    isLiked: false,
-  },
-  {
-    id: "2",
-    content: "Best resources for learning React in 2024. Here's my curated list...",
-    author: {
-      name: "Sarah Johnson",
-      avatar: "/placeholder.svg?height=40&width=40",
-      username: "@sarah_dev",
-    },
-    timestamp: "1d",
-    likes: 45,
-    comments: 12,
-    shares: 8,
-    tags: ["React", "Learning", "Resources"],
-    savedAt: "1 week ago",
-    isLiked: true,
-  },
-]
+// Sample posts will be replaced with actual saved posts from database
+const SAVED_POSTS: SavedPost[] = []
 
 export default function SavedPage() {
   const [savedPosts, setSavedPosts] = useState<SavedPost[]>(SAVED_POSTS)
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState("all")
+  const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
   const { toast } = useToast()
+  const { user } = useAuth()
+
+  // Load saved posts from database
+  useEffect(() => {
+    const loadSavedPosts = async () => {
+      if (!user?.$id) {
+        setIsLoading(false)
+        return
+      }
+      
+      try {
+        // Try to load saved posts from feed service
+        const result = await feedService.getSavedPosts?.(user.$id)
+        if (result?.documents) {
+          const posts = result.documents.map((p: any) => ({
+            id: p.$id,
+            title: p.title || "",
+            content: p.content || "",
+            author: {
+              name: p.authorName || "User",
+              avatar: p.authorAvatar || "/placeholder.svg",
+              username: p.authorUsername || "@user",
+            },
+            timestamp: p.timestamp ? new Date(p.timestamp).toLocaleDateString() : "",
+            likes: p.likes || 0,
+            comments: p.comments || 0,
+            shares: p.shares || 0,
+            tags: p.tags || [],
+            savedAt: p.savedAt ? new Date(p.savedAt).toLocaleDateString() : "Recently",
+            isLiked: (p.likedBy || []).includes(user.$id),
+          }))
+          setSavedPosts(posts)
+        }
+      } catch (error) {
+        console.error("Failed to load saved posts:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    
+    loadSavedPosts()
+  }, [user?.$id])
 
   const handleUnsave = (postId: string) => {
     setSavedPosts(savedPosts.filter(post => post.id !== postId))

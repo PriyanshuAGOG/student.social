@@ -358,7 +358,27 @@ export const authService = {
     }
   },
 
-  // Change password
+  // Update user name
+  async updateName(name: string) {
+    try {
+      return await account.updateName(name)
+    } catch (error: any) {
+      console.error("Update name error:", error)
+      throw new Error(error?.message || "Failed to update name")
+    }
+  },
+
+  // Update password (wrapper for consistency)
+  async updatePassword(newPassword: string, oldPassword: string) {
+    try {
+      return await account.updatePassword(newPassword, oldPassword)
+    } catch (error: any) {
+      console.error("Update password error:", error)
+      throw new Error(error?.message || "Failed to update password")
+    }
+  },
+
+  // Change password (legacy alias)
   async changePassword(newPassword: string, oldPassword: string) {
     try {
       return await account.updatePassword(newPassword, oldPassword)
@@ -1359,6 +1379,53 @@ export const feedService = {
 
     const interval = setInterval(pollPosts, 5000) // Poll every 5 seconds
     return () => clearInterval(interval)
+  },
+
+  // Get saved posts for a user
+  async getSavedPosts(userId: string, limit = 50, offset = 0) {
+    try {
+      // Get posts where the user has bookmarked them
+      // Note: This assumes posts have a savedBy array field or we store saved posts separately
+      const posts = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTIONS.POSTS,
+        [],
+        limit,
+        offset
+      )
+      
+      // Filter posts that the user has saved (bookmarked)
+      // For now, we'll try to find posts with savedBy array containing userId
+      const savedPosts = posts.documents.filter((post: any) => {
+        const savedBy = post.savedBy || post.bookmarkedBy || []
+        return savedBy.includes(userId)
+      })
+      
+      return { documents: savedPosts }
+    } catch (error) {
+      console.error("Get saved posts error:", error)
+      return { documents: [] }
+    }
+  },
+
+  // Save/unsave a post (bookmark)
+  async toggleSavePost(postId: string, userId: string) {
+    try {
+      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
+      const savedBy = post.savedBy || post.bookmarkedBy || []
+      
+      const isSaved = savedBy.includes(userId)
+      const newSavedBy = isSaved 
+        ? savedBy.filter((id: string) => id !== userId) 
+        : [...savedBy, userId]
+      
+      return await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, postId, {
+        savedBy: newSavedBy,
+      })
+    } catch (error) {
+      console.error("Toggle save post error:", error)
+      throw error
+    }
   },
 }
 

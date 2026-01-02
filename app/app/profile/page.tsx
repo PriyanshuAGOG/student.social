@@ -18,24 +18,25 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { feedService, profileService } from "@/lib/appwrite"
 
-const USER_PROFILE = {
-  name: "Alex Johnson",
-  username: "@alex_codes",
+// Default profile structure (will be overwritten with actual user data)
+const DEFAULT_PROFILE = {
+  name: "",
+  username: "",
   avatar: "/placeholder.svg?height=120&width=120",
-  bio: "Full-stack developer passionate about learning and sharing knowledge. Currently diving deep into system design and distributed systems.",
-  location: "San Francisco, CA",
-  website: "alexjohnson.dev",
-  joinedDate: "March 2023",
-  followers: 1247,
-  following: 892,
+  bio: "",
+  location: "",
+  website: "",
+  joinedDate: "",
+  followers: 0,
+  following: 0,
   isFollowing: false,
   stats: {
-    studyStreak: 45,
-    totalHours: 324,
-    podsJoined: 8,
-    resourcesShared: 23,
-    postsCreated: 67,
-    helpfulVotes: 189,
+    studyStreak: 0,
+    totalHours: 0,
+    podsJoined: 0,
+    resourcesShared: 0,
+    postsCreated: 0,
+    helpfulVotes: 0,
   },
 }
 
@@ -96,43 +97,9 @@ const USER_ACHIEVEMENTS = [
   },
 ]
 
-const USER_POSTS = [
-  {
-    id: "1",
-    title: "My Journey Learning System Design",
-    content:
-      "After 6 months of consistent study, I finally feel confident about system design interviews. Here's what worked for me:\n\n1. Started with basics - scalability, reliability, availability\n2. Practiced with real-world examples\n3. Joined the System Design pod for peer learning\n4. Built actual projects to apply concepts\n\nThe key was consistent practice and getting feedback from experienced engineers.",
-    timestamp: "2 days ago",
-    likes: 34,
-    comments: 12,
-    shares: 8,
-    tags: ["SystemDesign", "Learning", "Interview"],
-    isLiked: false,
-    isBookmarked: true,
-    author: {
-      id: "alex_codes",
-      name: "Alex Johnson",
-      avatar: "/placeholder.svg?height=40&width=40",
-    },
-  },
-  {
-    id: "2",
-    content:
-      "Quick tip for anyone learning React: Use the React Developer Tools browser extension. It's a game-changer for debugging component state and props. You can inspect the component tree, see state changes in real-time, and even time-travel debug! 🚀",
-    timestamp: "5 days ago",
-    likes: 28,
-    comments: 7,
-    shares: 15,
-    tags: ["React", "Tips", "Development"],
-    isLiked: true,
-    isBookmarked: false,
-    author: {
-      id: "alex_codes",
-      name: "Alex Johnson",
-      avatar: "/placeholder.svg?height=40&width=40",
-    },
-  },
-]
+// Sample posts are no longer used - posts are loaded dynamically from database
+// Keeping empty array as placeholder for fallback
+const USER_POSTS: any[] = []
 
 const USER_ACTIVITY = [
   {
@@ -160,7 +127,7 @@ const USER_ACTIVITY = [
 
 export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState("posts")
-  const [isFollowing, setIsFollowing] = useState(USER_PROFILE.isFollowing)
+  const [isFollowing, setIsFollowing] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false)
   const { toast } = useToast()
@@ -169,6 +136,66 @@ export default function ProfilePage() {
   const [isOwnProfile] = useState(true)
   const [userPosts, setUserPosts] = useState<any[]>([])
   const [isLoadingPosts, setIsLoadingPosts] = useState(false)
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true)
+  
+  // User profile state - loaded from database
+  const [userProfile, setUserProfile] = useState(DEFAULT_PROFILE)
+
+  // Load user profile from Appwrite
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user?.$id) {
+        setIsLoadingProfile(false)
+        return
+      }
+      
+      try {
+        const profile = await profileService.getProfile(user.$id)
+        
+        // Format joined date
+        const joinedDate = user.$createdAt 
+          ? new Date(user.$createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+          : profile?.joinedAt 
+            ? new Date(profile.joinedAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+            : ""
+        
+        setUserProfile({
+          name: user.name || profile?.name || "",
+          username: `@${(user.name || profile?.name || "user").toLowerCase().replace(/\s+/g, '_')}`,
+          avatar: profile?.avatar || "/placeholder.svg?height=120&width=120",
+          bio: profile?.bio || "",
+          location: profile?.location || "",
+          website: profile?.website || "",
+          joinedDate,
+          followers: profile?.followers || 0,
+          following: profile?.following || 0,
+          isFollowing: false,
+          stats: {
+            studyStreak: profile?.studyStreak || 0,
+            totalHours: profile?.totalHours || 0,
+            podsJoined: profile?.podsJoined || 0,
+            resourcesShared: profile?.resourcesShared || 0,
+            postsCreated: profile?.postsCreated || 0,
+            helpfulVotes: profile?.helpfulVotes || 0,
+          },
+        })
+      } catch (error) {
+        console.error("Failed to load profile:", error)
+        // Use auth user data as fallback
+        if (user) {
+          setUserProfile(prev => ({
+            ...prev,
+            name: user.name || "",
+            username: `@${(user.name || "user").toLowerCase().replace(/\s+/g, '_')}`,
+          }))
+        }
+      } finally {
+        setIsLoadingProfile(false)
+      }
+    }
+    
+    loadProfile()
+  }, [user])
 
   // Load user's posts from Appwrite
   useEffect(() => {
@@ -199,13 +226,23 @@ export default function ProfilePage() {
     loadPosts()
   }, [user?.$id])
 
-  // Profile edit state
+  // Profile edit state - synced with userProfile
   const [profileData, setProfileData] = useState({
-    name: USER_PROFILE.name,
-    bio: USER_PROFILE.bio,
-    location: USER_PROFILE.location,
-    website: USER_PROFILE.website,
+    name: "",
+    bio: "",
+    location: "",
+    website: "",
   })
+
+  // Sync profile edit data with loaded profile
+  useEffect(() => {
+    setProfileData({
+      name: userProfile.name,
+      bio: userProfile.bio,
+      location: userProfile.location,
+      website: userProfile.website,
+    })
+  }, [userProfile])
 
   // Settings state
   const [privacySettings, setPrivacySettings] = useState({
@@ -229,7 +266,7 @@ export default function ProfilePage() {
     setIsFollowing(!isFollowing)
     toast({
       title: isFollowing ? "Unfollowed" : "Following",
-      description: isFollowing ? `You unfollowed ${USER_PROFILE.name}` : `You are now following ${USER_PROFILE.name}`,
+      description: isFollowing ? `You unfollowed ${userProfile.name}` : `You are now following ${userProfile.name}`,
     })
   }
 
@@ -237,7 +274,7 @@ export default function ProfilePage() {
     router.push("/app/chat")
     toast({
       title: "Message",
-      description: "Opening chat with " + USER_PROFILE.name,
+      description: "Opening chat with " + userProfile.name,
     })
   }
 
@@ -245,8 +282,39 @@ export default function ProfilePage() {
     setIsEditDialogOpen(true)
   }
 
-  const handleSaveProfile = () => {
-    setIsEditDialogOpen(false)
+  const handleSaveProfile = async () => {
+    if (!user?.$id) return
+    
+    try {
+      await profileService.updateProfile(user.$id, {
+        name: profileData.name,
+        bio: profileData.bio,
+        location: profileData.location,
+        website: profileData.website,
+      })
+      
+      // Update local state
+      setUserProfile(prev => ({
+        ...prev,
+        name: profileData.name,
+        bio: profileData.bio,
+        location: profileData.location,
+        website: profileData.website,
+      }))
+      
+      setIsEditDialogOpen(false)
+      toast({
+        title: "Profile Updated",
+        description: "Your profile information has been saved successfully.",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to update profile.",
+        variant: "destructive",
+      })
+    }
+  }
     toast({
       title: "Profile Updated",
       description: "Your profile information has been saved successfully.",
@@ -346,44 +414,44 @@ export default function ProfilePage() {
               <div className="md:hidden space-y-4">
                 <div className="flex items-center space-x-4">
                   <Avatar className="w-20 h-20">
-                    <AvatarImage src={USER_PROFILE.avatar || "/placeholder.svg"} alt={USER_PROFILE.name} />
+                    <AvatarImage src={userProfile.avatar || "/placeholder.svg"} alt={userProfile.name} />
                     <AvatarFallback className="text-xl">
-                      {USER_PROFILE.name
+                      {userProfile.name
                         .split(" ")
                         .map((n) => n[0])
                         .join("")}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
-                    <h1 className="text-xl font-bold">{USER_PROFILE.name}</h1>
-                    <p className="text-muted-foreground">{USER_PROFILE.username}</p>
+                    <h1 className="text-xl font-bold">{userProfile.name}</h1>
+                    <p className="text-muted-foreground">{userProfile.username}</p>
                     <div className="flex items-center space-x-4 text-sm mt-2">
                       <div>
-                        <span className="font-semibold">{USER_PROFILE.following.toLocaleString()}</span>
+                        <span className="font-semibold">{userProfile.following.toLocaleString()}</span>
                         <span className="text-muted-foreground ml-1">Following</span>
                       </div>
                       <div>
-                        <span className="font-semibold">{USER_PROFILE.followers.toLocaleString()}</span>
+                        <span className="font-semibold">{userProfile.followers.toLocaleString()}</span>
                         <span className="text-muted-foreground ml-1">Followers</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <p className="text-muted-foreground text-sm">{USER_PROFILE.bio}</p>
+                <p className="text-muted-foreground text-sm">{userProfile.bio}</p>
 
                 <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                   <div className="flex items-center space-x-1">
                     <MapPin className="w-3 h-3" />
-                    <span>{USER_PROFILE.location}</span>
+                    <span>{userProfile.location}</span>
                   </div>
                   <div className="flex items-center space-x-1">
                     <LinkIcon className="w-3 h-3" />
-                    <span className="text-primary">{USER_PROFILE.website}</span>
+                    <span className="text-primary">{userProfile.website}</span>
                   </div>
                   <div className="flex items-center space-x-1">
                     <Calendar className="w-3 h-3" />
-                    <span>Joined {USER_PROFILE.joinedDate}</span>
+                    <span>Joined {userProfile.joinedDate}</span>
                   </div>
                 </div>
 
@@ -422,9 +490,9 @@ export default function ProfilePage() {
               {/* Desktop Profile Layout */}
               <div className="hidden md:flex items-start space-x-6">
                 <Avatar className="w-24 h-24 lg:w-32 lg:h-32">
-                  <AvatarImage src={USER_PROFILE.avatar || "/placeholder.svg"} alt={USER_PROFILE.name} />
+                  <AvatarImage src={userProfile.avatar || "/placeholder.svg"} alt={userProfile.name} />
                   <AvatarFallback className="text-2xl">
-                    {USER_PROFILE.name
+                    {userProfile.name
                       .split(" ")
                       .map((n) => n[0])
                       .join("")}
@@ -433,34 +501,34 @@ export default function ProfilePage() {
 
                 <div className="flex-1 space-y-4">
                   <div>
-                    <h1 className="text-3xl font-bold">{USER_PROFILE.name}</h1>
-                    <p className="text-muted-foreground text-lg">{USER_PROFILE.username}</p>
+                    <h1 className="text-3xl font-bold">{userProfile.name}</h1>
+                    <p className="text-muted-foreground text-lg">{userProfile.username}</p>
                   </div>
 
-                  <p className="text-muted-foreground max-w-2xl">{USER_PROFILE.bio}</p>
+                  <p className="text-muted-foreground max-w-2xl">{userProfile.bio}</p>
 
                   <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                     <div className="flex items-center space-x-1">
                       <MapPin className="w-4 h-4" />
-                      <span>{USER_PROFILE.location}</span>
+                      <span>{userProfile.location}</span>
                     </div>
                     <div className="flex items-center space-x-1">
                       <LinkIcon className="w-4 h-4" />
-                      <span className="text-primary cursor-pointer hover:underline">{USER_PROFILE.website}</span>
+                      <span className="text-primary cursor-pointer hover:underline">{userProfile.website}</span>
                     </div>
                     <div className="flex items-center space-x-1">
                       <Calendar className="w-4 h-4" />
-                      <span>Joined {USER_PROFILE.joinedDate}</span>
+                      <span>Joined {userProfile.joinedDate}</span>
                     </div>
                   </div>
 
                   <div className="flex items-center space-x-6 text-sm">
                     <div className="cursor-pointer hover:underline">
-                      <span className="font-semibold">{USER_PROFILE.following.toLocaleString()}</span>
+                      <span className="font-semibold">{userProfile.following.toLocaleString()}</span>
                       <span className="text-muted-foreground ml-1">Following</span>
                     </div>
                     <div className="cursor-pointer hover:underline">
-                      <span className="font-semibold">{USER_PROFILE.followers.toLocaleString()}</span>
+                      <span className="font-semibold">{userProfile.followers.toLocaleString()}</span>
                       <span className="text-muted-foreground ml-1">Followers</span>
                     </div>
                   </div>
@@ -497,7 +565,7 @@ export default function ProfilePage() {
                   <Target className="w-4 h-4 md:w-6 md:h-6 text-orange-600" />
                 </div>
               </div>
-              <div className="text-lg md:text-2xl font-bold">{USER_PROFILE.stats.studyStreak}</div>
+              <div className="text-lg md:text-2xl font-bold">{userProfile.stats.studyStreak}</div>
               <div className="text-xs md:text-sm text-muted-foreground">Day Streak</div>
             </CardContent>
           </Card>
@@ -509,7 +577,7 @@ export default function ProfilePage() {
                   <Clock className="w-4 h-4 md:w-6 md:h-6 text-blue-600" />
                 </div>
               </div>
-              <div className="text-lg md:text-2xl font-bold">{USER_PROFILE.stats.totalHours}</div>
+              <div className="text-lg md:text-2xl font-bold">{userProfile.stats.totalHours}</div>
               <div className="text-xs md:text-sm text-muted-foreground">Study Hours</div>
             </CardContent>
           </Card>
@@ -521,7 +589,7 @@ export default function ProfilePage() {
                   <Users className="w-4 h-4 md:w-6 md:h-6 text-green-600" />
                 </div>
               </div>
-              <div className="text-lg md:text-2xl font-bold">{USER_PROFILE.stats.podsJoined}</div>
+              <div className="text-lg md:text-2xl font-bold">{userProfile.stats.podsJoined}</div>
               <div className="text-xs md:text-sm text-muted-foreground">Pods Joined</div>
             </CardContent>
           </Card>
@@ -533,7 +601,7 @@ export default function ProfilePage() {
                   <BookOpen className="w-4 h-4 md:w-6 md:h-6 text-purple-600" />
                 </div>
               </div>
-              <div className="text-lg md:text-2xl font-bold">{USER_PROFILE.stats.resourcesShared}</div>
+              <div className="text-lg md:text-2xl font-bold">{userProfile.stats.resourcesShared}</div>
               <div className="text-xs md:text-sm text-muted-foreground">Resources Shared</div>
             </CardContent>
           </Card>
@@ -778,7 +846,7 @@ export default function ProfilePage() {
           <div className="space-y-4">
             <div className="flex items-center space-x-4">
               <Avatar className="w-16 h-16">
-                <AvatarImage src={USER_PROFILE.avatar || "/placeholder.svg"} />
+                <AvatarImage src={userProfile.avatar || "/placeholder.svg"} />
                 <AvatarFallback>AJ</AvatarFallback>
               </Avatar>
               <Button variant="outline" size="sm">

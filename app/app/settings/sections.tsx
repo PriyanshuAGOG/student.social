@@ -34,14 +34,14 @@ export const settingsSections: SettingSection[] = [
         title: 'Display Name',
         description: 'Your name as it appears to other users',
         type: 'input',
-        value: 'John Doe'
+        value: '' // Will be loaded from user data
       },
       {
         id: 'bio',
         title: 'Bio',
         description: 'Tell others about yourself',
         type: 'input',
-        value: 'Computer Science student passionate about AI and machine learning'
+        value: '' // Will be loaded from user profile
       },
       {
         id: 'profile-visibility',

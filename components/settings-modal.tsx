@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,6 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { User, Lock, Bell, Shield, Eye, EyeOff, Camera, Save, Trash2, Download, AlertTriangle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/lib/auth-context"
+import { profileService, authService } from "@/lib/appwrite"
+import { useRouter } from "next/navigation"
 
 interface SettingsModalProps {
   open: boolean
@@ -24,16 +27,51 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
+  const { user, refreshUser } = useAuth()
+  const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Profile state
+  // Profile state - initialized with user data
   const [profile, setProfile] = useState({
-    name: "Alex Johnson",
-    email: "alex.johnson@example.com",
-    bio: "Passionate learner and tech enthusiast. Love sharing knowledge and helping others grow.",
-    location: "San Francisco, CA",
-    website: "https://alexjohnson.dev",
-    avatar: "/placeholder.svg?height=80&width=80&text=AJ",
+    name: "",
+    email: "",
+    bio: "",
+    location: "",
+    website: "",
+    avatar: "",
   })
+
+  // Load user profile data when modal opens or user changes
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user?.$id || !open) return
+      
+      try {
+        const profileData = await profileService.getProfile(user.$id)
+        setProfile({
+          name: user.name || profileData?.name || "",
+          email: user.email || "",
+          bio: profileData?.bio || "",
+          location: profileData?.location || "",
+          website: profileData?.website || "",
+          avatar: profileData?.avatar || "",
+        })
+      } catch (error) {
+        console.error("Failed to load profile:", error)
+        // Fallback to auth user data
+        setProfile({
+          name: user.name || "",
+          email: user.email || "",
+          bio: "",
+          location: "",
+          website: "",
+          avatar: "",
+        })
+      }
+    }
+    
+    loadProfile()
+  }, [user, open])
 
   // Privacy state
   const [privacy, setPrivacy] = useState({
@@ -67,19 +105,44 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   })
 
   const handleSaveProfile = async () => {
+    if (!user?.$id) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to update your profile.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsLoading(true)
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Update profile in database
+      await profileService.updateProfile(user.$id, {
+        name: profile.name,
+        bio: profile.bio,
+        location: profile.location,
+        website: profile.website,
+      })
+
+      // Update account name if changed
+      if (profile.name !== user.name) {
+        try {
+          await authService.updateName(profile.name)
+          await refreshUser()
+        } catch (e) {
+          console.warn("Could not update account name:", e)
+        }
+      }
 
       toast({
         title: "Profile Updated",
         description: "Your profile has been successfully updated.",
       })
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Profile update error:", error)
       toast({
         title: "Error",
-        description: "Failed to update profile. Please try again.",
+        description: error?.message || "Failed to update profile. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -88,18 +151,24 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   }
 
   const handleSavePrivacy = async () => {
+    if (!user?.$id) return
+
     setIsLoading(true)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Save privacy settings to profile
+      await profileService.updateProfile(user.$id, {
+        privacySettings: privacy,
+      })
 
       toast({
         title: "Privacy Settings Updated",
         description: "Your privacy preferences have been saved.",
       })
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Privacy update error:", error)
       toast({
         title: "Error",
-        description: "Failed to update privacy settings.",
+        description: error?.message || "Failed to update privacy settings.",
         variant: "destructive",
       })
     } finally {
@@ -108,18 +177,24 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   }
 
   const handleSaveNotifications = async () => {
+    if (!user?.$id) return
+
     setIsLoading(true)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Save notification settings to profile
+      await profileService.updateProfile(user.$id, {
+        notificationSettings: notifications,
+      })
 
       toast({
         title: "Notification Settings Updated",
         description: "Your notification preferences have been saved.",
       })
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Notification update error:", error)
       toast({
         title: "Error",
-        description: "Failed to update notification settings.",
+        description: error?.message || "Failed to update notification settings.",
         variant: "destructive",
       })
     } finally {
@@ -146,9 +221,18 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
       return
     }
 
+    if (!security.currentPassword) {
+      toast({
+        title: "Current Password Required",
+        description: "Please enter your current password.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsLoading(true)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await authService.updatePassword(security.newPassword, security.currentPassword)
 
       setSecurity({
         ...security,
@@ -161,10 +245,11 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         title: "Password Changed",
         description: "Your password has been successfully updated.",
       })
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Password change error:", error)
       toast({
         title: "Error",
-        description: "Failed to change password. Please try again.",
+        description: error?.message || "Failed to change password. Please check your current password.",
         variant: "destructive",
       })
     } finally {
@@ -172,31 +257,114 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     }
   }
 
-  const handleAvatarUpload = () => {
-    toast({
-      title: "Avatar Upload",
-      description: "File picker would open here to select a new avatar.",
-    })
+  const handleAvatarUpload = async () => {
+    fileInputRef.current?.click()
   }
 
-  const handleExportData = () => {
-    toast({
-      title: "Data Export",
-      description: "Your data export will be ready for download shortly.",
-    })
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user?.$id) return
+
+    setIsLoading(true)
+    try {
+      const avatarUrl = await profileService.uploadAvatar(file, user.$id)
+      setProfile(prev => ({ ...prev, avatar: avatarUrl }))
+      toast({
+        title: "Avatar Updated",
+        description: "Your avatar has been successfully updated.",
+      })
+    } catch (error: any) {
+      console.error("Avatar upload error:", error)
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to upload avatar. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const handleDeleteAccount = () => {
-    toast({
-      title: "Account Deletion",
-      description: "This would open a confirmation dialog for account deletion.",
-      variant: "destructive",
-    })
+  const handleExportData = async () => {
+    if (!user?.$id) return
+
+    try {
+      // Gather user data
+      const profileData = await profileService.getProfile(user.$id)
+      const exportData = {
+        user: {
+          id: user.$id,
+          name: user.name,
+          email: user.email,
+        },
+        profile: profileData,
+        exportedAt: new Date().toISOString(),
+      }
+
+      // Create downloadable file
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `peerspark-data-export-${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast({
+        title: "Data Exported",
+        description: "Your data has been downloaded successfully.",
+      })
+    } catch (error: any) {
+      console.error("Data export error:", error)
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to export data.",
+        variant: "destructive",
+      })
+    }
   }
+
+  const handleDeleteAccount = async () => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete your account? This action cannot be undone and will permanently delete all your data."
+    )
+    
+    if (!confirmed) return
+
+    try {
+      // Note: Account deletion typically requires additional confirmation
+      toast({
+        title: "Account Deletion Requested",
+        description: "Please contact support to complete account deletion.",
+        variant: "destructive",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to process account deletion request.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Get user initials for avatar fallback
+  const userInitials = profile.name
+    ? profile.name.split(" ").map(n => n[0]).join("").toUpperCase()
+    : user?.name?.split(" ").map(n => n[0]).join("").toUpperCase() || "U"
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+        {/* Hidden file input for avatar upload */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleAvatarFileChange}
+        />
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>Manage your account settings and preferences</DialogDescription>
@@ -255,12 +423,12 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                   <div className="flex items-center space-x-4 mb-6">
                     <Avatar className="w-20 h-20">
                       <AvatarImage src={profile.avatar || "/placeholder.svg"} />
-                      <AvatarFallback className="text-lg">{profile.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                      <AvatarFallback className="text-lg">{userInitials}</AvatarFallback>
                     </Avatar>
                     <div>
-                      <Button onClick={handleAvatarUpload} variant="outline" size="sm">
+                      <Button onClick={handleAvatarUpload} variant="outline" size="sm" disabled={isLoading}>
                         <Camera className="w-4 h-4 mr-2" />
-                        Change Avatar
+                        {isLoading ? "Uploading..." : "Change Avatar"}
                       </Button>
                       <p className="text-sm text-muted-foreground mt-1">JPG, PNG or GIF. Max size 2MB.</p>
                     </div>
