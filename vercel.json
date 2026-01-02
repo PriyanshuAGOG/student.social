@@ -1,0 +1,77 @@
+{
+  "buildCommand": "pnpm run build",
+  "devCommand": "pnpm run dev",
+  "installCommand": "pnpm install",
+  "framework": "nextjs",
+  "outputDirectory": ".next",
+  "env": [
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_ENDPOINT",
+      "value": "https://fra.cloud.appwrite.io/v1"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_PROJECT_ID",
+      "value": "68921a0d00146e65d29b"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_DATABASE_ID",
+      "value": "peerspark-main-db"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_STORAGE_ID",
+      "value": "peerspark-storage"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_PROFILES_COLLECTION",
+      "value": "profiles"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_POSTS_COLLECTION",
+      "value": "posts"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION",
+      "value": "messages"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_RESOURCES_COLLECTION",
+      "value": "resources"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION",
+      "value": "notifications"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_PODS_COLLECTION",
+      "value": "pods"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_CALENDAR_EVENTS_COLLECTION",
+      "value": "calendar_events"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_CHAT_ROOMS_COLLECTION",
+      "value": "chat_rooms"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_AVATARS_BUCKET",
+      "value": "avatars"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_RESOURCES_BUCKET",
+      "value": "resources"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_ATTACHMENTS_BUCKET",
+      "value": "attachments"
+    },
+    {
+      "key": "NEXT_PUBLIC_APPWRITE_POST_IMAGES_BUCKET",
+      "value": "post_images"
+    },
+    {
+      "key": "NEXT_PUBLIC_APP_URL",
+      "value": ""
+    }
+  ]
+}
