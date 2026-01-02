@@ -324,6 +324,40 @@ code {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* Fix input areas for mobile keyboard */
+  input, textarea, select {
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
+  }
+
+  /* Better touch targets for all interactive elements */
+  button, a, [role="button"] {
+    min-height: 44px;
+  }
+
+  /* Chat input fix - ensure it stays above mobile nav */
+  .chat-input-container {
+    position: sticky;
+    bottom: 0;
+    z-index: 50;
+  }
+
+  /* Modal and dialog fixes for mobile */
+  [role="dialog"] {
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  /* Card spacing adjustments for mobile */
+  .card {
+    margin-bottom: 0.5rem;
+  }
+
+  /* Onboarding cards fit on screen */
+  .onboarding-card {
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+  }
 }
 
 @media (min-width: 769px) {
@@ -333,5 +367,39 @@ code {
 
   .desktop-only {
     display: block;
+  }
+}
+
+/* Fix for mobile bottom navigation overlap */
+@layer utilities {
+  .pb-safe {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
+  }
+
+  .pb-safe-nav {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
+  }
+
+  .mb-safe {
+    margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
+  }
+
+  /* Mobile chat input specific fix */
+  .chat-input-mobile {
+    position: sticky;
+    bottom: 0;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 68px);
+  }
+
+  @media (min-width: 768px) {
+    .chat-input-mobile {
+      padding-bottom: 1rem;
+    }
+    .pb-safe, .pb-safe-nav {
+      padding-bottom: 0;
+    }
+    .mb-safe {
+      margin-bottom: 0;
+    }
   }
 }

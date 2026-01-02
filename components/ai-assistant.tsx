@@ -81,12 +81,12 @@ export function AIAssistant() {
     }
   }
 
-  // Mobile floating button
+  // Mobile floating button - position above mobile nav
   if (!isOpen) {
     return (
       <Button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 left-4 z-40 h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 md:hidden"
+        className="fixed bottom-20 left-4 z-40 h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 md:hidden"
       >
         <Bot className="h-5 w-5" />
       </Button>
@@ -172,16 +172,16 @@ export function AIAssistant() {
         </div>
 
         {/* Input */}
-        <div className="p-4 border-t">
+        <div className="p-3 border-t bg-background pb-[calc(env(safe-area-inset-bottom,0px)+8px)]">
           <div className="flex space-x-2">
             <Input
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               placeholder="Ask me anything..."
               onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-              className="flex-1"
+              className="flex-1 text-base"
             />
-            <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isTyping} size="icon">
+            <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isTyping} size="icon" className="h-10 w-10">
               <Send className="w-4 h-4" />
             </Button>
           </div>

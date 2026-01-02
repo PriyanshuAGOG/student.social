@@ -379,12 +379,12 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-6 pb-20 md:pb-6 overflow-auto max-h-screen">
       {/* Welcome Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Welcome back{user?.name ? `, ${user.name}` : ""}! 👋</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-xl md:text-3xl font-bold">Welcome back{user?.name ? `, ${user.name}` : ""}! 👋</h1>
+          <p className="text-sm md:text-base text-muted-foreground mt-1">
             {currentTime.toLocaleDateString("en-US", {
               weekday: "long",
               year: "numeric",
@@ -393,73 +393,74 @@ export default function Dashboard() {
             })}
           </p>
         </div>
-        <div className="flex gap-3">
-          <Button onClick={handleScheduleSession} className="bg-primary hover:bg-primary/90">
-            <Calendar className="w-4 h-4 mr-2" />
+        <div className="flex gap-2 md:gap-3 w-full md:w-auto">
+          <Button onClick={handleScheduleSession} className="bg-primary hover:bg-primary/90 flex-1 md:flex-none text-xs md:text-sm h-9 md:h-10">
+            <Calendar className="w-4 h-4 mr-1 md:mr-2" />
             Schedule
           </Button>
-          <Button onClick={handleNewSession} variant="outline">
-            <Plus className="w-4 h-4 mr-2" />
-            New Session
+          <Button onClick={handleNewSession} variant="outline" className="flex-1 md:flex-none text-xs md:text-sm h-9 md:h-10">
+            <Plus className="w-4 h-4 mr-1 md:mr-2" />
+            <span className="hidden sm:inline">New Session</span>
+            <span className="sm:hidden">New</span>
           </Button>
         </div>
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Today&apos;s Sessions</p>
-                <p className="text-2xl font-bold">{completedSessions}/{todaySessions.length}</p>
+                <p className="text-xs md:text-sm font-medium text-muted-foreground">Sessions</p>
+                <p className="text-lg md:text-2xl font-bold">{completedSessions}/{todaySessions.length}</p>
               </div>
-              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
-                <Clock className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <div className="w-8 h-8 md:w-12 md:h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                <Clock className="w-4 h-4 md:w-6 md:h-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Study Time</p>
-                <p className="text-2xl font-bold">
+                <p className="text-xs md:text-sm font-medium text-muted-foreground">Study Time</p>
+                <p className="text-lg md:text-2xl font-bold">
                   {Math.floor(totalStudyTime / 60)}h {totalStudyTime % 60}m
                 </p>
               </div>
-              <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
-                <Timer className="w-6 h-6 text-green-600 dark:text-green-400" />
+              <div className="w-8 h-8 md:w-12 md:h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                <Timer className="w-4 h-4 md:w-6 md:h-6 text-green-600 dark:text-green-400" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Active Pods</p>
-                <p className="text-2xl font-bold">{myPods.length}</p>
+                <p className="text-xs md:text-sm font-medium text-muted-foreground">Active Pods</p>
+                <p className="text-lg md:text-2xl font-bold">{myPods.length}</p>
               </div>
-              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
-                <Users className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+              <div className="w-8 h-8 md:w-12 md:h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+                <Users className="w-4 h-4 md:w-6 md:h-6 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Weekly Progress</p>
-                <p className="text-2xl font-bold">{weeklyProgress}%</p>
+                <p className="text-xs md:text-sm font-medium text-muted-foreground">Progress</p>
+                <p className="text-lg md:text-2xl font-bold">{weeklyProgress}%</p>
               </div>
-              <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+              <div className="w-8 h-8 md:w-12 md:h-12 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
+                <TrendingUp className="w-4 h-4 md:w-6 md:h-6 text-orange-600 dark:text-orange-400" />
               </div>
             </div>
           </CardContent>

@@ -264,12 +264,12 @@ export default function OnboardingPage() {
     switch (currentStep) {
       case 0:
         return (
-          <div className="space-y-6">
+          <div className="space-y-3 md:space-y-6">
             <div className="text-center">
-              <h2 className="text-2xl font-bold mb-2">Choose your learning identity</h2>
-              <p className="text-muted-foreground">How do you see yourself in the learning community?</p>
+              <h2 className="text-lg md:text-2xl font-bold mb-1 md:mb-2">Choose your learning identity</h2>
+              <p className="text-sm md:text-base text-muted-foreground">How do you see yourself?</p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 md:gap-4">
               {LEARNING_IDENTITIES.map((identity) => (
                 <Card
                   key={identity.id}
@@ -278,10 +278,10 @@ export default function OnboardingPage() {
                   }`}
                   onClick={() => setSelectedIdentity(identity.id)}
                 >
-                  <CardContent className="p-4 text-center">
-                    <identity.icon className="w-10 h-10 mx-auto mb-3 text-primary" />
-                    <h3 className="font-semibold mb-2">{identity.label}</h3>
-                    <p className="text-sm text-muted-foreground">{identity.description}</p>
+                  <CardContent className="p-2 md:p-4 text-center">
+                    <identity.icon className="w-6 h-6 md:w-10 md:h-10 mx-auto mb-1 md:mb-3 text-primary" />
+                    <h3 className="text-xs md:text-base font-semibold mb-0.5 md:mb-2">{identity.label}</h3>
+                    <p className="text-xs text-muted-foreground hidden md:block">{identity.description}</p>
                   </CardContent>
                 </Card>
               ))}
@@ -291,12 +291,12 @@ export default function OnboardingPage() {
 
       case 1:
         return (
-          <div className="space-y-6">
+          <div className="space-y-3 md:space-y-6">
             <div className="text-center">
-              <h2 className="text-2xl font-bold mb-2">Select your interests</h2>
-              <p className="text-muted-foreground">Pick up to 5 topics to help us find your tribe!</p>
+              <h2 className="text-lg md:text-2xl font-bold mb-1 md:mb-2">Select your interests</h2>
+              <p className="text-sm md:text-base text-muted-foreground">Pick up to 5 topics</p>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+            <div className="grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
               {INTERESTS.map((interest) => (
                 <Card
                   key={interest.id}
@@ -311,9 +311,9 @@ export default function OnboardingPage() {
                     }
                   }}
                 >
-                  <CardContent className="p-3 text-center">
-                    <interest.icon className="w-8 h-8 mx-auto mb-2 text-primary" />
-                    <h3 className="text-sm font-medium">{interest.label}</h3>
+                  <CardContent className="p-2 md:p-3 text-center">
+                    <interest.icon className="w-5 h-5 md:w-8 md:h-8 mx-auto mb-1 md:mb-2 text-primary" />
+                    <h3 className="text-xs md:text-sm font-medium leading-tight">{interest.label}</h3>
                   </CardContent>
                 </Card>
               ))}
@@ -326,12 +326,12 @@ export default function OnboardingPage() {
 
       case 2:
         return (
-          <div className="space-y-6">
+          <div className="space-y-3 md:space-y-6">
             <div className="text-center">
-              <h2 className="text-2xl font-bold mb-2">What&apos;s your learning vibe?</h2>
-              <p className="text-muted-foreground">Tell us how you like to learn and engage</p>
+              <h2 className="text-lg md:text-2xl font-bold mb-1 md:mb-2">What&apos;s your learning vibe?</h2>
+              <p className="text-sm md:text-base text-muted-foreground">How do you like to engage?</p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+            <div className="grid grid-cols-2 gap-2 md:gap-4">
               {LEARNING_VIBES.map((vibe) => (
                 <Card
                   key={vibe.id}
@@ -346,12 +346,12 @@ export default function OnboardingPage() {
                     }
                   }}
                 >
-                  <CardContent className="p-4 md:p-5">
-                    <div className="flex items-start space-x-4">
-                      <vibe.icon className="w-8 h-8 text-primary flex-shrink-0 mt-1" />
+                  <CardContent className="p-2 md:p-4">
+                    <div className="flex flex-col md:flex-row md:items-start md:space-x-4">
+                      <vibe.icon className="w-5 h-5 md:w-8 md:h-8 text-primary flex-shrink-0 mb-1 md:mb-0 md:mt-1" />
                       <div>
-                        <h3 className="font-semibold mb-1">{vibe.label}</h3>
-                        <p className="text-sm text-muted-foreground">{vibe.description}</p>
+                        <h3 className="text-xs md:text-base font-semibold mb-0.5 md:mb-1">{vibe.label}</h3>
+                        <p className="text-xs text-muted-foreground hidden md:block">{vibe.description}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -363,19 +363,21 @@ export default function OnboardingPage() {
 
       case 3:
         return (
-          <div className="space-y-6">
+          <div className="space-y-3 md:space-y-6">
             <div className="text-center">
-              <h2 className="text-2xl font-bold mb-2">How do you like to study?</h2>
-              <p className="text-muted-foreground">We will use this to match you with the right pods</p>
+              <h2 className="text-lg md:text-2xl font-bold mb-1 md:mb-2">How do you like to study?</h2>
+              <p className="text-sm md:text-base text-muted-foreground">Match with the right pods</p>
             </div>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <h3 className="font-semibold">Your goals</h3>
-                <div className="flex flex-wrap gap-2">
+            <div className="space-y-3 md:space-y-4">
+              <div className="space-y-1.5 md:space-y-2">
+                <h3 className="text-sm md:text-base font-semibold">Your goals</h3>
+                <div className="flex flex-wrap gap-1.5 md:gap-2">
                   {LEARNING_GOALS.map((goal) => (
                     <Button
                       key={goal.id}
+                      size="sm"
                       variant={selectedGoals.includes(goal.id) ? "default" : "outline"}
+                      className="text-xs md:text-sm h-7 md:h-9 px-2 md:px-4"
                       onClick={() =>
                         setSelectedGoals((prev) =>
                           prev.includes(goal.id) ? prev.filter((g) => g !== goal.id) : [...prev, goal.id]
@@ -388,13 +390,15 @@ export default function OnboardingPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <h3 className="font-semibold">Learning pace</h3>
-                <div className="flex flex-wrap gap-2">
+              <div className="space-y-1.5 md:space-y-2">
+                <h3 className="text-sm md:text-base font-semibold">Learning pace</h3>
+                <div className="flex flex-wrap gap-1.5 md:gap-2">
                   {LEARNING_PACE.map((pace) => (
                     <Button
                       key={pace.id}
+                      size="sm"
                       variant={selectedPace === pace.id ? "default" : "outline"}
+                      className="text-xs md:text-sm h-7 md:h-9 px-2 md:px-4"
                       onClick={() => setSelectedPace(pace.id)}
                     >
                       {pace.label}
@@ -403,13 +407,15 @@ export default function OnboardingPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <h3 className="font-semibold">Session type</h3>
-                <div className="flex flex-wrap gap-2">
+              <div className="space-y-1.5 md:space-y-2">
+                <h3 className="text-sm md:text-base font-semibold">Session type</h3>
+                <div className="flex flex-wrap gap-1.5 md:gap-2">
                   {SESSION_TYPES.map((type) => (
                     <Button
                       key={type.id}
+                      size="sm"
                       variant={selectedSessionTypes.includes(type.id) ? "default" : "outline"}
+                      className="text-xs md:text-sm h-7 md:h-9 px-2 md:px-4"
                       onClick={() =>
                         setSelectedSessionTypes((prev) =>
                           prev.includes(type.id) ? prev.filter((v) => v !== type.id) : [...prev, type.id]
@@ -422,13 +428,15 @@ export default function OnboardingPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <h3 className="font-semibold">Availability</h3>
-                <div className="flex flex-wrap gap-2">
+              <div className="space-y-1.5 md:space-y-2">
+                <h3 className="text-sm md:text-base font-semibold">Availability</h3>
+                <div className="flex flex-wrap gap-1.5 md:gap-2">
                   {AVAILABILITY.map((slot) => (
                     <Button
                       key={slot.id}
+                      size="sm"
                       variant={selectedAvailability.includes(slot.id) ? "default" : "outline"}
+                      className="text-xs md:text-sm h-7 md:h-9 px-2 md:px-4"
                       onClick={() =>
                         setSelectedAvailability((prev) =>
                           prev.includes(slot.id) ? prev.filter((v) => v !== slot.id) : [...prev, slot.id]
@@ -446,38 +454,39 @@ export default function OnboardingPage() {
 
       case 4:
         return (
-          <div className="space-y-6">
+          <div className="space-y-3 md:space-y-6">
             <div className="text-center">
-              <h2 className="text-2xl font-bold mb-2">Your recommended pods</h2>
-              <p className="text-muted-foreground">Join 1-3 pods that fit your goals. You can skip and join later.</p>
+              <h2 className="text-lg md:text-2xl font-bold mb-1 md:mb-2">Your recommended pods</h2>
+              <p className="text-sm md:text-base text-muted-foreground">Join 1-3 pods or skip for now</p>
             </div>
-            <div className="space-y-3">
-              {isLoadingRecos && <div className="text-center text-muted-foreground text-sm">Finding the best pods for you...</div>}
+            <div className="space-y-2 md:space-y-3 max-h-[50vh] overflow-y-auto">
+              {isLoadingRecos && <div className="text-center text-muted-foreground text-sm">Finding pods...</div>}
               {!isLoadingRecos && recommendedPods.length === 0 && (
-                <div className="text-center text-muted-foreground text-sm">No matches yet. You can still continue and explore later.</div>
+                <div className="text-center text-muted-foreground text-sm">No matches yet. Continue and explore later.</div>
               )}
               {recommendedPods.map(({ pod, score }) => (
                 <Card key={pod.$id} className="border shadow-sm">
-                  <CardContent className="p-4 flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-semibold text-lg">{pod.name}</h3>
-                        <p className="text-sm text-muted-foreground line-clamp-2">{pod.description}</p>
+                  <CardContent className="p-3 md:p-4 flex flex-col gap-2 md:gap-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-sm md:text-lg truncate">{pod.name}</h3>
+                        <p className="text-xs md:text-sm text-muted-foreground line-clamp-1 md:line-clamp-2">{pod.description}</p>
                       </div>
-                      <Badge variant="secondary">{score}% match</Badge>
+                      <Badge variant="secondary" className="text-xs flex-shrink-0">{score}%</Badge>
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Users className="w-4 h-4" /> {pod.memberCount ?? pod.members?.length ?? 0} members
-                      {pod.difficulty && <Badge variant="outline" className="text-xs">{pod.difficulty}</Badge>}
+                    <div className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm text-muted-foreground flex-wrap">
+                      <span className="flex items-center gap-1"><Users className="w-3 h-3 md:w-4 md:h-4" /> {pod.memberCount ?? pod.members?.length ?? 0}</span>
+                      {pod.difficulty && <Badge variant="outline" className="text-xs h-5">{pod.difficulty}</Badge>}
                       {(pod.tags || pod.matchingTags || []).slice(0, 2).map((tag: string) => (
-                        <Badge key={tag} variant="secondary" className="text-xs">
+                        <Badge key={tag} variant="secondary" className="text-xs h-5">
                           {tag}
                         </Badge>
                       ))}
                     </div>
                     <div className="flex gap-2">
                       <Button
-                        className="flex-1"
+                        size="sm"
+                        className="flex-1 h-8 md:h-9 text-xs md:text-sm"
                         onClick={async () => {
                           if (!user?.$id) return
                           try {
@@ -488,9 +497,9 @@ export default function OnboardingPage() {
                           }
                         }}
                       >
-                        Join pod
+                        Join
                       </Button>
-                      <Button variant="outline" onClick={() => setSelectedPod(pod.$id)}>Mark to join later</Button>
+                      <Button size="sm" variant="outline" className="h-8 md:h-9 text-xs md:text-sm" onClick={() => setSelectedPod(pod.$id)}>Later</Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -501,17 +510,17 @@ export default function OnboardingPage() {
 
       case 5:
         return (
-          <div className="space-y-6">
+          <div className="space-y-4 md:space-y-6">
             <div className="text-center">
-              <h2 className="text-2xl font-bold mb-2">Complete your profile</h2>
-              <p className="text-muted-foreground">Let others know who you are</p>
+              <h2 className="text-lg md:text-2xl font-bold mb-1 md:mb-2">Complete your profile</h2>
+              <p className="text-sm md:text-base text-muted-foreground">Let others know who you are</p>
             </div>
-            <div className="space-y-6">
+            <div className="space-y-4 md:space-y-6">
               <div className="flex justify-center">
                 <div className="relative">
-                  <Avatar className="w-24 h-24">
+                  <Avatar className="w-16 h-16 md:w-24 md:h-24">
                     <AvatarImage src={profileData.avatar || "/placeholder.svg"} />
-                    <AvatarFallback className="text-2xl">
+                    <AvatarFallback className="text-lg md:text-2xl">
                       {profileData.name
                         .split(" ")
                         .map((n) => n[0])
@@ -572,43 +581,44 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-start md:items-center justify-center p-2 sm:p-4 py-4 overflow-auto">
       <div className="w-full max-w-4xl">
-        <div className="flex items-center justify-center mb-8">
-          <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center mr-3">
-            <Zap className="w-6 h-6 text-primary-foreground" />
+        <div className="flex items-center justify-center mb-4 md:mb-8">
+          <div className="w-8 h-8 md:w-10 md:h-10 bg-primary rounded-lg flex items-center justify-center mr-2 md:mr-3">
+            <Zap className="w-5 h-5 md:w-6 md:h-6 text-primary-foreground" />
           </div>
-          <span className="text-2xl font-bold">PeerSpark</span>
+          <span className="text-xl md:text-2xl font-bold">PeerSpark</span>
         </div>
 
         <Card className="border-0 shadow-lg">
-          <CardHeader className="text-center">
-            <div className="space-y-4">
-              <Progress value={progress} className="w-full" />
-              <div className="text-sm text-muted-foreground">
+          <CardHeader className="text-center py-3 md:py-6">
+            <div className="space-y-2 md:space-y-4">
+              <Progress value={progress} className="w-full h-2" />
+              <div className="text-xs md:text-sm text-muted-foreground">
                 Step {currentStep + 1} of {totalSteps}
               </div>
             </div>
           </CardHeader>
-          <CardContent className="p-8">{renderStep()}</CardContent>
-          <div className="flex justify-between p-6 border-t border-border">
-            <Button variant="outline" onClick={handleBack} disabled={currentStep === 0}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
+          <CardContent className="p-4 md:p-8">{renderStep()}</CardContent>
+          <div className="flex justify-between p-4 md:p-6 border-t border-border">
+            <Button variant="outline" onClick={handleBack} disabled={currentStep === 0} size="sm" className="h-9 md:h-10">
+              <ArrowLeft className="w-4 h-4 mr-1 md:mr-2" />
+              <span className="hidden sm:inline">Back</span>
             </Button>
             {currentStep === totalSteps - 1 ? (
               <Button
                 onClick={handleComplete}
                 disabled={!canProceed() || isLoading}
-                className="bg-primary hover:bg-primary/90"
+                className="bg-primary hover:bg-primary/90 h-9 md:h-10"
+                size="sm"
               >
                 {isLoading ? "Setting up..." : "Start Learning"}
-                <Zap className="w-4 h-4 ml-2" />
+                <Zap className="w-4 h-4 ml-1 md:ml-2" />
               </Button>
             ) : (
-              <Button onClick={handleNext} disabled={!canProceed()} className="bg-primary hover:bg-primary/90">
+              <Button onClick={handleNext} disabled={!canProceed()} className="bg-primary hover:bg-primary/90 h-9 md:h-10" size="sm">
                 Next
-                <ArrowRight className="w-4 h-4 ml-2" />
+                <ArrowRight className="w-4 h-4 ml-1 md:ml-2" />
               </Button>
             )}
           </div>

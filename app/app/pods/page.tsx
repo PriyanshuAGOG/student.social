@@ -270,9 +270,9 @@ export default function PodsPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 md:px-8 pb-20 md:pb-8">
+      <div className="max-w-7xl mx-auto px-4 md:px-8 pb-24 md:pb-8">
         {/* Tabs */}
-        <div className="mb-6">
+        <div className="mb-4 md:mb-6">
           <div className="flex space-x-1 bg-secondary/50 rounded-lg p-1 max-w-fit">
             {[
               { value: "my-pods", label: "My Pods", icon: Users },
@@ -281,7 +281,7 @@ export default function PodsPage() {
               <button
                 key={tab.value}
                 onClick={() => setActiveTab(tab.value)}
-                className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                className={`flex items-center space-x-2 px-3 md:px-4 py-2 text-xs md:text-sm font-medium rounded-md transition-all ${
                   activeTab === tab.value
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -296,8 +296,8 @@ export default function PodsPage() {
 
         {/* My Pods Tab */}
         {activeTab === "my-pods" && (
-          <div className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-4 md:space-y-6">
+            <div className="grid gap-3 md:gap-6 md:grid-cols-2 lg:grid-cols-3">
               {myPods.length === 0 && !isLoading && (
                 <div className="col-span-full text-center text-muted-foreground">No pods yet. Join or create one.</div>
               )}

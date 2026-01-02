@@ -679,8 +679,8 @@ export default function ChatPage() {
             </div>
 
             {/* Messages */}
-            <ScrollArea className="flex-1 p-4 pb-28">
-              <div className="space-y-4 max-w-4xl mx-auto">
+            <ScrollArea className="flex-1 p-4 pb-4 md:pb-4">
+              <div className="space-y-4 max-w-4xl mx-auto pb-2">
                 {messages.map((message) => {
                   const isCurrent = message.authorId === user?.$id
                   const isAI = message.authorId === "ai"
@@ -761,24 +761,24 @@ export default function ChatPage() {
             </ScrollArea>
 
             {/* Message Input */}
-            <div className="border-t bg-card p-4">
+            <div className="sticky bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm supports-[backdrop-filter]:bg-card/80 p-3 md:p-4 pb-[calc(env(safe-area-inset-bottom,0px)+68px)] md:pb-4">
               <div className="max-w-4xl mx-auto">
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-end">
                   <div className="flex-1 relative">
                     <Textarea
                       ref={textareaRef}
                       value={inputValue}
                       onChange={(e) => setInputValue(e.target.value)}
                       onKeyPress={handleKeyPress}
-                      placeholder={`Message ${selectedRoom.name}... (Type @ai to ask AI)`}
-                      className="min-h-[44px] max-h-32 resize-none pr-32"
+                      placeholder={`Message ${selectedRoom.name}...`}
+                      className="min-h-[44px] max-h-24 md:max-h-32 resize-none pr-12 md:pr-32 text-base"
                       disabled={isLoading}
                     />
-                    <div className="absolute right-2 bottom-2 flex gap-1">
+                    <div className="absolute right-2 bottom-2 flex gap-0.5 md:gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 w-8 p-0"
+                        className="h-7 w-7 md:h-8 md:w-8 p-0"
                         onClick={insertAIMention}
                         disabled={isLoading}
                         title="Mention AI Assistant"
@@ -788,26 +788,26 @@ export default function ChatPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 w-8 p-0"
+                        className="h-7 w-7 md:h-8 md:w-8 p-0 hidden sm:flex"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isLoading}
                       >
                         <Paperclip className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" disabled={isLoading}>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 md:h-8 md:w-8 p-0 hidden sm:flex" disabled={isLoading}>
                         <ImageIcon className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" disabled={isLoading}>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 md:h-8 md:w-8 p-0 hidden md:flex" disabled={isLoading}>
                         <Smile className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
-                  <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isLoading} className="h-11 px-4">
+                  <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isLoading} className="h-11 w-11 md:w-auto md:px-4 flex-shrink-0">
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
 
-                <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                <div className="hidden md:flex items-center justify-between mt-2 text-xs text-muted-foreground">
                   <p>Press Enter to send, Shift+Enter for new line. Type @ai to ask AI assistant</p>
                   <p>{selectedRoom.type === "pod" ? "Pod Chat" : "Direct Message"} • End-to-end encrypted</p>
                 </div>

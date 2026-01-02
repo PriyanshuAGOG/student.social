@@ -98,34 +98,57 @@ export default function AIAssistantPage() {
     }
 
     setMessages((prev) => [...prev, userMessage])
+    const userInput = inputValue
     setInputValue("")
     setIsLoading(true)
 
-    // Simulate AI response (replace with actual AI API call)
-    setTimeout(
-      () => {
-        const aiResponse: Message = {
-          id: (Date.now() + 1).toString(),
-          content: generateAIResponse(inputValue),
-          sender: "ai",
-          timestamp: new Date(),
-        }
-        setMessages((prev) => [...prev, aiResponse])
-        setIsLoading(false)
-      },
-      1000 + Math.random() * 2000,
-    )
-  }
+    try {
+      // Call the real AI API
+      const payload = {
+        messages: [...messages, userMessage].map((m) => ({
+          role: m.sender === "ai" ? "assistant" : "user",
+          content: m.content,
+        })),
+        system: "You are PeerSpark's AI study assistant. Help students with explanations, problem-solving, coding, study strategies, and more. Be concise, helpful, and encouraging. Use markdown formatting for code and structured content.",
+      }
 
-  const generateAIResponse = (input: string): string => {
-    // Simple response generation (replace with actual AI integration)
-    const responses = [
-      `Great question about "${input}"! Let me break this down for you step by step...`,
-      `I'd be happy to help you understand "${input}". Here's what you need to know...`,
-      `That's an interesting topic! Regarding "${input}", here are the key points...`,
-      `Let me explain "${input}" in a way that's easy to understand...`,
-    ]
-    return responses[Math.floor(Math.random() * responses.length)]
+      const resp = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      if (!resp.ok) {
+        const errText = await resp.text()
+        throw new Error(errText || "AI request failed")
+      }
+
+      const data = await resp.json()
+      const aiResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        content: data.message || "I'm here to help! Could you please rephrase your question?",
+        sender: "ai",
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, aiResponse])
+    } catch (error: any) {
+      console.error("AI error:", error)
+      toast({
+        title: "AI Error",
+        description: error?.message || "Could not get a response. Please try again.",
+        variant: "destructive",
+      })
+      // Add error message to chat
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: "Sorry, I encountered an error. Please check your API configuration or try again.",
+        sender: "ai",
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, errorMessage])
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleSuggestionClick = (suggestion: Suggestion) => {
@@ -268,8 +291,8 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4 pb-24">
-        <div className="space-y-4 max-w-4xl mx-auto">
+      <ScrollArea className="flex-1 p-4 pb-4">
+        <div className="space-y-4 max-w-4xl mx-auto pb-2">
           {messages.map((message) => (
             <div
               key={message.id}
@@ -358,69 +381,69 @@ export default function AIAssistantPage() {
       </ScrollArea>
 
       {/* Input Area */}
-      <div className="border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:backdrop-blur p-4 pb-[calc(env(safe-area-inset-bottom)+12px)]">
+      <div className="sticky bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm supports-[backdrop-filter]:bg-card/80 p-3 md:p-4 pb-[calc(env(safe-area-inset-bottom,0px)+68px)] md:pb-4">
         <div className="max-w-4xl mx-auto">
-          {/* Suggestions (show when no messages or few messages) - IMPROVED */}
+          {/* Suggestions (show when no messages or few messages) */}
           {messages.length <= 1 && (
-            <div className="mb-4">
-              <p className="text-sm text-muted-foreground mb-3">Try asking about:</p>
-              <div className="grid grid-cols-2 gap-2">
+            <div className="mb-3 md:mb-4">
+              <p className="text-xs md:text-sm text-muted-foreground mb-2 md:mb-3">Try asking about:</p>
+              <div className="grid grid-cols-2 gap-1.5 md:gap-2">
                 {suggestions.map((suggestion) => (
                   <Button
                     key={suggestion.id}
                     variant="outline"
-                    className="h-auto p-3 text-left justify-start bg-transparent hover:bg-muted/50"
+                    className="h-auto p-2 md:p-3 text-left justify-start bg-transparent hover:bg-muted/50"
                     onClick={() => handleSuggestionClick(suggestion)}
                   >
-                    <div className="flex items-center gap-2 w-full">
-                      <div className="p-1.5 bg-primary/10 rounded-md flex-shrink-0">
+                    <div className="flex items-center gap-1.5 md:gap-2 w-full">
+                      <div className="p-1 md:p-1.5 bg-primary/10 rounded-md flex-shrink-0">
                         <suggestion.icon className="h-3 w-3 text-primary" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-xs truncate">{suggestion.title}</p>
-                        <p className="text-xs text-muted-foreground truncate">{suggestion.description}</p>
+                        <p className="text-xs text-muted-foreground truncate hidden sm:block">{suggestion.description}</p>
                       </div>
                     </div>
                   </Button>
                 ))}
               </div>
-              <Separator className="my-4" />
+              <Separator className="my-3 md:my-4" />
             </div>
           )}
 
           {/* Message Input */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-end">
             <div className="flex-1 relative">
               <Textarea
                 ref={textareaRef}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Ask me anything about your studies..."
-                className="min-h-[44px] max-h-32 resize-none pr-20"
+                placeholder="Ask me anything..."
+                className="min-h-[44px] max-h-24 md:max-h-32 resize-none pr-14 md:pr-20 text-base"
                 disabled={isLoading}
               />
-              <div className="absolute right-2 bottom-2 flex gap-1">
+              <div className="absolute right-2 bottom-2 flex gap-0.5 md:gap-1">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0"
+                  className="h-7 w-7 md:h-8 md:w-8 p-0"
                   onClick={startVoiceInput}
                   disabled={isLoading || isListening}
                 >
                   <Mic className={`h-4 w-4 ${isListening ? "text-red-500" : ""}`} />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" disabled={isLoading}>
+                <Button variant="ghost" size="sm" className="h-7 w-7 md:h-8 md:w-8 p-0 hidden sm:flex" disabled={isLoading}>
                   <Paperclip className="h-4 w-4" />
                 </Button>
               </div>
             </div>
-            <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isLoading} className="h-11 px-4">
+            <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isLoading} className="h-11 w-11 md:w-auto md:px-4 flex-shrink-0">
               <Send className="h-4 w-4" />
             </Button>
           </div>
 
-          <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+          <div className="hidden md:flex items-center justify-between mt-2 text-xs text-muted-foreground">
             <p>Press Enter to send, Shift+Enter for new line</p>
             <p>Powered by AI • Always learning</p>
           </div>
