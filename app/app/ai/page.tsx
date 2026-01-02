@@ -171,16 +171,35 @@ export default function AIAssistantPage() {
     })
   }
 
-  const regenerateResponse = (messageId: string) => {
+  const regenerateResponse = async (messageId: string) => {
     const messageIndex = messages.findIndex((msg) => msg.id === messageId)
     if (messageIndex > 0) {
       const previousUserMessage = messages[messageIndex - 1]
       if (previousUserMessage.sender === "user") {
         setIsLoading(true)
-        setTimeout(() => {
+        try {
+          const payload = {
+            messages: messages.slice(0, messageIndex).map((m) => ({
+              role: m.sender === "ai" ? "assistant" : "user",
+              content: m.content,
+            })),
+            system: "You are PeerSpark's AI study assistant. Help students with explanations, problem-solving, coding, study strategies, and more. Be concise, helpful, and encouraging.",
+          }
+
+          const resp = await fetch("/api/ai/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+
+          if (!resp.ok) {
+            throw new Error("Failed to regenerate response")
+          }
+
+          const data = await resp.json()
           const newResponse: Message = {
             id: Date.now().toString(),
-            content: generateAIResponse(previousUserMessage.content),
+            content: data.message || "I'm here to help! Could you please rephrase your question?",
             sender: "ai",
             timestamp: new Date(),
           }
@@ -189,8 +208,15 @@ export default function AIAssistantPage() {
             newMessages[messageIndex] = newResponse
             return newMessages
           })
+        } catch (error: any) {
+          toast({
+            title: "Regenerate failed",
+            description: error?.message || "Could not regenerate response",
+            variant: "destructive",
+          })
+        } finally {
           setIsLoading(false)
-        }, 1000)
+        }
       }
     }
   }

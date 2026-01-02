@@ -13,7 +13,12 @@ export async function runAIChat(messages: ChatMessage[], options?: { model?: str
     throw new Error("Missing OPENROUTER_API_KEY. Add it to .env.local.")
   }
 
-  const model = options?.model || "openai/gpt-4o-mini"
+  // Validate API key format
+  if (!apiKey.startsWith("sk-or-")) {
+    throw new Error("Invalid OPENROUTER_API_KEY format. It should start with 'sk-or-'.")
+  }
+
+  const model = options?.model || "meta-llama/llama-3.2-3b-instruct:free"
   const body = {
     model,
     messages,
@@ -34,6 +39,21 @@ export async function runAIChat(messages: ChatMessage[], options?: { model?: str
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => "")
+    console.error("OpenRouter API error:", resp.status, text)
+    
+    // Parse error for more specific messages
+    try {
+      const errorData = JSON.parse(text)
+      if (errorData?.error?.message) {
+        throw new Error(`OpenRouter: ${errorData.error.message}`)
+      }
+    } catch (parseErr) {
+      // Not JSON, use raw text
+    }
+    
+    if (resp.status === 401) {
+      throw new Error("OpenRouter API key is invalid or expired. Please check your OPENROUTER_API_KEY in .env.local")
+    }
     throw new Error(text || `OpenRouter request failed with ${resp.status}`)
   }
 
