@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -102,7 +102,7 @@ const mockEvents: CalendarEvent[] = [
   },
 ]
 
-export default function CalendarPage() {
+function CalendarContent() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [events, setEvents] = useState<CalendarEvent[]>([])
@@ -1176,5 +1176,13 @@ export default function CalendarPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+export default function CalendarPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen"><p>Loading calendar...</p></div>}>
+      <CalendarContent />
+    </Suspense>
   )
 }
