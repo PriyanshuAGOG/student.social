@@ -3,14 +3,16 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useMemo, useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Users, Settings, Crown, Video, MessageSquare, FolderOpen, Share2, Star, Calendar, Home, ArrowLeft, Zap } from 'lucide-react'
+import { Users, Settings, Crown, Video, MessageSquare, FolderOpen, Share2, Star, Calendar, Home, ArrowLeft, Zap, Trophy, ChevronRight } from 'lucide-react'
 import { useParams, useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { podService, resourceService, calendarService, profileService, client, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite"
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
+import { Progress } from "@/components/ui/progress"
 import { 
   ClassroomTab, 
   OverviewTab, 
