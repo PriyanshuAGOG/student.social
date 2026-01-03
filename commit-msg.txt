@@ -1,8 +1,0 @@
-feat: Add PWA support for mobile installation
-
-- Install next-pwa and workbox-window dependencies
-- Create manifest.json with app metadata and icons
-- Implement service worker with caching strategies
-- Add PWA meta tags to app layout
-- Create install prompt component
-- Add comprehensive PWA setup guide

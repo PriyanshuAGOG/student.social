@@ -28,9 +28,10 @@ git push origin main
 ```
 
 **Documentation:**
-- ⭐ [DEPLOYMENT_INSTRUCTIONS.md](DEPLOYMENT_INSTRUCTIONS.md) - Complete step-by-step guide
-- [DEPLOYMENT_SUMMARY.txt](DEPLOYMENT_SUMMARY.txt) - Quick overview
-- [MANUAL_TESTING_CHECKLIST.md](MANUAL_TESTING_CHECKLIST.md) - Testing guide
+- 📚 [Complete Documentation](docs/README.md) - Full documentation index
+- ⭐ [Deployment Guide](docs/deployment/deployment-instructions.md) - Complete step-by-step guide
+- 🏗️ [Architecture Docs](docs/architecture/) - System architecture & design
+- ✅ [Testing Checklist](docs/testing/complete-checklist.md) - Testing guide
 
 ### Option 2: Run Locally (FOR DEVELOPMENT)
 ```cmd

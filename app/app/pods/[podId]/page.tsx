@@ -851,10 +851,6 @@ export default function PodDetailPage() {
     </div>
   )
 }
-                  <Button
-                    onClick={handleOpenVault}
-                    variant="outline"
-                    className="h-auto p-4 flex flex-col items-center space-y-2 bg-transparent"
                   >
                     <FolderOpen className="w-6 h-6" />
                     <span className="text-sm">Resources</span>
