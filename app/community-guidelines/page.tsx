@@ -697,8 +697,8 @@ export default function CommunityGuidelinesPage() {
                   <h3 className="text-lg font-semibold mt-6 mb-3">How to Report</h3>
                   <ul>
                     <li><strong>In-App Reporting:</strong> Use the "Report" button available on all content, profiles, and messages</li>
-                    <li><strong>Email:</strong> Send details to <a href="mailto:report@peerspark.com" className="text-primary">report@peerspark.com</a></li>
-                    <li><strong>Urgent Safety Issues:</strong> Contact <a href="mailto:safety@peerspark.com" className="text-primary">safety@peerspark.com</a></li>
+                    <li><strong>Email:</strong> Send details to <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary">chat.priyanshuag@gmail.com</a></li>
+                    <li><strong>Urgent Safety Issues:</strong> Contact <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary">chat.priyanshuag@gmail.com</a></li>
                   </ul>
 
                   <h3 className="text-lg font-semibold mt-6 mb-3">What to Include in Your Report</h3>
@@ -765,7 +765,7 @@ export default function CommunityGuidelinesPage() {
 
                   <h3 className="text-lg font-semibold mt-6 mb-3">How to Appeal</h3>
                   <ol>
-                    <li>Go to Settings → Account → Appeals or email <a href="mailto:appeals@peerspark.com" className="text-primary">appeals@peerspark.com</a></li>
+                    <li>Go to Settings → Account → Appeals or email <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary">chat.priyanshuag@gmail.com</a></li>
                     <li>Include your username and the enforcement action you're appealing</li>
                     <li>Explain why you believe the decision was incorrect</li>
                     <li>Provide any evidence that supports your appeal</li>
@@ -803,7 +803,7 @@ export default function CommunityGuidelinesPage() {
 
                   <div className="bg-muted/50 p-4 rounded-lg mt-4 not-prose">
                     <p className="text-sm">
-                      <strong>Questions?</strong> If you have questions about these guidelines or need clarification on any policy, please contact us at <a href="mailto:community@peerspark.com" className="text-primary">community@peerspark.com</a>.
+                      <strong>Questions?</strong> If you have questions about these guidelines or need clarification on any policy, please contact us at <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary">chat.priyanshuag@gmail.com</a>.
                     </p>
                   </div>
                 </CardContent>

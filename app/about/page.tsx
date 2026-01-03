@@ -4,7 +4,6 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { 
   Zap, 
@@ -20,141 +19,76 @@ import {
   Trophy,
   Rocket,
   Shield,
-  Star,
   ArrowRight,
-  Linkedin,
-  Twitter
+  Mail,
+  Sparkles,
+  CheckCircle
 } from "lucide-react"
 
 export default function AboutPage() {
-  const stats = [
-    { number: "50,000+", label: "Active Students", icon: Users },
-    { number: "10,000+", label: "Study Pods", icon: BookOpen },
-    { number: "120+", label: "Countries", icon: Globe },
-    { number: "95%", label: "Satisfaction Rate", icon: Star },
-  ]
-
   const values = [
     {
       icon: Users,
       title: "Community First",
-      description: "We believe learning is inherently social. Our platform is designed to foster genuine connections between learners worldwide, creating supportive communities that accelerate growth.",
+      description: "Learning is inherently social. PeerSpark is designed to foster genuine connections between learners, creating supportive communities that accelerate growth.",
     },
     {
       icon: Lightbulb,
       title: "Innovation in Education",
-      description: "We continuously push the boundaries of educational technology, integrating AI, real-time collaboration, and gamification to make learning more effective and engaging.",
+      description: "We integrate AI, real-time collaboration, and gamification to make learning more effective and engaging for modern students.",
     },
     {
       icon: Shield,
       title: "Trust & Safety",
-      description: "Student safety is paramount. We maintain rigorous privacy standards, content moderation, and security measures to create a safe space for learning.",
+      description: "Student safety is paramount. We maintain rigorous privacy standards and content moderation to create a safe space for learning.",
     },
     {
       icon: Globe,
       title: "Accessible to All",
-      description: "Quality education should be available to everyone. We offer robust free features and work with institutions to ensure equitable access globally.",
+      description: "Quality education tools should be available to everyone. We offer free access and work to ensure equitable access globally.",
     },
     {
       icon: Heart,
       title: "Student Success",
-      description: "Every feature we build is evaluated by one metric: does it help students succeed? We're obsessed with learning outcomes and student well-being.",
+      description: "Every feature we build is evaluated by one metric: does it help students succeed? We're obsessed with learning outcomes.",
     },
     {
       icon: Rocket,
       title: "Continuous Improvement",
-      description: "We iterate rapidly based on user feedback, research, and emerging best practices in learning science. The platform evolves with our community.",
+      description: "We iterate rapidly based on user feedback and emerging best practices in learning science. The platform evolves with our community.",
     },
   ]
 
-  const milestones = [
+  const features = [
     {
-      year: "2022",
-      title: "The Beginning",
-      description: "Founded by a team of educators and technologists frustrated with isolated learning experiences during the pandemic.",
+      icon: Users,
+      title: "Study Pods",
+      description: "Join collaborative study groups with peers who share your academic goals",
     },
     {
-      year: "2023",
-      title: "Public Launch",
-      description: "Launched publicly with Study Pods, real-time chat, and Resource Vault. Reached 10,000 users in the first month.",
+      icon: Brain,
+      title: "AI Assistant",
+      description: "Get personalized learning recommendations and instant help",
     },
     {
-      year: "2024",
-      title: "AI Integration",
-      description: "Introduced AI Assistant powered by advanced language models. Launched mobile apps and video conferencing.",
+      icon: BookOpen,
+      title: "Resource Vault",
+      description: "Share and access study materials, notes, and flashcards",
     },
     {
-      year: "2025",
-      title: "Global Expansion",
-      description: "Expanded to 120+ countries. Partnered with 500+ educational institutions. Reached 50,000 active students.",
-    },
-    {
-      year: "2026",
-      title: "The Future",
-      description: "Launching advanced learning analytics, adaptive study plans, and institutional dashboard for educators.",
+      icon: Trophy,
+      title: "Gamification",
+      description: "Stay motivated with streaks, badges, and friendly competition",
     },
   ]
 
-  const team = [
-    {
-      name: "Dr. Sarah Chen",
-      role: "CEO & Co-Founder",
-      bio: "Former Stanford professor with 15+ years in educational technology research. PhD in Learning Sciences.",
-      avatar: "/placeholder.svg",
-      linkedin: "#",
-      twitter: "#",
-    },
-    {
-      name: "Marcus Johnson",
-      role: "CTO & Co-Founder",
-      bio: "Ex-Google engineer who led education initiatives. Passionate about making technology accessible.",
-      avatar: "/placeholder.svg",
-      linkedin: "#",
-      twitter: "#",
-    },
-    {
-      name: "Dr. Emily Rodriguez",
-      role: "Chief Learning Officer",
-      bio: "Former head of curriculum at Khan Academy. Expert in learning science and pedagogical design.",
-      avatar: "/placeholder.svg",
-      linkedin: "#",
-      twitter: "#",
-    },
-    {
-      name: "Aiden Park",
-      role: "VP of Engineering",
-      bio: "Built scalable education platforms at Coursera and Duolingo. Leads our engineering team.",
-      avatar: "/placeholder.svg",
-      linkedin: "#",
-      twitter: "#",
-    },
-    {
-      name: "Dr. Priya Sharma",
-      role: "VP of AI & Research",
-      bio: "AI researcher from MIT. Pioneering personalized learning algorithms and natural language tutoring.",
-      avatar: "/placeholder.svg",
-      linkedin: "#",
-      twitter: "#",
-    },
-    {
-      name: "James Williams",
-      role: "VP of Product",
-      bio: "Former product lead at Notion. Obsessed with crafting intuitive user experiences for learners.",
-      avatar: "/placeholder.svg",
-      linkedin: "#",
-      twitter: "#",
-    },
-  ]
-
-  const partners = [
-    "Stanford University",
-    "MIT OpenCourseWare",
-    "Google for Education",
-    "Microsoft Learn",
-    "Khan Academy",
-    "UNESCO",
-    "Bill & Melinda Gates Foundation",
-    "Coursera",
+  const roadmap = [
+    { achieved: true, title: "Idea & Vision", description: "Identified the problem of isolated learning and procrastination" },
+    { achieved: true, title: "Initial Prototype", description: "Built the first version with core collaboration features" },
+    { achieved: true, title: "Beta Launch", description: "Currently in beta testing with early adopters" },
+    { achieved: false, title: "Community Growth", description: "Expand to more students and educational institutions" },
+    { achieved: false, title: "Mobile Apps", description: "Launch native iOS and Android applications" },
+    { achieved: false, title: "Global Expansion", description: "Reach students in every corner of the world" },
   ]
 
   return (
@@ -170,6 +104,9 @@ export default function AboutPage() {
                 </div>
                 <span className="font-bold text-xl">PeerSpark</span>
               </Link>
+              <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                BETA
+              </Badge>
             </div>
             <div className="flex items-center gap-2">
               <ThemeToggle />
@@ -188,13 +125,16 @@ export default function AboutPage() {
       <section className="py-16 sm:py-24 bg-gradient-to-b from-primary/5 to-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-4xl mx-auto">
-            <Badge className="mb-4">About PeerSpark</Badge>
+            <Badge className="mb-4 bg-green-500/10 text-green-600 border-green-500/20">
+              <Sparkles className="h-3 w-3 mr-1" />
+              Student-Led Initiative
+            </Badge>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-6">
-              Reimagining Education Through
-              <span className="text-primary"> Peer Collaboration</span>
+              Built by a Student, 
+              <span className="text-primary"> For Students</span>
             </h1>
             <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-              We're building the world's most powerful platform for collaborative learning, connecting students across the globe to study, grow, and succeed together.
+              PeerSpark is a passion project created by a student who understands the challenges of learning alone and battling procrastination.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/register">
@@ -203,9 +143,10 @@ export default function AboutPage() {
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
-              <Link href="/careers">
+              <Link href="/support">
                 <Button size="lg" variant="outline" className="w-full sm:w-auto">
-                  We're Hiring
+                  <Heart className="h-4 w-4 mr-2" />
+                  Support Us
                 </Button>
               </Link>
             </div>
@@ -213,72 +154,101 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Stats */}
-      <section className="py-12 border-b">
+      {/* Founder Story */}
+      <section className="py-16 sm:py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
-            {stats.map((stat) => (
-              <div key={stat.label} className="text-center">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-3">
-                  <stat.icon className="h-6 w-6 text-primary" />
-                </div>
-                <div className="text-3xl sm:text-4xl font-bold text-primary mb-1">{stat.number}</div>
-                <div className="text-sm text-muted-foreground">{stat.label}</div>
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <Badge className="mb-4">The Story</Badge>
+              <h2 className="text-3xl sm:text-4xl font-bold mb-6">
+                From Personal Struggle to a Platform for Students
+              </h2>
+              <div className="space-y-4 text-muted-foreground">
+                <p>
+                  Hi, I'm <strong className="text-foreground">Priyanshu Agarwal</strong>, the founder of PeerSpark. Like millions of students around the world, I've struggled with procrastination and the isolation of studying alone.
+                </p>
+                <p>
+                  During my own academic journey, I realized that the best study sessions weren't the ones spent alone with books — they were the ones with friends, where we could discuss concepts, quiz each other, and keep each other motivated.
+                </p>
+                <p>
+                  But not everyone has access to study partners. Some students are in different time zones, others have different schedules, and many simply feel too shy to reach out. I wanted to change that.
+                </p>
+                <p>
+                  <strong className="text-foreground">That's why I built PeerSpark</strong> — a platform where any student, anywhere in the world, can find like-minded peers to study with. No more learning alone. No more endless procrastination loops. Just students helping students succeed.
+                </p>
+                <p>
+                  This isn't a big corporation or a venture-backed startup. It's a student-led prototype built with passion, late nights, and a genuine desire to help my fellow students thrive.
+                </p>
               </div>
-            ))}
+            </div>
+            <div className="space-y-6">
+              <Card className="border-primary/50 bg-primary/5">
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center text-3xl font-bold text-primary">
+                      PA
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-xl">Priyanshu Agarwal</h3>
+                      <p className="text-muted-foreground">Founder & Developer</p>
+                      <Badge variant="outline" className="mt-1">Student</Badge>
+                    </div>
+                  </div>
+                  <p className="text-muted-foreground italic">
+                    "I believe every student deserves access to a supportive learning community. PeerSpark is my way of making that happen. If even one student finds it easier to study because of this platform, it's all worth it."
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <h4 className="font-semibold mb-3">Get in Touch</h4>
+                  <a 
+                    href="mailto:chat.priyanshuag@gmail.com" 
+                    className="flex items-center gap-2 text-primary hover:underline"
+                  >
+                    <Mail className="h-4 w-4" />
+                    chat.priyanshuag@gmail.com
+                  </a>
+                  <p className="text-sm text-muted-foreground mt-3">
+                    I read every email personally. Whether it's feedback, ideas, or just wanting to say hi — I'd love to hear from you!
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Mission Section */}
-      <section className="py-16 sm:py-24">
+      <section className="py-16 sm:py-24 bg-muted/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <Badge className="mb-4">Our Mission</Badge>
-              <h2 className="text-3xl sm:text-4xl font-bold mb-6">
-                Empowering Every Student to Reach Their Full Potential
-              </h2>
-              <div className="space-y-4 text-muted-foreground">
-                <p>
-                  Education has always been social. The best learning happens when curious minds come together to explore, question, and grow. Yet too often, students study in isolation, lacking the support and motivation that comes from a community.
-                </p>
-                <p>
-                  PeerSpark was born from a simple belief: <strong className="text-foreground">no student should have to learn alone</strong>. We're building technology that brings students together, regardless of where they are in the world, to form meaningful study partnerships and communities.
-                </p>
-                <p>
-                  Our platform combines the power of peer collaboration with cutting-edge AI to create personalized, engaging, and effective learning experiences. From study pods that match you with the perfect study partners to AI assistants that adapt to your learning style—we're reimagining what's possible in education.
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Card className="p-6 text-center">
-                <GraduationCap className="h-10 w-10 text-primary mx-auto mb-3" />
-                <h3 className="font-semibold mb-2">Student-Centered</h3>
-                <p className="text-sm text-muted-foreground">Every feature designed with students' needs first</p>
+          <div className="text-center max-w-3xl mx-auto mb-12">
+            <Badge className="mb-4">Our Mission</Badge>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+              No Student Should Have to Learn Alone
+            </h2>
+            <p className="text-muted-foreground">
+              We're on a mission to eliminate the isolation and procrastination that holds millions of students back from reaching their potential.
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {features.map((feature) => (
+              <Card key={feature.title} className="text-center">
+                <CardContent className="pt-6">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-4">
+                    <feature.icon className="h-6 w-6 text-primary" />
+                  </div>
+                  <h3 className="font-semibold mb-2">{feature.title}</h3>
+                  <p className="text-sm text-muted-foreground">{feature.description}</p>
+                </CardContent>
               </Card>
-              <Card className="p-6 text-center">
-                <Brain className="h-10 w-10 text-primary mx-auto mb-3" />
-                <h3 className="font-semibold mb-2">Research-Backed</h3>
-                <p className="text-sm text-muted-foreground">Built on proven learning science principles</p>
-              </Card>
-              <Card className="p-6 text-center">
-                <Trophy className="h-10 w-10 text-primary mx-auto mb-3" />
-                <h3 className="font-semibold mb-2">Outcome-Focused</h3>
-                <p className="text-sm text-muted-foreground">Measurable improvement in learning outcomes</p>
-              </Card>
-              <Card className="p-6 text-center">
-                <Target className="h-10 w-10 text-primary mx-auto mb-3" />
-                <h3 className="font-semibold mb-2">Goal-Oriented</h3>
-                <p className="text-sm text-muted-foreground">Tools to set, track, and achieve study goals</p>
-              </Card>
-            </div>
+            ))}
           </div>
         </div>
       </section>
 
       {/* Values Section */}
-      <section className="py-16 sm:py-24 bg-muted/30">
+      <section className="py-16 sm:py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-12">
             <Badge className="mb-4">Our Values</Badge>
@@ -291,7 +261,7 @@ export default function AboutPage() {
             {values.map((value) => (
               <Card key={value.title} className="p-6">
                 <div className="flex items-start gap-4">
-                  <div className="p-3 rounded-lg bg-primary/10">
+                  <div className="p-3 rounded-lg bg-primary/10 shrink-0">
                     <value.icon className="h-6 w-6 text-primary" />
                   </div>
                   <div>
@@ -305,39 +275,33 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Timeline Section */}
-      <section className="py-16 sm:py-24">
+      {/* Roadmap Section */}
+      <section className="py-16 sm:py-24 bg-muted/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-12">
-            <Badge className="mb-4">Our Journey</Badge>
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">From Idea to Global Platform</h2>
+            <Badge className="mb-4">Roadmap</Badge>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Where We're Headed</h2>
             <p className="text-muted-foreground">
-              A timeline of key milestones in our mission to transform education.
+              PeerSpark is a work in progress. Here's what we've accomplished and what's coming next.
             </p>
           </div>
-          <div className="relative">
-            {/* Timeline line */}
-            <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2 w-0.5 h-full bg-border" />
-            
-            <div className="space-y-8 md:space-y-12">
-              {milestones.map((milestone, index) => (
-                <div
-                  key={milestone.year}
-                  className={`relative flex flex-col md:flex-row items-center gap-4 md:gap-8 ${
-                    index % 2 === 0 ? "md:flex-row" : "md:flex-row-reverse"
-                  }`}
-                >
-                  <div className={`flex-1 ${index % 2 === 0 ? "md:text-right" : "md:text-left"}`}>
-                    <Card className="inline-block p-6 max-w-md">
-                      <Badge variant="outline" className="mb-2">{milestone.year}</Badge>
-                      <h3 className="font-semibold text-lg mb-2">{milestone.title}</h3>
-                      <p className="text-sm text-muted-foreground">{milestone.description}</p>
-                    </Card>
+          <div className="max-w-2xl mx-auto">
+            <div className="space-y-4">
+              {roadmap.map((item, index) => (
+                <div key={index} className="flex items-start gap-4">
+                  <div className={`mt-1 w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+                    item.achieved 
+                      ? "bg-green-500 text-white" 
+                      : "bg-muted border-2 border-dashed border-muted-foreground/30"
+                  }`}>
+                    {item.achieved && <CheckCircle className="h-4 w-4" />}
                   </div>
-                  <div className="relative z-10 flex items-center justify-center w-10 h-10 rounded-full bg-primary text-primary-foreground font-bold text-sm">
-                    {milestone.year.slice(-2)}
+                  <div className={`flex-1 pb-4 ${index < roadmap.length - 1 ? "border-b" : ""}`}>
+                    <h3 className={`font-semibold ${!item.achieved && "text-muted-foreground"}`}>
+                      {item.title}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">{item.description}</p>
                   </div>
-                  <div className="flex-1 hidden md:block" />
                 </div>
               ))}
             </div>
@@ -345,71 +309,37 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Team Section */}
-      <section className="py-16 sm:py-24 bg-muted/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-12">
-            <Badge className="mb-4">Our Team</Badge>
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Meet the People Behind PeerSpark</h2>
-            <p className="text-muted-foreground">
-              A diverse team of educators, engineers, and dreamers united by a passion for transforming education.
-            </p>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {team.map((member) => (
-              <Card key={member.name} className="overflow-hidden">
-                <CardContent className="p-6 text-center">
-                  <Avatar className="w-24 h-24 mx-auto mb-4">
-                    <AvatarImage src={member.avatar} alt={member.name} />
-                    <AvatarFallback className="text-lg">
-                      {member.name.split(" ").map(n => n[0]).join("")}
-                    </AvatarFallback>
-                  </Avatar>
-                  <h3 className="font-semibold text-lg">{member.name}</h3>
-                  <p className="text-sm text-primary mb-2">{member.role}</p>
-                  <p className="text-sm text-muted-foreground mb-4">{member.bio}</p>
-                  <div className="flex justify-center gap-2">
-                    <a href={member.linkedin} className="p-2 rounded-full hover:bg-muted transition-colors">
-                      <Linkedin className="h-4 w-4 text-muted-foreground" />
-                    </a>
-                    <a href={member.twitter} className="p-2 rounded-full hover:bg-muted transition-colors">
-                      <Twitter className="h-4 w-4 text-muted-foreground" />
-                    </a>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          <div className="text-center mt-8">
-            <Link href="/careers">
-              <Button>
-                Join Our Team
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Partners Section */}
+      {/* What Makes Us Different */}
       <section className="py-16 sm:py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-12">
-            <Badge className="mb-4">Our Partners</Badge>
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Trusted by Leading Institutions</h2>
+            <Badge className="mb-4">Why PeerSpark?</Badge>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">What Makes Us Different</h2>
             <p className="text-muted-foreground">
-              We're proud to work with world-class educational organizations.
+              We're not a corporation trying to monetize your attention. We're students building for students.
             </p>
           </div>
-          <div className="flex flex-wrap justify-center gap-6">
-            {partners.map((partner) => (
-              <div
-                key={partner}
-                className="px-6 py-3 rounded-lg bg-muted/50 text-muted-foreground font-medium text-sm"
-              >
-                {partner}
-              </div>
-            ))}
+          <div className="grid sm:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            <Card className="p-6 text-center border-primary/50 bg-primary/5">
+              <GraduationCap className="h-10 w-10 text-primary mx-auto mb-3" />
+              <h3 className="font-semibold mb-2">Student-Built</h3>
+              <p className="text-sm text-muted-foreground">Created by a student who understands your struggles firsthand</p>
+            </Card>
+            <Card className="p-6 text-center">
+              <Target className="h-10 w-10 text-primary mx-auto mb-3" />
+              <h3 className="font-semibold mb-2">Mission-Driven</h3>
+              <p className="text-sm text-muted-foreground">Focused on helping students succeed, not maximizing profits</p>
+            </Card>
+            <Card className="p-6 text-center">
+              <Brain className="h-10 w-10 text-primary mx-auto mb-3" />
+              <h3 className="font-semibold mb-2">AI-Powered</h3>
+              <p className="text-sm text-muted-foreground">Smart matching and AI assistance to enhance your learning</p>
+            </Card>
+            <Card className="p-6 text-center">
+              <Trophy className="h-10 w-10 text-primary mx-auto mb-3" />
+              <h3 className="font-semibold mb-2">Outcome-Focused</h3>
+              <p className="text-sm text-muted-foreground">Built to help you actually study more and procrastinate less</p>
+            </Card>
           </div>
         </div>
       </section>
@@ -418,10 +348,10 @@ export default function AboutPage() {
       <section className="py-16 sm:py-24 bg-primary text-primary-foreground">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-            Ready to Transform Your Learning?
+            Join the PeerSpark Community
           </h2>
           <p className="text-xl opacity-90 mb-8 max-w-2xl mx-auto">
-            Join thousands of students already using PeerSpark to achieve their academic goals.
+            Be part of a growing community of students who are transforming how they learn. It's completely free to get started.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/register">
@@ -430,12 +360,16 @@ export default function AboutPage() {
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
-            <Link href="/contact">
+            <Link href="/support">
               <Button size="lg" variant="outline" className="w-full sm:w-auto bg-transparent border-primary-foreground/30 hover:bg-primary-foreground/10">
-                Contact Sales
+                <Heart className="h-4 w-4 mr-2" />
+                Support the Project
               </Button>
             </Link>
           </div>
+          <p className="text-sm opacity-75 mt-6">
+            Questions? Reach out: chat.priyanshuag@gmail.com
+          </p>
         </div>
       </section>
 
@@ -448,16 +382,17 @@ export default function AboutPage() {
                 <Zap className="h-4 w-4 text-primary-foreground" />
               </div>
               <span className="font-semibold">PeerSpark</span>
+              <Badge variant="secondary" className="text-xs">BETA</Badge>
             </div>
             <div className="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
               <Link href="/about" className="hover:text-foreground transition-colors font-medium text-foreground">About</Link>
-              <Link href="/careers" className="hover:text-foreground transition-colors">Careers</Link>
+              <Link href="/support" className="hover:text-foreground transition-colors">Support Us</Link>
               <Link href="/contact" className="hover:text-foreground transition-colors">Contact</Link>
               <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
               <Link href="/terms" className="hover:text-foreground transition-colors">Terms</Link>
             </div>
             <p className="text-sm text-muted-foreground">
-              © {new Date().getFullYear()} PeerSpark. All rights reserved.
+              © {new Date().getFullYear()} PeerSpark. A student-led initiative.
             </p>
           </div>
         </div>

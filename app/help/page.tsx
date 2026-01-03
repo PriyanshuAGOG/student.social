@@ -514,7 +514,7 @@ export default function HelpCenterPage() {
               },
               {
                 question: "How do I report a problem or abuse?",
-                answer: "Use the 'Report' button available on profiles, messages, and content, or contact our trust and safety team at safety@peerspark.com. All reports are reviewed within 24 hours.",
+                answer: "Use the 'Report' button available on profiles, messages, and content, or contact our trust and safety team at chat.priyanshuag@gmail.com. All reports are reviewed within 24 hours.",
               },
             ].map((faq, index) => (
               <Card key={index}>

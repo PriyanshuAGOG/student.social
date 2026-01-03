@@ -629,8 +629,7 @@ export default function CookiePolicyPage() {
                       100 Innovation Drive, Suite 500<br />
                       San Francisco, CA 94105<br />
                       United States<br /><br />
-                      Email: <a href="mailto:privacy@peerspark.com" className="text-primary">privacy@peerspark.com</a><br />
-                      Data Protection Officer: <a href="mailto:dpo@peerspark.com" className="text-primary">dpo@peerspark.com</a>
+                      Email: <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary">chat.priyanshuag@gmail.com</a>
                     </p>
                   </div>
 

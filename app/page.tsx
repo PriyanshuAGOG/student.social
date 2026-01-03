@@ -92,10 +92,10 @@ export default function LandingPage() {
   ]
 
   const stats = [
-    { number: "50K+", label: "Active Students" },
-    { number: "10K+", label: "Study Pods" },
-    { number: "95%", label: "Success Rate" },
+    { number: "BETA", label: "Currently in Testing" },
+    { number: "100%", label: "Free to Use" },
     { number: "24/7", label: "AI Support" },
+    { number: "∞", label: "Study Partners" },
   ]
 
   const handleNewsletterSignup = (e: React.FormEvent) => {
@@ -123,13 +123,16 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mobile-container">
           <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center">
+            <div className="flex items-center gap-3">
               <Link href="/" className="flex items-center space-x-2">
                 <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
                   <Zap className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <span className="font-bold text-xl">PeerSpark</span>
               </Link>
+              <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 border-amber-500/20 hidden sm:inline-flex">
+                BETA
+              </Badge>
             </div>
 
             {/* Desktop Navigation */}
@@ -225,8 +228,8 @@ export default function LandingPage() {
       <section className="py-12 md:py-24 lg:py-32">
         <div className="mobile-container">
           <div className="flex flex-col items-center text-center mobile-space">
-            <Badge variant="secondary" className="mb-4">
-              🚀 Now in Beta - Join 50,000+ Students
+            <Badge variant="secondary" className="mb-4 bg-amber-500/10 text-amber-600 border-amber-500/20">
+              🚀 BETA - Student-Led Platform
             </Badge>
             <h1 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl lg:text-6xl/none max-w-4xl">
               Learn Together, Achieve More with <span className="text-primary">PeerSpark</span>
@@ -471,10 +474,10 @@ export default function LandingPage() {
                   About
                 </Link>
                 <Link
-                  href="/careers"
+                  href="/support"
                   className="block text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Careers
+                  Support Us
                 </Link>
                 <Link
                   href="/blog"
@@ -554,7 +557,7 @@ export default function LandingPage() {
 
           <div className="border-t mt-12 pt-8 text-center">
             <p className="text-sm text-muted-foreground">
-              © 2024 PeerSpark. All rights reserved. Built with ❤️ for students worldwide.
+              © {new Date().getFullYear()} PeerSpark. A student-led initiative. Built with ❤️ by Priyanshu Agarwal.
             </p>
           </div>
         </div>

@@ -490,8 +490,8 @@ export default function AccessibilityPage() {
                         <Mail className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
                         <div>
                           <p className="text-sm font-medium">Email</p>
-                          <a href="mailto:accessibility@peerspark.com" className="text-sm text-primary hover:underline">
-                            accessibility@peerspark.com
+                          <a href="mailto:chat.priyanshuag@gmail.com" className="text-sm text-primary hover:underline">
+                            chat.priyanshuag@gmail.com
                           </a>
                         </div>
                       </div>
@@ -631,7 +631,7 @@ export default function AccessibilityPage() {
                   </li>
                 </ul>
                 <p>
-                  We conduct regular accessibility audits and user testing to ensure ongoing compliance. For questions about our accessibility compliance, please contact <a href="mailto:legal@peerspark.com" className="text-primary">legal@peerspark.com</a>.
+                  We conduct regular accessibility audits and user testing to ensure ongoing compliance. For questions about our accessibility compliance, please contact <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary">chat.priyanshuag@gmail.com</a>.
                 </p>
               </CardContent>
             </Card>

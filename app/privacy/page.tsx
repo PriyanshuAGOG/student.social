@@ -693,7 +693,7 @@ export default function PrivacyPolicyPage() {
                       You can exercise most rights directly through your account settings. For other requests:
                     </p>
                     <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                      <li>Email: <a href="mailto:privacy@peerspark.app" className="text-primary hover:underline">privacy@peerspark.app</a></li>
+                      <li>Email: <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a></li>
                       <li>Online Form: <Link href="/contact" className="text-primary hover:underline">Contact Us</Link></li>
                       <li>Response Time: Within 30 days (extendable by 60 days for complex requests)</li>
                     </ul>
@@ -756,7 +756,7 @@ export default function PrivacyPolicyPage() {
                   <li>Educational institutions may provide access with appropriate consent</li>
                 </ul>
                 <p className="text-sm text-muted-foreground">
-                  If you believe we have inadvertently collected information from a child, please contact us immediately at <a href="mailto:privacy@peerspark.app" className="text-primary hover:underline">privacy@peerspark.app</a>.
+                  If you believe we have inadvertently collected information from a child, please contact us immediately at <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a>.
                 </p>
               </div>
             </section>
@@ -898,7 +898,7 @@ export default function PrivacyPolicyPage() {
                         Privacy Team
                       </h4>
                       <p className="text-sm text-muted-foreground">
-                        <a href="mailto:privacy@peerspark.app" className="text-primary hover:underline">privacy@peerspark.app</a>
+                        <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a>
                       </p>
                     </CardContent>
                   </Card>
@@ -909,7 +909,7 @@ export default function PrivacyPolicyPage() {
                         Data Protection Officer
                       </h4>
                       <p className="text-sm text-muted-foreground">
-                        <a href="mailto:dpo@peerspark.app" className="text-primary hover:underline">dpo@peerspark.app</a>
+                        <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a>
                       </p>
                     </CardContent>
                   </Card>
@@ -952,7 +952,7 @@ export default function PrivacyPolicyPage() {
                     <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
                       <li><strong>Legal Basis:</strong> We process data based on contract performance, consent, legitimate interests, or legal obligation</li>
                       <li><strong>Right to Lodge a Complaint:</strong> You may file a complaint with your local supervisory authority</li>
-                      <li><strong>Representative:</strong> Our EU representative can be contacted at <a href="mailto:eu-rep@peerspark.app" className="text-primary hover:underline">eu-rep@peerspark.app</a></li>
+                      <li><strong>Representative:</strong> Our EU representative can be contacted at <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a></li>
                     </ul>
                   </CardContent>
                 </Card>
@@ -976,7 +976,7 @@ export default function PrivacyPolicyPage() {
                       <li><strong>Non-Discrimination:</strong> We will not discriminate against you for exercising your rights</li>
                     </ul>
                     <p className="text-sm text-muted-foreground mt-3">
-                      To exercise your rights, email <a href="mailto:privacy@peerspark.app" className="text-primary hover:underline">privacy@peerspark.app</a> or call 1-800-PEERSPARK.
+                      To exercise your rights, email <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a>.
                     </p>
                   </CardContent>
                 </Card>
@@ -996,7 +996,7 @@ export default function PrivacyPolicyPage() {
                   <CardContent className="p-4">
                     <h3 className="text-lg font-semibold mb-3">India (DPDP Act)</h3>
                     <p className="text-sm text-muted-foreground">
-                      Indian residents have rights under the Digital Personal Data Protection Act, including consent management, access to personal data, correction, erasure, and grievance redressal. Our Grievance Officer can be reached at <a href="mailto:grievance-india@peerspark.app" className="text-primary hover:underline">grievance-india@peerspark.app</a>.
+                      Indian residents have rights under the Digital Personal Data Protection Act, including consent management, access to personal data, correction, erasure, and grievance redressal. Our Grievance Officer can be reached at <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a>.
                     </p>
                   </CardContent>
                 </Card>

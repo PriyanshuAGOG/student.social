@@ -507,7 +507,7 @@ export default function TermsOfServicePage() {
                     </p>
                     <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded mt-2">
                       <p><strong>DMCA Agent:</strong> Legal Department</p>
-                      <p><strong>Email:</strong> <a href="mailto:dmca@peerspark.app" className="text-primary hover:underline">dmca@peerspark.app</a></p>
+                      <p><strong>Email:</strong> <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a></p>
                       <p><strong>Address:</strong> 123 Education Lane, Suite 456, San Francisco, CA 94102</p>
                     </div>
                     <p className="text-sm text-muted-foreground mt-2">
@@ -758,7 +758,7 @@ export default function TermsOfServicePage() {
                       13.1 Informal Resolution
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      Before initiating formal dispute resolution, you agree to contact us at <a href="mailto:legal@peerspark.app" className="text-primary hover:underline">legal@peerspark.app</a> and attempt to resolve the dispute informally for at least 30 days.
+                      Before initiating formal dispute resolution, you agree to contact us at <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a> and attempt to resolve the dispute informally for at least 30 days.
                     </p>
                   </CardContent>
                 </Card>
@@ -879,13 +879,13 @@ export default function TermsOfServicePage() {
                     <div>
                       <p><strong>Legal Inquiries:</strong></p>
                       <p className="text-muted-foreground">
-                        <a href="mailto:legal@peerspark.app" className="text-primary hover:underline">legal@peerspark.app</a>
+                        <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a>
                       </p>
                     </div>
                     <div>
                       <p><strong>General Support:</strong></p>
                       <p className="text-muted-foreground">
-                        <a href="mailto:support@peerspark.app" className="text-primary hover:underline">support@peerspark.app</a>
+                        <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a>
                       </p>
                     </div>
                     <div className="sm:col-span-2">

@@ -74,48 +74,48 @@ export default function ContactPage() {
       icon: Mail,
       title: "Email Support",
       description: "For general inquiries and support",
-      contact: "support@peerspark.app",
-      href: "mailto:support@peerspark.app",
+      contact: "chat.priyanshuag@gmail.com",
+      href: "mailto:chat.priyanshuag@gmail.com",
       response: "24-48 hours",
     },
     {
       icon: Shield,
       title: "Privacy & Security",
       description: "Data protection and privacy concerns",
-      contact: "privacy@peerspark.app",
-      href: "mailto:privacy@peerspark.app",
+      contact: "chat.priyanshuag@gmail.com",
+      href: "mailto:chat.priyanshuag@gmail.com",
       response: "24-48 hours",
     },
     {
       icon: FileText,
       title: "Legal Department",
       description: "Legal inquiries and DMCA notices",
-      contact: "legal@peerspark.app",
-      href: "mailto:legal@peerspark.app",
+      contact: "chat.priyanshuag@gmail.com",
+      href: "mailto:chat.priyanshuag@gmail.com",
       response: "3-5 business days",
     },
     {
       icon: Building,
       title: "Partnerships",
       description: "Educational institutions & business",
-      contact: "partnerships@peerspark.app",
-      href: "mailto:partnerships@peerspark.app",
+      contact: "chat.priyanshuag@gmail.com",
+      href: "mailto:chat.priyanshuag@gmail.com",
       response: "2-3 business days",
     },
     {
       icon: Users,
       title: "Press & Media",
       description: "Media inquiries and press kit",
-      contact: "press@peerspark.app",
-      href: "mailto:press@peerspark.app",
+      contact: "chat.priyanshuag@gmail.com",
+      href: "mailto:chat.priyanshuag@gmail.com",
       response: "24-48 hours",
     },
     {
       icon: AlertTriangle,
       title: "Report Abuse",
       description: "Report violations or safety concerns",
-      contact: "abuse@peerspark.app",
-      href: "mailto:abuse@peerspark.app",
+      contact: "chat.priyanshuag@gmail.com",
+      href: "mailto:chat.priyanshuag@gmail.com",
       response: "Within 24 hours",
     },
   ]
@@ -151,7 +151,7 @@ export default function ContactPage() {
     },
     {
       question: "How do I report inappropriate content?",
-      answer: "Use the report button on any content, or email abuse@peerspark.app with details.",
+      answer: "Use the report button on any content, or email chat.priyanshuag@gmail.com with details.",
     },
   ]
 
@@ -464,7 +464,7 @@ export default function ContactPage() {
                     <h4 className="font-medium mb-1">Urgent Safety Concerns</h4>
                     <p className="text-sm text-muted-foreground">
                       If you're experiencing a safety emergency, please contact local emergency services. For urgent platform safety issues, email{" "}
-                      <a href="mailto:safety@peerspark.app" className="text-primary hover:underline">safety@peerspark.app</a>
+                      <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a>
                       {" "}for priority response.
                     </p>
                   </div>

@@ -1,337 +1,341 @@
 "use client"
 
-import { useState } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { ThemeToggle } from "@/components/theme-toggle"
 import {
-  Play,
-  Pause,
-  SkipForward,
-  SkipBack,
-  Volume2,
-  Maximize,
+  Zap,
+  ArrowLeft,
+  ArrowRight,
   Users,
   Brain,
   BookOpen,
   Trophy,
-  Zap,
+  Heart,
+  Play,
+  Sparkles,
+  CheckCircle,
+  Target,
+  MessageSquare,
+  Video
 } from "lucide-react"
-import Link from "next/link"
-import { useToast } from "@/hooks/use-toast"
-
-const DEMO_SECTIONS = [
-  {
-    id: "overview",
-    title: "Platform Overview",
-    duration: "2:30",
-    description: "Get introduced to PeerSpark's core features and philosophy",
-  },
-  {
-    id: "pods",
-    title: "Study Pods",
-    duration: "3:45",
-    description: "Learn how to join and participate in collaborative learning communities",
-  },
-  {
-    id: "ai-assistant",
-    title: "AI Assistant",
-    duration: "2:15",
-    description: "Discover how AI helps with doubts, scheduling, and content creation",
-  },
-  {
-    id: "vault",
-    title: "Resource Vault",
-    duration: "1:50",
-    description: "Explore the centralized library for notes, flashcards, and materials",
-  },
-  {
-    id: "analytics",
-    title: "Progress Analytics",
-    duration: "2:00",
-    description: "Track your learning journey with detailed insights and reports",
-  },
-]
 
 const FEATURES_SHOWCASE = [
   {
     icon: Users,
     title: "Study Pods",
-    description: "Join subject-specific communities with live sessions and peer support",
+    description: "Join collaborative study groups with peers who share your academic goals and interests",
     color: "text-blue-500",
+    bgColor: "bg-blue-500/10",
   },
   {
     icon: Brain,
     title: "AI Assistant",
-    description: "Get instant help with doubts, summaries, and personalized study plans",
+    description: "Get instant help with doubts, personalized study plans, and smart recommendations",
     color: "text-purple-500",
+    bgColor: "bg-purple-500/10",
   },
   {
     icon: BookOpen,
     title: "Resource Vault",
-    description: "Centralized library with collaborative notes and version control",
+    description: "Centralized library with collaborative notes, flashcards, and study materials",
     color: "text-green-500",
+    bgColor: "bg-green-500/10",
   },
   {
     icon: Trophy,
     title: "Gamification",
-    description: "Stay motivated with streaks, badges, and friendly competition",
+    description: "Stay motivated with streaks, badges, leaderboards, and friendly competition",
     color: "text-yellow-500",
+    bgColor: "bg-yellow-500/10",
+  },
+  {
+    icon: Video,
+    title: "Live Video Calls",
+    description: "Study together in real-time with video sessions and screen sharing",
+    color: "text-red-500",
+    bgColor: "bg-red-500/10",
+  },
+  {
+    icon: MessageSquare,
+    title: "Real-time Chat",
+    description: "Instant messaging with your pod members, share files, and collaborate",
+    color: "text-cyan-500",
+    bgColor: "bg-cyan-500/10",
   },
 ]
 
+const HIGHLIGHTS = [
+  "Find study partners who match your goals",
+  "AI-powered assistance available 24/7",
+  "Real-time collaboration with video and chat",
+  "Share and access community resources",
+  "Track progress with gamification",
+  "Completely free to get started",
+]
+
 export default function DemoPage() {
-  const [currentSection, setCurrentSection] = useState("overview")
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const { toast } = useToast()
-
-  const handlePlayPause = () => {
-    setIsPlaying(!isPlaying)
-    toast({
-      title: isPlaying ? "Demo Paused" : "Demo Playing",
-      description: `${isPlaying ? "Paused" : "Playing"} ${DEMO_SECTIONS.find((s) => s.id === currentSection)?.title}`,
-    })
-  }
-
-  const handleSectionChange = (sectionId: string) => {
-    setCurrentSection(sectionId)
-    setCurrentTime(0)
-    setIsPlaying(true)
-    toast({
-      title: "Section Changed",
-      description: `Now playing: ${DEMO_SECTIONS.find((s) => s.id === sectionId)?.title}`,
-    })
-  }
-
-  const handleStartTrial = () => {
-    toast({
-      title: "Starting Free Trial",
-      description: "Redirecting to registration...",
-    })
-  }
-
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border">
+      {/* Navigation */}
+      <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link href="/" className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Zap className="w-5 h-5 text-primary-foreground" />
-              </div>
-              <span className="text-xl font-bold">PeerSpark</span>
-            </Link>
-            <div className="flex items-center space-x-2 sm:space-x-4">
-              <Link href="/login">
-                <Button variant="ghost" size="sm" className="sm:size-default">Sign In</Button>
+          <div className="flex h-16 items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href="/" className="flex items-center space-x-2">
+                <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+                  <Zap className="h-5 w-5 text-primary-foreground" />
+                </div>
+                <span className="font-bold text-xl">PeerSpark</span>
               </Link>
-              <Link href="/register">
-                <Button size="sm" className="sm:size-default bg-primary hover:bg-primary/90">Get Started</Button>
-              </Link>
+              <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                BETA
+              </Badge>
             </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Hero Section */}
-        <div className="text-center mb-8 sm:mb-12">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">See PeerSpark in Action</h1>
-          <p className="text-lg sm:text-xl text-muted-foreground mb-6 sm:mb-8 max-w-3xl mx-auto px-4">
-            Take a guided tour through our platform and discover how peer-powered learning can transform your study
-            experience.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center px-4">
-            <Button size="lg" onClick={handleStartTrial} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
-              Start Free Trial
-            </Button>
-            <Button size="lg" variant="outline" className="bg-transparent w-full sm:w-auto">
-              Schedule Live Demo
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid gap-6 sm:gap-8 lg:grid-cols-3">
-          {/* Video Player */}
-          <div className="lg:col-span-2">
-            <Card>
-              <CardContent className="p-0">
-                {/* Video Container */}
-                <div className="relative aspect-video bg-black rounded-t-lg overflow-hidden">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center text-white">
-                      <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mb-4 mx-auto">
-                        <Play className="w-12 h-12" />
-                      </div>
-                      <h3 className="text-xl font-semibold mb-2">
-                        {DEMO_SECTIONS.find((s) => s.id === currentSection)?.title}
-                      </h3>
-                      <p className="text-white/80">{DEMO_SECTIONS.find((s) => s.id === currentSection)?.description}</p>
-                    </div>
-                  </div>
-
-                  {/* Video Overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-
-                  {/* Fullscreen Button */}
-                  <Button variant="ghost" size="sm" className="absolute top-4 right-4 text-white hover:bg-white/20">
-                    <Maximize className="w-4 h-4" />
-                  </Button>
-                </div>
-
-                {/* Video Controls */}
-                <div className="p-4 space-y-4">
-                  {/* Progress Bar */}
-                  <div className="space-y-2">
-                    <div className="w-full bg-secondary rounded-full h-2">
-                      <div
-                        className="bg-primary h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${(currentTime / 150) * 100}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-sm text-muted-foreground">
-                      <span>
-                        {Math.floor(currentTime / 60)}:{(currentTime % 60).toString().padStart(2, "0")}
-                      </span>
-                      <span>{DEMO_SECTIONS.find((s) => s.id === currentSection)?.duration}</span>
-                    </div>
-                  </div>
-
-                  {/* Control Buttons */}
-                  <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-0 sm:space-x-4">
-                    <Button variant="ghost" size="sm">
-                      <SkipBack className="w-4 h-4" />
-                    </Button>
-                    <Button onClick={handlePlayPause} className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary hover:bg-primary/90">
-                      {isPlaying ? <Pause className="w-4 h-4 sm:w-5 sm:h-5" /> : <Play className="w-4 h-4 sm:w-5 sm:h-5" />}
-                    </Button>
-                    <Button variant="ghost" size="sm">
-                      <SkipForward className="w-4 h-4" />
-                    </Button>
-                    <div className="flex items-center space-x-2 w-full sm:w-auto justify-center mt-2 sm:mt-0 sm:ml-4">
-                      <Volume2 className="w-4 h-4 text-muted-foreground" />
-                      <div className="w-24 sm:w-20 bg-secondary rounded-full h-2">
-                        <div className="bg-primary h-2 rounded-full w-3/4" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Features Showcase */}
-            <div className="mt-6 sm:mt-8 grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
-              {FEATURES_SHOWCASE.map((feature) => (
-                <Card key={feature.title} className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-4 sm:p-6">
-                    <div className="flex items-start space-x-3 sm:space-x-4">
-                      <div className={`p-2 sm:p-3 rounded-lg bg-secondary ${feature.color}`}>
-                        <feature.icon className="w-5 h-5 sm:w-6 sm:h-6" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold mb-1 sm:mb-2 text-sm sm:text-base">{feature.title}</h3>
-                        <p className="text-xs sm:text-sm text-muted-foreground">{feature.description}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-
-          {/* Sidebar - Show as horizontal scroll on mobile */}
-          <div className="space-y-4 sm:space-y-6 order-first lg:order-last">
-            {/* Demo Sections - Horizontal on mobile */}
-            <Card>
-              <CardHeader className="pb-2 sm:pb-4">
-                <CardTitle className="text-base sm:text-lg">Demo Sections</CardTitle>
-                <CardDescription className="text-xs sm:text-sm">Click to jump to different parts of the demo</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2 overflow-x-auto">
-                <div className="flex lg:flex-col gap-2 lg:gap-0 lg:space-y-2 pb-2 lg:pb-0">
-                  {DEMO_SECTIONS.map((section) => (
-                    <Button
-                      key={section.id}
-                      variant={currentSection === section.id ? "default" : "ghost"}
-                      className={`flex-shrink-0 lg:w-full justify-start text-left h-auto p-2 sm:p-3 min-w-[160px] lg:min-w-0 ${
-                        currentSection === section.id ? "bg-primary" : ""
-                      }`}
-                    onClick={() => handleSectionChange(section.id)}
-                  >
-                    <div className="w-full">
-                      <div className="flex items-center justify-between w-full mb-1">
-                        <span className="font-medium text-xs sm:text-sm">{section.title}</span>
-                        <Badge variant="secondary" className="text-[10px] sm:text-xs ml-2">
-                          {section.duration}
-                        </Badge>
-                      </div>
-                      <p className="text-[10px] sm:text-xs opacity-80 text-left hidden lg:block">{section.description}</p>
-                    </div>
-                  </Button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Quick Stats - Grid on mobile */}
-            {/* Quick Stats - Compact on mobile */}
-            <Card>
-              <CardHeader className="pb-2 sm:pb-4">
-                <CardTitle className="text-base sm:text-lg">Why Choose PeerSpark?</CardTitle>
-              </CardHeader>
-              <CardContent className="grid grid-cols-3 gap-2 sm:gap-4">
-                <div className="text-center">
-                  <div className="text-lg sm:text-2xl font-bold text-primary">85%</div>
-                  <div className="text-[10px] sm:text-sm text-muted-foreground leading-tight">Higher retention</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg sm:text-2xl font-bold text-accent">3.2x</div>
-                  <div className="text-[10px] sm:text-sm text-muted-foreground leading-tight">Faster learning</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg sm:text-2xl font-bold text-green-500">10k+</div>
-                  <div className="text-[10px] sm:text-sm text-muted-foreground leading-tight">Active learners</div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Testimonial - Hidden on small mobile */}
-            <Card className="hidden md:block">
-              <CardContent className="p-4 sm:p-6">
-                <div className="flex items-start space-x-3">
-                  <Avatar className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0">
-                    <AvatarImage src="/placeholder.svg?height=40&width=40" />
-                    <AvatarFallback>RS</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0">
-                    <p className="text-xs sm:text-sm mb-2">
-                      &ldquo;PeerSpark transformed my NEET preparation. The biology pod helped me stay consistent and
-                      motivated!&rdquo;
-                    </p>
-                    <div className="text-xs text-muted-foreground">
-                      <span className="font-medium">Riya Sharma</span> • NEET Aspirant
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* CTA */}
-            <Card className="bg-primary text-primary-foreground">
-              <CardContent className="p-4 sm:p-6 text-center">
-                <h3 className="font-semibold mb-2 text-sm sm:text-base">Ready to get started?</h3>
-                <p className="text-xs sm:text-sm opacity-90 mb-3 sm:mb-4">Join thousands of learners already using PeerSpark</p>
-                <Button onClick={handleStartTrial} className="w-full bg-background text-primary hover:bg-background/90 text-sm">
-                  Start Free Trial
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <Link href="/">
+                <Button variant="ghost" size="sm">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Home
                 </Button>
-              </CardContent>
-            </Card>
+              </Link>
+            </div>
           </div>
         </div>
-      </div>
+      </nav>
+
+      {/* Hero Section */}
+      <section className="py-12 sm:py-16 bg-gradient-to-b from-primary/5 to-background">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-3xl mx-auto mb-8 sm:mb-12">
+            <Badge className="mb-4 bg-green-500/10 text-green-600 border-green-500/20">
+              <Play className="h-3 w-3 mr-1" />
+              Platform Demo
+            </Badge>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
+              See PeerSpark in <span className="text-primary">Action</span>
+            </h1>
+            <p className="text-lg text-muted-foreground">
+              Watch how PeerSpark helps students overcome procrastination and learn together. 
+              Built by a student, for students.
+            </p>
+          </div>
+
+          {/* YouTube Video Embed */}
+          <div className="max-w-4xl mx-auto mb-12">
+            <Card className="overflow-hidden shadow-lg">
+              <CardContent className="p-0">
+                <div className="relative aspect-video bg-black">
+                  <iframe
+                    className="absolute inset-0 w-full h-full"
+                    src="https://www.youtube.com/embed/AfPkI7kDqX0"
+                    title="PeerSpark Demo - Collaborative Learning Platform"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                </div>
+              </CardContent>
+            </Card>
+            <p className="text-center text-sm text-muted-foreground mt-4">
+              Watch the full demo to see how PeerSpark can transform your study experience
+            </p>
+          </div>
+
+          {/* CTA Buttons */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link href="/register">
+              <Button size="lg" className="w-full sm:w-auto">
+                Start Using PeerSpark Free
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/about">
+              <Button size="lg" variant="outline" className="w-full sm:w-auto">
+                Learn Our Story
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Key Highlights */}
+      <section className="py-12 sm:py-16 bg-muted/30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-3xl mx-auto mb-8">
+            <Badge className="mb-4">What You'll Get</Badge>
+            <h2 className="text-2xl sm:text-3xl font-bold mb-4">Everything You Need to Study Better</h2>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
+            {HIGHLIGHTS.map((highlight, index) => (
+              <div key={index} className="flex items-center gap-3 p-4 bg-background rounded-lg border">
+                <CheckCircle className="h-5 w-5 text-green-500 shrink-0" />
+                <span className="text-sm">{highlight}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Features Showcase */}
+      <section className="py-12 sm:py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-3xl mx-auto mb-12">
+            <Badge className="mb-4">Platform Features</Badge>
+            <h2 className="text-2xl sm:text-3xl font-bold mb-4">Powerful Tools for Modern Students</h2>
+            <p className="text-muted-foreground">
+              Everything you need to study smarter, not harder
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {FEATURES_SHOWCASE.map((feature) => (
+              <Card key={feature.title} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4">
+                    <div className={`p-3 rounded-lg ${feature.bgColor}`}>
+                      <feature.icon className={`h-6 w-6 ${feature.color}`} />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold mb-1">{feature.title}</h3>
+                      <p className="text-sm text-muted-foreground">{feature.description}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* About the Project */}
+      <section className="py-12 sm:py-16 bg-muted/30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-2 gap-8 items-center">
+            <div>
+              <Badge className="mb-4 bg-green-500/10 text-green-600 border-green-500/20">
+                <Sparkles className="h-3 w-3 mr-1" />
+                Student-Led Initiative
+              </Badge>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-4">
+                Built by a Student Who Understands Your Struggles
+              </h2>
+              <div className="space-y-4 text-muted-foreground">
+                <p>
+                  PeerSpark was created by <strong className="text-foreground">Priyanshu Agarwal</strong>, a student who experienced firsthand the challenges of studying alone and battling procrastination.
+                </p>
+                <p>
+                  This isn't a corporate product — it's a passion project built to help students like you find study partners, stay motivated, and achieve your academic goals.
+                </p>
+                <p>
+                  The platform is currently in <strong className="text-foreground">BETA</strong>, and your feedback helps shape its future. We're building this together!
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 mt-6">
+                <Link href="/about">
+                  <Button variant="outline" className="w-full sm:w-auto">
+                    Read Our Full Story
+                  </Button>
+                </Link>
+                <Link href="/support">
+                  <Button variant="ghost" className="w-full sm:w-auto">
+                    <Heart className="h-4 w-4 mr-2" />
+                    Support the Project
+                  </Button>
+                </Link>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <Card className="border-primary/50 bg-primary/5">
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center text-xl font-bold text-primary">
+                      PA
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Priyanshu Agarwal</h3>
+                      <p className="text-sm text-muted-foreground">Founder & Developer</p>
+                      <Badge variant="outline" className="text-xs mt-1">Student</Badge>
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground italic">
+                    "I built PeerSpark because I believe no student should have to struggle with learning alone. When we study together, we succeed together."
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Current Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                    <span className="text-sm">Beta Testing Phase</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Active development with new features added regularly
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-16 sm:py-24 bg-primary text-primary-foreground">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <Target className="h-12 w-12 mx-auto mb-4 opacity-90" />
+          <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+            Ready to Transform Your Learning?
+          </h2>
+          <p className="text-xl opacity-90 mb-8 max-w-2xl mx-auto">
+            Join the PeerSpark community today. Find study partners, stay motivated, and achieve your goals — for free.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link href="/register">
+              <Button size="lg" variant="secondary">
+                Get Started Free
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+            <a href="mailto:chat.priyanshuag@gmail.com">
+              <Button size="lg" variant="outline" className="bg-transparent border-primary-foreground/30 hover:bg-primary-foreground/10">
+                Contact Us
+              </Button>
+            </a>
+          </div>
+          <p className="text-sm opacity-75 mt-6">
+            Questions? Email: chat.priyanshuag@gmail.com
+          </p>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t bg-muted/30 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded bg-primary flex items-center justify-center">
+                <Zap className="h-4 w-4 text-primary-foreground" />
+              </div>
+              <span className="font-semibold">PeerSpark</span>
+              <Badge variant="secondary" className="text-xs">BETA</Badge>
+            </div>
+            <div className="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
+              <Link href="/about" className="hover:text-foreground transition-colors">About</Link>
+              <Link href="/demo" className="hover:text-foreground transition-colors font-medium text-foreground">Demo</Link>
+              <Link href="/support" className="hover:text-foreground transition-colors">Support Us</Link>
+              <Link href="/contact" className="hover:text-foreground transition-colors">Contact</Link>
+              <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              © {new Date().getFullYear()} PeerSpark. A student-led initiative.
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }

@@ -112,10 +112,10 @@ export default function DMCAPage() {
                     <p className="text-xs text-muted-foreground mb-4">
                       To report copyright infringement, send a complete DMCA notice to our designated agent.
                     </p>
-                    <a href="mailto:dmca@peerspark.com">
+                    <a href="mailto:chat.priyanshuag@gmail.com">
                       <Button size="sm" className="w-full">
                         <Mail className="h-4 w-4 mr-2" />
-                        dmca@peerspark.com
+                        chat.priyanshuag@gmail.com
                       </Button>
                     </a>
                   </CardContent>
@@ -167,7 +167,7 @@ export default function DMCAPage() {
                     <ol className="space-y-3 text-sm">
                       <li className="flex items-start gap-2">
                         <span className="font-bold text-primary">1.</span>
-                        <span>Email your complete notice to <a href="mailto:dmca@peerspark.com" className="text-primary hover:underline">dmca@peerspark.com</a></span>
+                        <span>Email your complete notice to <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a></span>
                       </li>
                       <li className="flex items-start gap-2">
                         <span className="font-bold text-primary">2.</span>
@@ -301,7 +301,7 @@ export default function DMCAPage() {
                     <li>A statement that you will accept service of process from the person who provided the original notification</li>
                   </ul>
                   <p>
-                    Send your counter-notification to <a href="mailto:dmca@peerspark.com" className="text-primary hover:underline">dmca@peerspark.com</a> with the subject line "DMCA Counter-Notification."
+                    Send your counter-notification to <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a> with the subject line "DMCA Counter-Notification."
                   </p>
                 </CardContent>
               </Card>
@@ -384,20 +384,20 @@ export default function DMCAPage() {
                       <div className="grid sm:grid-cols-2 gap-4 pt-4 border-t">
                         <div>
                           <p className="text-sm font-medium">Email (Preferred)</p>
-                          <a href="mailto:dmca@peerspark.com" className="text-sm text-primary hover:underline">
-                            dmca@peerspark.com
+                          <a href="mailto:chat.priyanshuag@gmail.com" className="text-sm text-primary hover:underline">
+                            chat.priyanshuag@gmail.com
                           </a>
                         </div>
                         <div>
                           <p className="text-sm font-medium">Phone</p>
-                          <p className="text-sm text-muted-foreground">+1 (415) 555-0123</p>
+                          <p className="text-sm text-muted-foreground">Not available</p>
                         </div>
                       </div>
                     </div>
                   </div>
 
                   <p className="mt-4">
-                    Please note that this contact information is solely for reporting copyright infringement. For all other inquiries, please visit our <Link href="/contact" className="text-primary hover:underline">Contact page</Link> or email <a href="mailto:support@peerspark.com" className="text-primary hover:underline">support@peerspark.com</a>.
+                    Please note that this contact information is solely for reporting copyright infringement. For all other inquiries, please visit our <Link href="/contact" className="text-primary hover:underline">Contact page</Link> or email <a href="mailto:chat.priyanshuag@gmail.com" className="text-primary hover:underline">chat.priyanshuag@gmail.com</a>.
                   </p>
 
                   <p>
