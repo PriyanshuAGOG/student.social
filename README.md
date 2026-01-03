@@ -4,6 +4,8 @@
 
 **Last Updated:** January 1, 2026
 
+> 📚 **Documentation has been reorganized!** See [`docs/`](docs/README.md) for all documentation. Read the [organization summary](docs/ORGANIZATION_SUMMARY.md) to understand the new structure.
+
 ---
 
 ## 🚀 QUICK START OPTIONS
