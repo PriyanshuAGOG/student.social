@@ -501,6 +501,30 @@ export default function LandingPage() {
                   Help Center
                 </Link>
                 <Link
+                  href="/community-guidelines"
+                  className="block text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Community Guidelines
+                </Link>
+                <Link
+                  href="/accessibility"
+                  className="block text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Accessibility
+                </Link>
+                <Link
+                  href="/status"
+                  className="block text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Status
+                </Link>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-4">Legal</h4>
+              <div className="space-y-2">
+                <Link
                   href="/privacy"
                   className="block text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
@@ -513,10 +537,16 @@ export default function LandingPage() {
                   Terms of Service
                 </Link>
                 <Link
-                  href="/status"
+                  href="/cookies"
                   className="block text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Status
+                  Cookie Policy
+                </Link>
+                <Link
+                  href="/dmca"
+                  className="block text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  DMCA Policy
                 </Link>
               </div>
             </div>

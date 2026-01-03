@@ -201,19 +201,19 @@ export default function DemoPage() {
                   </div>
 
                   {/* Control Buttons */}
-                  <div className="flex items-center justify-center space-x-4">
+                  <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-0 sm:space-x-4">
                     <Button variant="ghost" size="sm">
                       <SkipBack className="w-4 h-4" />
                     </Button>
-                    <Button onClick={handlePlayPause} className="w-12 h-12 rounded-full bg-primary hover:bg-primary/90">
-                      {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                    <Button onClick={handlePlayPause} className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary hover:bg-primary/90">
+                      {isPlaying ? <Pause className="w-4 h-4 sm:w-5 sm:h-5" /> : <Play className="w-4 h-4 sm:w-5 sm:h-5" />}
                     </Button>
                     <Button variant="ghost" size="sm">
                       <SkipForward className="w-4 h-4" />
                     </Button>
-                    <div className="flex items-center space-x-2 ml-4">
+                    <div className="flex items-center space-x-2 w-full sm:w-auto justify-center mt-2 sm:mt-0 sm:ml-4">
                       <Volume2 className="w-4 h-4 text-muted-foreground" />
-                      <div className="w-20 bg-secondary rounded-full h-2">
+                      <div className="w-24 sm:w-20 bg-secondary rounded-full h-2">
                         <div className="bg-primary h-2 rounded-full w-3/4" />
                       </div>
                     </div>
@@ -277,22 +277,23 @@ export default function DemoPage() {
             </Card>
 
             {/* Quick Stats - Grid on mobile */}
-            <Card className="hidden sm:block">
+            {/* Quick Stats - Compact on mobile */}
+            <Card>
               <CardHeader className="pb-2 sm:pb-4">
                 <CardTitle className="text-base sm:text-lg">Why Choose PeerSpark?</CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-3 lg:grid-cols-1 gap-4 lg:space-y-4 lg:gap-0">
+              <CardContent className="grid grid-cols-3 gap-2 sm:gap-4">
                 <div className="text-center">
-                  <div className="text-xl sm:text-2xl font-bold text-primary">85%</div>
-                  <div className="text-xs sm:text-sm text-muted-foreground">Higher retention rate</div>
+                  <div className="text-lg sm:text-2xl font-bold text-primary">85%</div>
+                  <div className="text-[10px] sm:text-sm text-muted-foreground leading-tight">Higher retention</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-xl sm:text-2xl font-bold text-accent">3.2x</div>
-                  <div className="text-xs sm:text-sm text-muted-foreground">Faster learning progress</div>
+                  <div className="text-lg sm:text-2xl font-bold text-accent">3.2x</div>
+                  <div className="text-[10px] sm:text-sm text-muted-foreground leading-tight">Faster learning</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-xl sm:text-2xl font-bold text-green-500">10k+</div>
-                  <div className="text-xs sm:text-sm text-muted-foreground">Active learners</div>
+                  <div className="text-lg sm:text-2xl font-bold text-green-500">10k+</div>
+                  <div className="text-[10px] sm:text-sm text-muted-foreground leading-tight">Active learners</div>
                 </div>
               </CardContent>
             </Card>

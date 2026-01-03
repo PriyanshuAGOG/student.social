@@ -90,6 +90,10 @@ export default function RootLayout({
         <link rel="mask-icon" href="/placeholder-icon.png" color="#000000" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* Preconnect to Jitsi for faster video calls */}
+        <link rel="preconnect" href="https://meet.jit.si" />
+        <link rel="dns-prefetch" href="https://meet.jit.si" />
+        <link rel="preload" href="https://meet.jit.si/external_api.js" as="script" />
         <script src="/sw-register.js" defer></script>
       </head>
       <body className={inter.className}>

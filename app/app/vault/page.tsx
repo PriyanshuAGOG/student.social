@@ -362,10 +362,10 @@ export default function VaultPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex space-x-1">
+              <div className="flex flex-wrap gap-1">
                 <Button
                   size="sm"
-                  className="flex-1 bg-primary hover:bg-primary/90"
+                  className="flex-1 min-w-[80px] bg-primary hover:bg-primary/90"
                   onClick={() => handleView(resource.id)}
                 >
                   <ExternalLink className="w-3 h-3 mr-1" />
@@ -446,7 +446,7 @@ export default function VaultPage() {
                   </div>
 
                   {/* Stats and Actions */}
-                  <div className="flex items-center space-x-4 text-xs text-muted-foreground ml-4">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-muted-foreground mt-2 sm:mt-0 sm:ml-4">
                     <span className="flex items-center">
                       <Eye className="w-3 h-3 mr-1" />
                       {resource.views}
@@ -460,11 +460,11 @@ export default function VaultPage() {
                       {resource.downloads}
                     </span>
                     <span>{resource.size}</span>
-                    <div className="flex space-x-1">
+                    <div className="flex gap-1 w-full sm:w-auto mt-2 sm:mt-0">
                       <Button
                         size="sm"
                         onClick={() => handleView(resource.id)}
-                        className="bg-primary hover:bg-primary/90"
+                        className="flex-1 sm:flex-initial bg-primary hover:bg-primary/90"
                       >
                         <ExternalLink className="w-3 h-3 mr-1" />
                         View

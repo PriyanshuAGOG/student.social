@@ -370,20 +370,24 @@ function CalendarContent() {
 
   const handleDeleteEvent = async (eventId: string) => {
     try {
-      // Delete from Appwrite
+      // Delete from Appwrite (handles 404 gracefully for mock events)
       await calendarService.deleteEvent(eventId)
       
       setEvents((prev) => prev.filter((event) => event.id !== eventId))
+      setSelectedEvent(null)
+      setShowMobileSidebar(false)
       toast({
         title: "Event deleted",
         description: "The event has been removed from your calendar.",
       })
     } catch (error) {
       console.error("Failed to delete event:", error)
+      // Still remove from local state if deletion from backend fails
+      setEvents((prev) => prev.filter((event) => event.id !== eventId))
+      setSelectedEvent(null)
       toast({
-        title: "Failed to delete event",
-        description: "Please try again.",
-        variant: "destructive",
+        title: "Event removed",
+        description: "The event has been removed locally.",
       })
     }
   }
@@ -466,7 +470,7 @@ function CalendarContent() {
                   <Plus className="h-4 w-4" />
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-sm mx-4 max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-sm sm:max-w-md mx-4 max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Create New Event</DialogTitle>
                   <DialogDescription>Add a new event to your calendar.</DialogDescription>
@@ -491,7 +495,7 @@ function CalendarContent() {
                       rows={3}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="startDate">Start Date</Label>
                       <Input
@@ -511,7 +515,7 @@ function CalendarContent() {
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="endDate">End Date</Label>
                       <Input

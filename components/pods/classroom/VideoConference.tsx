@@ -88,12 +88,19 @@ export function VideoConference({
   const reconnectAttempts = useRef(0)
   const maxReconnectAttempts = 3
 
-  // Load Jitsi External API script
+  // Load Jitsi External API script with preloading for faster initialization
   useEffect(() => {
     if (typeof window !== "undefined" && !window.JitsiMeetExternalAPI) {
+      // Add preload link for faster loading
+      const preloadLink = document.createElement("link")
+      preloadLink.rel = "preload"
+      preloadLink.as = "script"
+      preloadLink.href = "https://meet.jit.si/external_api.js"
+      document.head.appendChild(preloadLink)
+
       const script = document.createElement("script")
       script.src = "https://meet.jit.si/external_api.js"
-      script.async = true
+      script.async = false // Load synchronously for faster ready state
       script.onload = () => {
         setJitsiLoaded(true)
       }
@@ -106,6 +113,7 @@ export function VideoConference({
         // Cleanup script on unmount
         try {
           document.head.removeChild(script)
+          document.head.removeChild(preloadLink)
         } catch (e) {
           // Script may already be removed
         }
