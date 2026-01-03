@@ -851,10 +851,6 @@ export default function PodDetailPage() {
     </div>
   )
 }
-                  >
-                    <MessageSquare className="w-6 h-6" />
-                    <span className="text-sm">Pod Chat</span>
-                  </Button>
                   <Button
                     onClick={handleOpenVault}
                     variant="outline"
