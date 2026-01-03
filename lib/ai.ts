@@ -105,8 +105,6 @@ async function tryAIRequest(apiKey: string, messages: ChatMessage[], model: stri
   }
   return message as string
 }
-  return message as string
-}
 
 export function buildResponse(message: string) {
   return NextResponse.json({ message })
