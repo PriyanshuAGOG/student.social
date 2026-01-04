@@ -3,11 +3,12 @@
 import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Zap } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { authService } from "@/lib/appwrite"
@@ -57,8 +58,8 @@ export default function ForgotPasswordPage() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center mb-8">
-          <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center mr-3">
-            <Zap className="w-6 h-6 text-primary-foreground" />
+          <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center mr-3">
+            <Image src="/logo.png" alt="PeerSpark" width={40} height={40} className="object-cover" />
           </div>
           <span className="text-2xl font-bold">PeerSpark</span>
         </div>

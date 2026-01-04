@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import Image from "next/image"
 import { useAuth } from "@/lib/auth-context"
 import { podService, profileService } from "@/lib/appwrite"
 import { rankPodsForUser } from "@/lib/pod-matching"
@@ -584,8 +585,8 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-background flex items-start md:items-center justify-center p-2 sm:p-4 py-4 overflow-auto">
       <div className="w-full max-w-4xl">
         <div className="flex items-center justify-center mb-4 md:mb-8">
-          <div className="w-8 h-8 md:w-10 md:h-10 bg-primary rounded-lg flex items-center justify-center mr-2 md:mr-3">
-            <Zap className="w-5 h-5 md:w-6 md:h-6 text-primary-foreground" />
+          <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg overflow-hidden flex items-center justify-center mr-2 md:mr-3">
+            <Image src="/logo.png" alt="PeerSpark" width={40} height={40} className="object-cover" />
           </div>
           <span className="text-xl md:text-2xl font-bold">PeerSpark</span>
         </div>

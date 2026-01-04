@@ -10,15 +10,15 @@
   "background_color": "#ffffff",
   "screenshots": [
     {
-      "src": "/placeholder-logo.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "form_factor": "narrow"
     },
     {
-      "src": "/placeholder-logo.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "form_factor": "wide"
     }
   ],
@@ -29,15 +29,15 @@
       "type": "image/x-icon"
     },
     {
-      "src": "/placeholder.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/placeholder.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ],
@@ -50,9 +50,9 @@
       "url": "/app/dashboard",
       "icons": [
         {
-          "src": "/placeholder.svg",
-          "sizes": "any",
-          "type": "image/svg+xml"
+          "src": "/logo.png",
+          "sizes": "512x512",
+          "type": "image/png"
         }
       ]
     },
@@ -63,9 +63,9 @@
       "url": "/app/pods",
       "icons": [
         {
-          "src": "/placeholder.svg",
-          "sizes": "any",
-          "type": "image/svg+xml"
+          "src": "/logo.png",
+          "sizes": "512x512",
+          "type": "image/png"
         }
       ]
     }

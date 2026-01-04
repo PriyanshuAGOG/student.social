@@ -54,6 +54,7 @@ export const DATABASE_ID = "peerspark-main-db"
 export const COLLECTIONS = {
   PROFILES: "profiles",
   POSTS: "posts",
+  COMMENTS: "comments",
   MESSAGES: "messages",
   RESOURCES: "resources",
   NOTIFICATIONS: "notifications",
@@ -195,6 +196,18 @@ export const authService = {
     try {
       if (!email || !password) {
         throw new Error("Email and password are required")
+      }
+
+      // First, check if there's already an active session
+      try {
+        const currentUser = await account.get()
+        if (currentUser) {
+          // Already logged in, return existing session info
+          console.log("User already has an active session")
+          return { userId: currentUser.$id, $id: 'existing-session' }
+        }
+      } catch (e) {
+        // No active session, proceed with login
       }
 
       // Create new session (use SDK when available, otherwise fallback to REST)
@@ -489,6 +502,37 @@ export const profileService = {
     }
   },
 
+  // Get profile by username (search by name with underscores converted to spaces)
+  async getProfileByUsername(username: string) {
+    try {
+      // Convert username format (john_doe) to name format (john doe) for search
+      const searchName = username.replace(/_/g, " ")
+      
+      // Search for profile by name (case-insensitive search)
+      const result = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTIONS.PROFILES,
+        [
+          Query.limit(10)
+        ]
+      )
+      
+      // Filter results to find matching name (case-insensitive)
+      const matchingProfile = result.documents.find((profile: any) => {
+        const profileName = (profile.name || "").toLowerCase()
+        const profileUsername = profileName.replace(/\s+/g, "_")
+        return profileUsername === username.toLowerCase() || 
+               profileName === searchName.toLowerCase() ||
+               profile.email?.split("@")[0]?.toLowerCase() === username.toLowerCase()
+      })
+      
+      return matchingProfile || null
+    } catch (error) {
+      console.error("Get profile by username error:", error)
+      return null
+    }
+  },
+
   // Update user profile (create if doesn't exist)
   async updateProfile(userId: string, data: any) {
     const safeAttributes = ['name', 'bio', 'avatar', 'email', 'isOnline', 'studyStreak', 'totalPoints', 'level', 'badges', 'avatarFileId']
@@ -643,6 +687,23 @@ export const podService = {
         isActive: true,
       })
 
+      // Send welcome message to the new pod chat
+      try {
+        await databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, "unique()", {
+          roomId: `${team.$id}_general`,
+          authorId: "system",
+          content: `🎉 Welcome to ${name}! This is your pod's group chat. Use it to coordinate study sessions, share resources, and support each other.`,
+          type: "system",
+          timestamp: new Date().toISOString(),
+          isEdited: false,
+          replyTo: null,
+          fileUrl: null,
+          reactions: [],
+        })
+      } catch (msgError) {
+        console.warn("Failed to send welcome message:", msgError)
+      }
+
       return { team, pod }
     } catch (error) {
       console.error("Create pod error:", error)
@@ -650,15 +711,16 @@ export const podService = {
     }
   },
 
-  // Join pod
-  async joinPod(podId: string, userId: string) {
+  // Join pod - handles both direct join and invite-based joining
+  async joinPod(podId: string, userId: string, userEmail?: string) {
     try {
-      // Add user to team
-      const inviteUrl = typeof window !== 'undefined' ? `${window.location.origin}/pod-invite` : 'https://example.com/pod-invite'
-      await teams.createMembership(podId, [], inviteUrl, userId)
-
-      // Update pod member count and list
+      // Get the pod first to verify it exists
       const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+      
+      if (!pod) {
+        throw new Error("Pod not found")
+      }
+
       // Handle members as array (new format) or JSON string (legacy)
       let currentMembers: string[] = []
       if (Array.isArray(pod.members)) {
@@ -666,26 +728,119 @@ export const podService = {
       } else if (typeof pod.members === 'string') {
         try { currentMembers = JSON.parse(pod.members) } catch { currentMembers = [] }
       }
+
+      // Check if user is already a member
+      if (currentMembers.includes(userId)) {
+        console.log("User is already a member of this pod")
+        return { success: true, alreadyMember: true }
+      }
+
+      // Try to add user to Appwrite team (optional - may fail due to permissions)
+      // The main membership is tracked in the database
+      try {
+        if (userEmail) {
+          const inviteUrl = typeof window !== 'undefined' ? `${window.location.origin}/app/pods` : 'https://example.com/app/pods'
+          await teams.createMembership(podId, [], inviteUrl, userEmail)
+        }
+      } catch (teamError: any) {
+        // Team membership is optional - we primarily use database for tracking
+        // This may fail due to missing email or team permissions
+        console.warn("Team membership creation failed (non-critical):", teamError?.message)
+      }
+
+      // Update pod member count and list in database (this is the primary membership record)
       const updatedMembers = [...new Set([...currentMembers, userId])] // Avoid duplicates
 
       await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, {
         memberCount: updatedMembers.length,
         members: updatedMembers, // Store as array, not JSON string
+        updatedAt: new Date().toISOString(),
       })
 
-      // Create notification for pod creator
-      await notificationService.createNotification(
-        pod.creatorId,
-        "New Member Joined",
-        `Someone joined your pod "${pod.name}"`,
-        "pod_join",
-        { podId, userId },
-      )
+      // Get the user's profile for notification
+      let userName = "A new member"
+      try {
+        const userProfile = await profileService.getProfile(userId)
+        if (userProfile?.name) {
+          userName = userProfile.name
+        }
+      } catch (e) {
+        // Use default name
+      }
 
-      return true
-    } catch (error) {
+      // Create notification for pod creator
+      try {
+        await notificationService.createNotification(
+          pod.creatorId,
+          "New Member Joined",
+          `${userName} joined your pod "${pod.name}"`,
+          "pod_join",
+          { podId, userId },
+        )
+      } catch (notifError) {
+        console.warn("Failed to create notification:", notifError)
+      }
+
+      // Send system message to pod chat announcing new member
+      try {
+        const chatRoomId = `${pod.teamId || podId}_general`
+        await databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, "unique()", {
+          roomId: chatRoomId,
+          authorId: "system",
+          content: `👋 ${userName} joined the pod!`,
+          type: "system",
+          timestamp: new Date().toISOString(),
+          isEdited: false,
+          replyTo: null,
+          fileUrl: null,
+          reactions: [],
+        })
+      } catch (chatError) {
+        console.warn("Failed to send join message to chat:", chatError)
+      }
+
+      return { success: true, alreadyMember: false }
+    } catch (error: any) {
       console.error("Join pod error:", error)
-      throw error
+      throw new Error(error?.message || "Failed to join pod")
+    }
+  },
+
+  // Generate shareable invite link for a pod
+  generateInviteLink(podId: string) {
+    if (typeof window === 'undefined') return ''
+    const baseUrl = window.location.origin
+    const inviteCode = btoa(`pod:${podId}:${Date.now()}`).replace(/=/g, '')
+    return `${baseUrl}/app/pods/join?invite=${inviteCode}&pod=${podId}`
+  },
+
+  // Parse invite link and extract pod ID
+  parseInviteLink(inviteUrl: string): string | null {
+    try {
+      const url = new URL(inviteUrl)
+      const podId = url.searchParams.get('pod')
+      return podId
+    } catch {
+      return null
+    }
+  },
+
+  // Add member to pod by email (for pod owners/admins)
+  async addMemberByEmail(podId: string, email: string, inviterId: string) {
+    try {
+      // Find user by email
+      const profiles = await profileService.getAllProfiles(100, 0)
+      const targetProfile = profiles.documents?.find((p: any) => p.email === email)
+      
+      if (!targetProfile) {
+        throw new Error("No user found with this email address")
+      }
+
+      // Join the pod
+      return await this.joinPod(podId, targetProfile.$id, email)
+    } catch (error: any) {
+      console.error("Add member by email error:", error)
+      throw new Error(error?.message || "Failed to add member")
     }
   },
 
@@ -1049,6 +1204,82 @@ export const podService = {
       throw err
     }
   },
+
+  // Update pod details (for pod owners)
+  async updatePod(podId: string, userId: string, updates: { name?: string; description?: string; subject?: string; difficulty?: string; isPublic?: boolean }) {
+    try {
+      // Verify the user is the pod creator
+      const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+      if (pod.creatorId !== userId) {
+        throw new Error("You can only edit pods you created")
+      }
+
+      const updateData: any = {
+        updatedAt: new Date().toISOString(),
+      }
+
+      if (updates.name !== undefined) updateData.name = updates.name
+      if (updates.description !== undefined) updateData.description = updates.description
+      if (updates.subject !== undefined) updateData.subject = updates.subject
+      if (updates.difficulty !== undefined) updateData.difficulty = updates.difficulty
+      if (updates.isPublic !== undefined) updateData.isPublic = updates.isPublic
+
+      // Update the pod document
+      const updatedPod = await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, updateData)
+
+      // Also update the team name if it was changed
+      if (updates.name) {
+        try {
+          await teams.updateName(podId, updates.name)
+        } catch (teamError) {
+          console.warn("Failed to update team name:", teamError)
+        }
+      }
+
+      return updatedPod
+    } catch (error) {
+      console.error("Update pod error:", error)
+      throw error
+    }
+  },
+
+  // Delete pod (for pod owners)
+  async deletePod(podId: string, userId: string) {
+    try {
+      // Verify the user is the pod creator
+      const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+      if (pod.creatorId !== userId) {
+        throw new Error("You can only delete pods you created")
+      }
+
+      // Delete the pod document
+      await databases.deleteDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+
+      // Try to delete the team as well
+      try {
+        await teams.delete(podId)
+      } catch (teamError) {
+        console.warn("Failed to delete team:", teamError)
+      }
+
+      // Delete associated chat rooms
+      try {
+        const chatRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
+          Query.equal("podId", podId)
+        ])
+        for (const room of chatRooms.documents) {
+          await databases.deleteDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, room.$id)
+        }
+      } catch (chatError) {
+        console.warn("Failed to delete chat rooms:", chatError)
+      }
+
+      return { success: true }
+    } catch (error) {
+      console.error("Delete pod error:", error)
+      throw error
+    }
+  },
 }
 
 // Study plan service
@@ -1121,6 +1352,16 @@ export const chatService = {
     } catch (error) {
       console.error("Get messages error:", error)
       return { documents: [] }
+    }
+  },
+
+  // Get a single message by ID
+  async getMessage(messageId: string) {
+    try {
+      return await databases.getDocument(DATABASE_ID, COLLECTIONS.MESSAGES, messageId)
+    } catch (error) {
+      console.error("Get message error:", error)
+      return null
     }
   },
 
@@ -1319,9 +1560,45 @@ export const resourceService = {
 // Feed/Posts Functions
 export const feedService = {
   // Create post
-  // Note: posts schema has: authorId, content, type, podId, timestamp, likes, comments, imageUrl, visibility, tags, likedBy
+  // Note: posts schema has: authorId, content, type, podId, timestamp, likes, comments, imageUrl, visibility, tags, likedBy, authorName, authorAvatar, authorUsername
   async createPost(authorId: string, content: string, type = "text", metadata: any = {}) {
     try {
+      // Get author profile for denormalized display data
+      let authorName = metadata.authorName || ""
+      let authorAvatar = metadata.authorAvatar || ""
+      let authorUsername = metadata.authorUsername || ""
+      
+      if (!authorName) {
+        try {
+          const profile = await profileService.getProfile(authorId)
+          if (profile) {
+            authorName = profile.name || ""
+            authorAvatar = profile.avatar || ""
+            authorUsername = profile.email ? `@${profile.email.split("@")[0]}` : `@user_${authorId.slice(0, 6)}`
+          }
+        } catch (e) {
+          // Use defaults
+        }
+      }
+
+      // Also try to get name from account if profile didn't have it
+      if (!authorName) {
+        try {
+          const user = await account.get()
+          if (user) {
+            authorName = user.name || ""
+            authorUsername = user.email ? `@${user.email.split("@")[0]}` : `@user_${authorId.slice(0, 6)}`
+          }
+        } catch (e) {
+          // Use defaults
+        }
+      }
+
+      // Ensure we have at least a fallback name
+      if (!authorName) {
+        authorName = `User ${authorId.slice(0, 6)}`
+      }
+
       return await databases.createDocument(DATABASE_ID, COLLECTIONS.POSTS, "unique()", {
         authorId: authorId,
         content: content,
@@ -1334,6 +1611,10 @@ export const feedService = {
         likedBy: [], // Must be an array, not JSON string
         visibility: metadata.visibility || "public", // public, pod, followers
         tags: metadata.tags || [], // Must be an array, not JSON string
+        // Denormalized author info for display
+        authorName: authorName,
+        authorAvatar: authorAvatar,
+        authorUsername: authorUsername,
       })
     } catch (error) {
       console.error("Create post error:", error)
@@ -1379,7 +1660,51 @@ export const feedService = {
       const combined = [...(publicPosts?.documents || []), ...(podPosts?.documents || [])]
       combined.sort((a: any, b: any) => (b.timestamp || '').localeCompare(a.timestamp || ''))
 
-      return { documents: combined }
+      // Enrich posts with author info if missing
+      const profileCache = new Map<string, any>()
+      const enrichedPosts = await Promise.all(
+        combined.map(async (post: any) => {
+          // If authorName is already set, no need to fetch
+          if (post.authorName && post.authorName !== "Someone") {
+            return post
+          }
+
+          // Try to get author info from profile
+          const authorId = post.authorId
+          if (!authorId) return post
+
+          // Check cache first
+          if (profileCache.has(authorId)) {
+            const cached = profileCache.get(authorId)
+            return {
+              ...post,
+              authorName: cached?.name || `User ${authorId.slice(0, 6)}`,
+              authorAvatar: cached?.avatar || "",
+              authorUsername: cached?.email ? `@${cached.email.split("@")[0]}` : `@user_${authorId.slice(0, 6)}`,
+            }
+          }
+
+          try {
+            const profile = await profileService.getProfile(authorId)
+            profileCache.set(authorId, profile)
+            return {
+              ...post,
+              authorName: profile?.name || `User ${authorId.slice(0, 6)}`,
+              authorAvatar: profile?.avatar || "",
+              authorUsername: profile?.email ? `@${profile.email.split("@")[0]}` : `@user_${authorId.slice(0, 6)}`,
+            }
+          } catch {
+            return {
+              ...post,
+              authorName: `User ${authorId.slice(0, 6)}`,
+              authorAvatar: "",
+              authorUsername: `@user_${authorId.slice(0, 6)}`,
+            }
+          }
+        })
+      )
+
+      return { documents: enrichedPosts }
     } catch (error) {
       console.error("Get feed posts error:", error)
       return { documents: [] }
@@ -1466,6 +1791,208 @@ export const feedService = {
       })
     } catch (error) {
       console.error("Toggle save post error:", error)
+      throw error
+    }
+  },
+
+  // Update post
+  async updatePost(postId: string, userId: string, updates: { content?: string; tags?: string[]; imageUrl?: string }) {
+    try {
+      // Verify the user owns the post
+      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
+      if (post.authorId !== userId) {
+        throw new Error("You can only edit your own posts")
+      }
+
+      const updateData: any = {
+        updatedAt: new Date().toISOString(),
+      }
+      
+      if (updates.content !== undefined) updateData.content = updates.content
+      if (updates.tags !== undefined) updateData.tags = updates.tags
+      if (updates.imageUrl !== undefined) updateData.imageUrl = updates.imageUrl
+
+      return await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, postId, updateData)
+    } catch (error) {
+      console.error("Update post error:", error)
+      throw error
+    }
+  },
+
+  // Delete post
+  async deletePost(postId: string, userId: string) {
+    try {
+      // Verify the user owns the post
+      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
+      if (post.authorId !== userId) {
+        throw new Error("You can only delete your own posts")
+      }
+
+      await databases.deleteDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
+      return { success: true }
+    } catch (error) {
+      console.error("Delete post error:", error)
+      throw error
+    }
+  },
+}
+
+// Comment Functions
+// Note: comments schema has: postId, authorId, content, timestamp, likes, likedBy, replyTo, authorName, authorAvatar
+export const commentService = {
+  // Create a new comment on a post
+  async createComment(postId: string, authorId: string, content: string, replyTo?: string) {
+    try {
+      // Get author profile for denormalized data
+      let authorName = `User ${authorId.slice(0, 6)}`
+      let authorAvatar = ""
+      
+      try {
+        const profile = await profileService.getProfile(authorId)
+        if (profile) {
+          authorName = profile.name || authorName
+          authorAvatar = profile.avatar || ""
+        }
+      } catch (e) {
+        // Use defaults
+      }
+
+      const comment = await databases.createDocument(DATABASE_ID, COLLECTIONS.COMMENTS, "unique()", {
+        postId,
+        authorId,
+        content,
+        timestamp: new Date().toISOString(),
+        likes: 0,
+        likedBy: [],
+        replyTo: replyTo || null,
+        authorName,
+        authorAvatar,
+      })
+
+      // Increment comment count on the post
+      try {
+        const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
+        await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, postId, {
+          comments: (post.comments || 0) + 1,
+        })
+      } catch (e) {
+        console.warn("Failed to update post comment count:", e)
+      }
+
+      // Notify post author (if different from commenter)
+      try {
+        const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
+        if (post.authorId && post.authorId !== authorId) {
+          await notificationService.createNotification(
+            post.authorId,
+            "New Comment",
+            `${authorName} commented on your post`,
+            "comment",
+            { postId, commentId: comment.$id }
+          )
+        }
+      } catch (e) {
+        console.warn("Failed to create comment notification:", e)
+      }
+
+      return comment
+    } catch (error) {
+      console.error("Create comment error:", error)
+      throw error
+    }
+  },
+
+  // Get comments for a post
+  async getComments(postId: string, limit = 50) {
+    try {
+      const comments = await databases.listDocuments(DATABASE_ID, COLLECTIONS.COMMENTS, [
+        Query.equal('postId', postId),
+        Query.orderDesc('timestamp'),
+        Query.limit(limit),
+      ])
+      return comments
+    } catch (error) {
+      console.error("Get comments error:", error)
+      return { documents: [] }
+    }
+  },
+
+  // Get replies to a comment
+  async getReplies(commentId: string, limit = 20) {
+    try {
+      const replies = await databases.listDocuments(DATABASE_ID, COLLECTIONS.COMMENTS, [
+        Query.equal('replyTo', commentId),
+        Query.orderAsc('timestamp'),
+        Query.limit(limit),
+      ])
+      return replies
+    } catch (error) {
+      console.error("Get replies error:", error)
+      return { documents: [] }
+    }
+  },
+
+  // Toggle like on a comment
+  async toggleLike(commentId: string, userId: string) {
+    try {
+      const comment = await databases.getDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId)
+      const currentLikes = comment.likes || 0
+      const likedBy = comment.likedBy || []
+
+      const isLiked = likedBy.includes(userId)
+      const newLikes = isLiked ? currentLikes - 1 : currentLikes + 1
+      const newLikedBy = isLiked ? likedBy.filter((id: string) => id !== userId) : [...likedBy, userId]
+
+      return await databases.updateDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId, {
+        likes: newLikes,
+        likedBy: newLikedBy,
+      })
+    } catch (error) {
+      console.error("Toggle comment like error:", error)
+      throw error
+    }
+  },
+
+  // Update a comment
+  async updateComment(commentId: string, userId: string, content: string) {
+    try {
+      const comment = await databases.getDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId)
+      if (comment.authorId !== userId) {
+        throw new Error("You can only edit your own comments")
+      }
+
+      return await databases.updateDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId, {
+        content,
+        updatedAt: new Date().toISOString(),
+      })
+    } catch (error) {
+      console.error("Update comment error:", error)
+      throw error
+    }
+  },
+
+  // Delete a comment
+  async deleteComment(commentId: string, userId: string) {
+    try {
+      const comment = await databases.getDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId)
+      if (comment.authorId !== userId) {
+        throw new Error("You can only delete your own comments")
+      }
+
+      // Decrement comment count on the post
+      try {
+        const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, comment.postId)
+        await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, comment.postId, {
+          comments: Math.max(0, (post.comments || 0) - 1),
+        })
+      } catch (e) {
+        console.warn("Failed to update post comment count:", e)
+      }
+
+      await databases.deleteDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId)
+      return { success: true }
+    } catch (error) {
+      console.error("Delete comment error:", error)
       throw error
     }
   },

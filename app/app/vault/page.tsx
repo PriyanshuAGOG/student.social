@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useState } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,8 +10,11 @@ import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FolderOpen, Search, Upload, Filter, Grid3X3, List, FileText, ImageIcon, Video, Code, BookOpen, Download, Share2, Star, Eye, Clock, Heart, ExternalLink, Play } from 'lucide-react'
+import { FolderOpen, Search, Upload, Filter, Grid3X3, List, FileText, ImageIcon, Video, Code, BookOpen, Download, Share2, Star, Eye, Clock, Heart, ExternalLink, Play, Loader2, RefreshCw } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
+import { resourceService, profileService } from "@/lib/appwrite"
+import { useAuth } from "@/lib/auth-context"
+import { useRouter } from "next/navigation"
 
 const RESOURCE_TYPES = [
   { id: "all", label: "All", icon: FolderOpen },
@@ -22,107 +25,62 @@ const RESOURCE_TYPES = [
   { id: "flashcards", label: "Flashcards", icon: BookOpen },
 ]
 
-const RESOURCES = [
-  {
-    id: "1",
-    title: "Advanced Data Structures Notes",
-    description: "Comprehensive notes covering trees, graphs, and advanced algorithms",
-    type: "notes",
-    format: "pdf",
-    size: "2.4 MB",
-    author: {
-      name: "Arjun Patel",
-      avatar: "/placeholder.svg?height=32&width=32",
-    },
-    pod: "DSA Masters",
-    tags: ["DSA", "Trees", "Graphs", "Algorithms"],
-    uploadDate: "2 days ago",
-    views: 234,
-    likes: 45,
-    comments: 12,
-    downloads: 89,
-    isBookmarked: true,
-    isLiked: false,
-    visibility: "public",
-    thumbnail: "/placeholder.svg?height=120&width=160&text=PDF+Notes",
-  },
-  {
-    id: "2",
-    title: "Cell Biology Diagrams",
-    description: "High-quality diagrams for cell structure and organelles",
-    type: "images",
-    format: "png",
-    size: "5.2 MB",
-    author: {
-      name: "Riya Sharma",
-      avatar: "/placeholder.svg?height=32&width=32",
-    },
-    pod: "NEET Biology Squad",
-    tags: ["Biology", "Cell", "Diagrams", "NEET"],
-    uploadDate: "1 day ago",
-    views: 156,
-    likes: 67,
-    comments: 8,
-    downloads: 123,
-    isBookmarked: false,
-    isLiked: true,
-    visibility: "pod",
-    thumbnail: "/placeholder.svg?height=120&width=160&text=Cell+Diagrams",
-  },
-  {
-    id: "3",
-    title: "React Hooks Cheat Sheet",
-    description: "Quick reference for all React hooks with examples",
-    type: "code",
-    format: "md",
-    size: "156 KB",
-    author: {
-      name: "Priya Gupta",
-      avatar: "/placeholder.svg?height=32&width=32",
-    },
-    pod: "Web Dev Fundamentals",
-    tags: ["React", "Hooks", "JavaScript", "Cheat Sheet"],
-    uploadDate: "3 days ago",
-    views: 345,
-    likes: 89,
-    comments: 23,
-    downloads: 167,
-    isBookmarked: true,
-    isLiked: false,
-    visibility: "public",
-    thumbnail: "/placeholder.svg?height=120&width=160&text=React+Code",
-  },
-  {
-    id: "4",
-    title: "Physics Formula Flashcards",
-    description: "Interactive flashcards for important physics formulas",
-    type: "flashcards",
-    format: "json",
-    size: "89 KB",
-    author: {
-      name: "Karan Singh",
-      avatar: "/placeholder.svg?height=32&width=32",
-    },
-    pod: "JEE Physics",
-    tags: ["Physics", "Formulas", "JEE", "Flashcards"],
-    uploadDate: "5 days ago",
-    views: 278,
-    likes: 56,
-    comments: 15,
-    downloads: 134,
-    isBookmarked: false,
-    isLiked: true,
-    visibility: "private",
-    thumbnail: "/placeholder.svg?height=120&width=160&text=Flashcards",
-  },
-]
+interface Resource {
+  $id: string
+  title: string
+  description: string
+  category: string
+  fileType: string
+  fileSize: number
+  fileUrl: string
+  authorId: string
+  authorName?: string
+  authorAvatar?: string
+  podId?: string
+  podName?: string
+  tags: string[]
+  uploadedAt: string
+  views: number
+  likes: number
+  downloads: number
+  isBookmarked?: boolean
+  isLiked?: boolean
+  visibility: string
+}
 
-const FOLDERS = [
-  { name: "My Notes", count: 23, icon: FileText },
-  { name: "Shared Resources", count: 45, icon: Share2 },
-  { name: "Bookmarked", count: 12, icon: Star },
-  { name: "Recent", count: 8, icon: Clock },
-]
+// Format file size
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + " B"
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB"
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB"
+}
+
+// Format relative time
+function formatRelativeTime(dateString: string): string {
+  try {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffInMs = now.getTime() - date.getTime()
+    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24))
+
+    if (diffInDays === 0) return "Today"
+    if (diffInDays === 1) return "Yesterday"
+    if (diffInDays < 7) return `${diffInDays} days ago`
+    return date.toLocaleDateString()
+  } catch {
+    return dateString
+  }
+}
+
+// Get file format from file type
+function getFileFormat(fileType: string): string {
+  if (fileType.includes("pdf")) return "pdf"
+  if (fileType.includes("image")) return "image"
+  if (fileType.includes("video")) return "video"
+  if (fileType.includes("javascript") || fileType.includes("typescript") || fileType.includes("text")) return "code"
+  if (fileType.includes("json")) return "json"
+  return "file"
+}
 
 export default function VaultPage() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -130,44 +88,179 @@ export default function VaultPage() {
   const [viewMode, setViewMode] = useState("grid")
   const [sortBy, setSortBy] = useState("recent")
   const [activeTab, setActiveTab] = useState("all")
-  const [resources, setResources] = useState(RESOURCES)
+  const [resources, setResources] = useState<Resource[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isUploading, setIsUploading] = useState(false)
+  const [myResourcesCount, setMyResourcesCount] = useState(0)
+  const [bookmarkedCount, setBookmarkedCount] = useState(0)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
+  const { user, loading: authLoading } = useAuth()
+  const router = useRouter()
 
-  const handleUpload = () => {
-    toast({
-      title: "Upload Resource",
-      description: "Opening file picker...",
-    })
+  // Load resources from database
+  const loadResources = useCallback(async () => {
+    if (!user?.$id) return
+
+    setIsLoading(true)
+    try {
+      // Load all public resources and user's own resources
+      const [publicResult, myResult] = await Promise.all([
+        resourceService.getResources({ visibility: "public" }, 100),
+        resourceService.getResources({ authorId: user.$id }, 100),
+      ])
+
+      // Merge and deduplicate
+      const allDocs = [...publicResult.documents, ...myResult.documents]
+      const uniqueDocs = allDocs.filter((doc, index, self) => 
+        index === self.findIndex(d => d.$id === doc.$id)
+      )
+
+      // Enrich with author info
+      const authorIds = [...new Set(uniqueDocs.map((d: any) => d.authorId).filter(Boolean))]
+      const authorMap = new Map()
+      
+      await Promise.all(
+        authorIds.map(async (authorId) => {
+          try {
+            const profile = await profileService.getProfile(authorId)
+            if (profile) {
+              authorMap.set(authorId, {
+                name: profile.name || "Unknown",
+                avatar: profile.avatar || "",
+              })
+            }
+          } catch (e) {
+            // Ignore
+          }
+        })
+      )
+
+      const transformedResources = uniqueDocs.map((doc: any) => ({
+        $id: doc.$id,
+        title: doc.title || doc.fileName || "Untitled",
+        description: doc.description || "",
+        category: doc.category || "other",
+        fileType: doc.fileType || "",
+        fileSize: doc.fileSize || 0,
+        fileUrl: doc.fileUrl || "",
+        authorId: doc.authorId,
+        authorName: authorMap.get(doc.authorId)?.name || "Unknown",
+        authorAvatar: authorMap.get(doc.authorId)?.avatar || "",
+        podId: doc.podId,
+        podName: doc.podName,
+        tags: doc.tags || [],
+        uploadedAt: doc.uploadedAt,
+        views: doc.views || 0,
+        likes: doc.likes || 0,
+        downloads: doc.downloads || 0,
+        isBookmarked: false, // TODO: Implement bookmarks
+        isLiked: false, // TODO: Implement likes
+        visibility: doc.visibility || "public",
+      }))
+
+      setResources(transformedResources)
+      setMyResourcesCount(myResult.documents.length)
+    } catch (error) {
+      console.error("Failed to load resources:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load resources. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }, [user, toast])
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      loadResources()
+    } else if (!authLoading && !user) {
+      router.push("/login")
+    }
+  }, [user, authLoading, loadResources, router])
+
+  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file || !user?.$id) return
+
+    setIsUploading(true)
+    try {
+      await resourceService.uploadResource(file, {
+        title: file.name,
+        description: "",
+        tags: [],
+        authorId: user.$id,
+        visibility: "public",
+        category: getCategoryFromFileType(file.type),
+      })
+
+      toast({
+        title: "Upload Successful",
+        description: `${file.name} has been uploaded`,
+      })
+
+      // Refresh resources
+      await loadResources()
+    } catch (error) {
+      console.error("Upload failed:", error)
+      toast({
+        title: "Upload Failed",
+        description: "Failed to upload resource. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    }
   }
 
-  const handleDownload = (resourceId: string) => {
-    const resource = resources.find(r => r.id === resourceId)
+  const getCategoryFromFileType = (fileType: string): string => {
+    if (fileType.includes("image")) return "images"
+    if (fileType.includes("video")) return "videos"
+    if (fileType.includes("pdf") || fileType.includes("document")) return "notes"
+    if (fileType.includes("javascript") || fileType.includes("typescript") || fileType.includes("text/plain")) return "code"
+    return "other"
+  }
+
+  const handleDownload = async (resourceId: string) => {
+    const resource = resources.find(r => r.$id === resourceId)
     if (resource) {
       toast({
         title: "Downloading",
         description: `Starting download of ${resource.title}`,
       })
-      // Simulate download
-      setTimeout(() => {
+      
+      try {
+        const downloadUrl = await resourceService.downloadResource(resourceId)
+        window.open(downloadUrl.toString(), "_blank")
+        
+        // Update local state
         setResources(prev => 
           prev.map(r => 
-            r.id === resourceId 
+            r.$id === resourceId 
               ? { ...r, downloads: r.downloads + 1 }
               : r
           )
         )
+      } catch (error) {
+        console.error("Download failed:", error)
         toast({
-          title: "Download Complete",
-          description: `${resource.title} has been downloaded`,
+          title: "Download Failed",
+          description: "Failed to download resource. Please try again.",
+          variant: "destructive",
         })
-      }, 1000)
+      }
     }
   }
 
   const handleLike = (resourceId: string) => {
     setResources(prev => 
       prev.map(resource => 
-        resource.id === resourceId 
+        resource.$id === resourceId 
           ? { 
               ...resource, 
               isLiked: !resource.isLiked,
@@ -177,7 +270,7 @@ export default function VaultPage() {
       )
     )
     
-    const resource = resources.find(r => r.id === resourceId)
+    const resource = resources.find(r => r.$id === resourceId)
     if (resource) {
       toast({
         title: resource.isLiked ? "Like Removed" : "Resource Liked",
@@ -189,13 +282,13 @@ export default function VaultPage() {
   const handleBookmark = (resourceId: string) => {
     setResources(prev => 
       prev.map(resource => 
-        resource.id === resourceId 
+        resource.$id === resourceId 
           ? { ...resource, isBookmarked: !resource.isBookmarked }
           : resource
       )
     )
     
-    const resource = resources.find(r => r.id === resourceId)
+    const resource = resources.find(r => r.$id === resourceId)
     if (resource) {
       toast({
         title: resource.isBookmarked ? "Bookmark Removed" : "Resource Bookmarked",
@@ -205,11 +298,11 @@ export default function VaultPage() {
   }
 
   const handleView = (resourceId: string) => {
-    const resource = resources.find(r => r.id === resourceId)
-    if (resource) {
+    const resource = resources.find(r => r.$id === resourceId)
+    if (resource && resource.fileUrl) {
       setResources(prev => 
         prev.map(r => 
-          r.id === resourceId 
+          r.$id === resourceId 
             ? { ...r, views: r.views + 1 }
             : r
         )
@@ -218,15 +311,15 @@ export default function VaultPage() {
         title: "Opening Resource",
         description: `Opening ${resource.title}`,
       })
-      // Simulate opening resource
-      window.open('#', '_blank')
+      window.open(resource.fileUrl, '_blank')
     }
   }
 
   const handleShare = (resourceId: string) => {
-    const resource = resources.find(r => r.id === resourceId)
+    const resource = resources.find(r => r.$id === resourceId)
     if (resource) {
-      navigator.clipboard.writeText(`https://peerspark.com/resource/${resourceId}`)
+      const shareUrl = `${window.location.origin}/app/vault?resource=${resourceId}`
+      navigator.clipboard.writeText(shareUrl)
       toast({
         title: "Link Copied",
         description: `Share link for ${resource.title} copied to clipboard`,
@@ -234,13 +327,24 @@ export default function VaultPage() {
     }
   }
 
+  // Hidden file input for upload
+  const FileInput = () => (
+    <input
+      ref={fileInputRef}
+      type="file"
+      className="hidden"
+      onChange={handleUpload}
+      accept="*/*"
+    />
+  )
+
   const filteredResources = resources.filter((resource) => {
     const matchesSearch =
       resource.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       resource.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       resource.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
 
-    const matchesType = selectedType === "all" || resource.type === selectedType
+    const matchesType = selectedType === "all" || resource.category === selectedType
 
     return matchesSearch && matchesType
   })
@@ -270,31 +374,53 @@ export default function VaultPage() {
     }
   }
 
-  const renderResourceGrid = (resources: typeof RESOURCES) => (
+  // Loading state
+  if (authLoading || isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading resources...</p>
+        </div>
+      </div>
+    )
+  }
+
+  const renderResourceGrid = (resources: Resource[]) => (
     <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
       {resources.map((resource) => (
-        <Card key={resource.id} className="hover:shadow-md transition-shadow group">
+        <Card key={resource.$id} className="hover:shadow-md transition-shadow group">
           <CardContent className="p-4">
-            {/* Thumbnail */}
+            {/* Thumbnail / Icon */}
             <div className="relative mb-3">
-              <img
-                src={resource.thumbnail || "/placeholder.svg"}
-                alt={resource.title}
-                className="w-full h-32 object-cover rounded-lg cursor-pointer"
-                onClick={() => handleView(resource.id)}
-              />
+              <div 
+                className="w-full h-32 bg-secondary/50 rounded-lg cursor-pointer flex items-center justify-center"
+                onClick={() => handleView(resource.$id)}
+              >
+                {resource.fileType.includes("image") && resource.fileUrl ? (
+                  <img
+                    src={resource.fileUrl}
+                    alt={resource.title}
+                    className="w-full h-full object-cover rounded-lg"
+                  />
+                ) : (
+                  <div className="text-muted-foreground">
+                    {getTypeIcon(resource.category)}
+                  </div>
+                )}
+              </div>
               <div className="absolute top-2 left-2">
                 <Badge className={getVisibilityColor(resource.visibility)}>{resource.visibility}</Badge>
               </div>
               <div className="absolute top-2 right-2">
-                <div className="bg-black/50 rounded-full p-1">{getTypeIcon(resource.type)}</div>
+                <div className="bg-black/50 rounded-full p-1 text-white">{getTypeIcon(resource.category)}</div>
               </div>
-              {resource.type === "videos" && (
+              {resource.category === "videos" && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <Button
                     size="sm"
                     className="bg-black/70 hover:bg-black/80 text-white rounded-full"
-                    onClick={() => handleView(resource.id)}
+                    onClick={() => handleView(resource.$id)}
                   >
                     <Play className="w-4 h-4" />
                   </Button>
@@ -305,7 +431,7 @@ export default function VaultPage() {
             {/* Content */}
             <div className="space-y-3">
               <div>
-                <h3 className="font-semibold text-sm line-clamp-2 cursor-pointer hover:text-primary" onClick={() => handleView(resource.id)}>
+                <h3 className="font-semibold text-sm line-clamp-2 cursor-pointer hover:text-primary" onClick={() => handleView(resource.$id)}>
                   {resource.title}
                 </h3>
                 <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{resource.description}</p>
@@ -314,33 +440,35 @@ export default function VaultPage() {
               {/* Author and Pod */}
               <div className="flex items-center space-x-2">
                 <Avatar className="w-6 h-6">
-                  <AvatarImage src={resource.author.avatar || "/placeholder.svg"} />
-                  <AvatarFallback className="text-xs">{resource.author.name[0]}</AvatarFallback>
+                  <AvatarImage src={resource.authorAvatar || "/placeholder.svg"} />
+                  <AvatarFallback className="text-xs">{(resource.authorName || "U")[0]}</AvatarFallback>
                 </Avatar>
-                <span className="text-xs text-muted-foreground truncate">{resource.author.name}</span>
-                {resource.pod && (
+                <span className="text-xs text-muted-foreground truncate">{resource.authorName || "Unknown"}</span>
+                {resource.podName && (
                   <>
                     <span className="text-xs text-muted-foreground">•</span>
                     <Badge variant="outline" className="text-xs truncate">
-                      {resource.pod}
+                      {resource.podName}
                     </Badge>
                   </>
                 )}
               </div>
 
               {/* Tags */}
-              <div className="flex flex-wrap gap-1">
-                {resource.tags.slice(0, 3).map((tag) => (
-                  <Badge key={tag} variant="secondary" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-                {resource.tags.length > 3 && (
-                  <Badge variant="secondary" className="text-xs">
-                    +{resource.tags.length - 3}
-                  </Badge>
-                )}
-              </div>
+              {resource.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {resource.tags.slice(0, 3).map((tag) => (
+                    <Badge key={tag} variant="secondary" className="text-xs">
+                      {tag}
+                    </Badge>
+                  ))}
+                  {resource.tags.length > 3 && (
+                    <Badge variant="secondary" className="text-xs">
+                      +{resource.tags.length - 3}
+                    </Badge>
+                  )}
+                </div>
+              )}
 
               {/* Stats */}
               <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -358,7 +486,7 @@ export default function VaultPage() {
                     {resource.downloads}
                   </span>
                 </div>
-                <span>{resource.size}</span>
+                <span>{formatFileSize(resource.fileSize)}</span>
               </div>
 
               {/* Actions */}
@@ -366,7 +494,7 @@ export default function VaultPage() {
                 <Button
                   size="sm"
                   className="flex-1 min-w-[80px] bg-primary hover:bg-primary/90"
-                  onClick={() => handleView(resource.id)}
+                  onClick={() => handleView(resource.$id)}
                 >
                   <ExternalLink className="w-3 h-3 mr-1" />
                   View
@@ -374,7 +502,7 @@ export default function VaultPage() {
                 <Button 
                   size="sm" 
                   variant="outline" 
-                  onClick={() => handleDownload(resource.id)}
+                  onClick={() => handleDownload(resource.$id)}
                   className="bg-transparent"
                 >
                   <Download className="w-3 h-3" />
@@ -382,7 +510,7 @@ export default function VaultPage() {
                 <Button 
                   size="sm" 
                   variant="outline" 
-                  onClick={() => handleLike(resource.id)}
+                  onClick={() => handleLike(resource.$id)}
                   className={`bg-transparent ${resource.isLiked ? 'text-red-500 border-red-200' : ''}`}
                 >
                   <Heart className={`w-3 h-3 ${resource.isLiked ? 'fill-current' : ''}`} />
@@ -390,7 +518,7 @@ export default function VaultPage() {
                 <Button 
                   size="sm" 
                   variant="outline" 
-                  onClick={() => handleBookmark(resource.id)}
+                  onClick={() => handleBookmark(resource.$id)}
                   className={`bg-transparent ${resource.isBookmarked ? 'text-yellow-500 border-yellow-200' : ''}`}
                 >
                   <Star className={`w-3 h-3 ${resource.isBookmarked ? 'fill-current' : ''}`} />
@@ -398,7 +526,7 @@ export default function VaultPage() {
                 <Button 
                   size="sm" 
                   variant="outline" 
-                  onClick={() => handleShare(resource.id)}
+                  onClick={() => handleShare(resource.$id)}
                   className="bg-transparent"
                 >
                   <Share2 className="w-3 h-3" />
@@ -411,36 +539,46 @@ export default function VaultPage() {
     </div>
   )
 
-  const renderResourceList = (resources: typeof RESOURCES) => (
+  const renderResourceList = (resources: Resource[]) => (
     <div className="space-y-2">
       {resources.map((resource) => (
-        <Card key={resource.id} className="hover:shadow-md transition-shadow">
+        <Card key={resource.$id} className="hover:shadow-md transition-shadow">
           <CardContent className="p-4">
             <div className="flex items-center space-x-4">
               {/* Thumbnail */}
-              <img
-                src={resource.thumbnail || "/placeholder.svg"}
-                alt={resource.title}
-                className="w-16 h-16 object-cover rounded-lg flex-shrink-0 cursor-pointer"
-                onClick={() => handleView(resource.id)}
-              />
+              <div 
+                className="w-16 h-16 bg-secondary/50 rounded-lg flex-shrink-0 cursor-pointer flex items-center justify-center"
+                onClick={() => handleView(resource.$id)}
+              >
+                {resource.fileType.includes("image") && resource.fileUrl ? (
+                  <img
+                    src={resource.fileUrl}
+                    alt={resource.title}
+                    className="w-full h-full object-cover rounded-lg"
+                  />
+                ) : (
+                  <div className="text-muted-foreground scale-150">
+                    {getTypeIcon(resource.category)}
+                  </div>
+                )}
+              </div>
 
               {/* Content */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-sm truncate cursor-pointer hover:text-primary" onClick={() => handleView(resource.id)}>
+                    <h3 className="font-semibold text-sm truncate cursor-pointer hover:text-primary" onClick={() => handleView(resource.$id)}>
                       {resource.title}
                     </h3>
                     <p className="text-xs text-muted-foreground line-clamp-1 mt-1">{resource.description}</p>
                     <div className="flex items-center space-x-2 mt-2">
                       <Avatar className="w-5 h-5">
-                        <AvatarImage src={resource.author.avatar || "/placeholder.svg"} />
-                        <AvatarFallback className="text-xs">{resource.author.name[0]}</AvatarFallback>
+                        <AvatarImage src={resource.authorAvatar || "/placeholder.svg"} />
+                        <AvatarFallback className="text-xs">{(resource.authorName || "U")[0]}</AvatarFallback>
                       </Avatar>
-                      <span className="text-xs text-muted-foreground">{resource.author.name}</span>
+                      <span className="text-xs text-muted-foreground">{resource.authorName || "Unknown"}</span>
                       <span className="text-xs text-muted-foreground">•</span>
-                      <span className="text-xs text-muted-foreground">{resource.uploadDate}</span>
+                      <span className="text-xs text-muted-foreground">{formatRelativeTime(resource.uploadedAt)}</span>
                       <Badge className={getVisibilityColor(resource.visibility)}>{resource.visibility}</Badge>
                     </div>
                   </div>
@@ -459,11 +597,11 @@ export default function VaultPage() {
                       <Download className="w-3 h-3 mr-1" />
                       {resource.downloads}
                     </span>
-                    <span>{resource.size}</span>
+                    <span>{formatFileSize(resource.fileSize)}</span>
                     <div className="flex gap-1 w-full sm:w-auto mt-2 sm:mt-0">
                       <Button
                         size="sm"
-                        onClick={() => handleView(resource.id)}
+                        onClick={() => handleView(resource.$id)}
                         className="flex-1 sm:flex-initial bg-primary hover:bg-primary/90"
                       >
                         <ExternalLink className="w-3 h-3 mr-1" />
@@ -472,7 +610,7 @@ export default function VaultPage() {
                       <Button 
                         size="sm" 
                         variant="outline" 
-                        onClick={() => handleDownload(resource.id)}
+                        onClick={() => handleDownload(resource.$id)}
                         className="bg-transparent"
                       >
                         <Download className="w-3 h-3" />
@@ -490,6 +628,8 @@ export default function VaultPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <FileInput />
+      
       {/* Mobile Header */}
       <div className="md:hidden p-4 border-b border-border">
         <div className="flex items-center justify-between mb-4">
@@ -497,8 +637,17 @@ export default function VaultPage() {
             <h1 className="text-xl font-bold">Resource Vault</h1>
             <p className="text-sm text-muted-foreground">Your learning library</p>
           </div>
-          <Button size="sm" onClick={handleUpload} className="bg-primary hover:bg-primary/90">
-            <Upload className="mr-2 h-4 w-4" />
+          <Button 
+            size="sm" 
+            onClick={() => fileInputRef.current?.click()} 
+            className="bg-primary hover:bg-primary/90"
+            disabled={isUploading}
+          >
+            {isUploading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="mr-2 h-4 w-4" />
+            )}
             Upload
           </Button>
         </div>
@@ -542,12 +691,20 @@ export default function VaultPage() {
               <p className="text-muted-foreground">Your centralized learning library</p>
             </div>
             <div className="flex items-center space-x-2">
-              <Button variant="outline">
-                <Filter className="mr-2 h-4 w-4" />
-                Filters
+              <Button variant="outline" onClick={() => loadResources()}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
               </Button>
-              <Button onClick={handleUpload} className="bg-primary hover:bg-primary/90">
-                <Upload className="mr-2 h-4 w-4" />
+              <Button 
+                onClick={() => fileInputRef.current?.click()} 
+                className="bg-primary hover:bg-primary/90"
+                disabled={isUploading}
+              >
+                {isUploading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="mr-2 h-4 w-4" />
+                )}
                 Upload Resource
               </Button>
             </div>
@@ -565,15 +722,34 @@ export default function VaultPage() {
                 <CardTitle className="text-lg">Quick Access</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {FOLDERS.map((folder) => (
-                  <Button key={folder.name} variant="ghost" className="w-full justify-start">
-                    <folder.icon className="w-4 h-4 mr-3" />
-                    <span className="flex-1 text-left">{folder.name}</span>
-                    <Badge variant="secondary" className="text-xs">
-                      {folder.count}
-                    </Badge>
-                  </Button>
-                ))}
+                <Button variant="ghost" className="w-full justify-start">
+                  <FileText className="w-4 h-4 mr-3" />
+                  <span className="flex-1 text-left">My Resources</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {myResourcesCount}
+                  </Badge>
+                </Button>
+                <Button variant="ghost" className="w-full justify-start">
+                  <Share2 className="w-4 h-4 mr-3" />
+                  <span className="flex-1 text-left">Shared Resources</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {resources.filter(r => r.authorId !== user?.$id).length}
+                  </Badge>
+                </Button>
+                <Button variant="ghost" className="w-full justify-start">
+                  <Star className="w-4 h-4 mr-3" />
+                  <span className="flex-1 text-left">Bookmarked</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {resources.filter(r => r.isBookmarked).length}
+                  </Badge>
+                </Button>
+                <Button variant="ghost" className="w-full justify-start">
+                  <Clock className="w-4 h-4 mr-3" />
+                  <span className="flex-1 text-left">All Resources</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {resources.length}
+                  </Badge>
+                </Button>
               </CardContent>
             </Card>
 
@@ -698,11 +874,11 @@ export default function VaultPage() {
 
             {/* Resources Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="my-uploads">Uploads</TabsTrigger>
-                <TabsTrigger value="bookmarked">Bookmarks</TabsTrigger>
-                <TabsTrigger value="recent">Recent</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto">
+                <TabsTrigger value="all" className="text-xs sm:text-sm py-2">All</TabsTrigger>
+                <TabsTrigger value="my-uploads" className="text-xs sm:text-sm py-2">Uploads</TabsTrigger>
+                <TabsTrigger value="bookmarked" className="text-xs sm:text-sm py-2">Bookmarks</TabsTrigger>
+                <TabsTrigger value="recent" className="text-xs sm:text-sm py-2">Recent</TabsTrigger>
               </TabsList>
 
               <TabsContent value="all" className="space-y-4">

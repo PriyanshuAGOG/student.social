@@ -1,70 +1,163 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
-import { MapPin, Calendar, LinkIcon, MessageSquare, UserPlus, Target, BookOpen, Users, Clock, Award, TrendingUp, Heart, Share2, ArrowLeft } from 'lucide-react'
+import { MapPin, Calendar, LinkIcon, MessageSquare, UserPlus, Target, BookOpen, Users, Clock, Award, TrendingUp, Heart, Share2, ArrowLeft, Loader2 } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { useParams } from "next/navigation"
+import { profileService, feedService } from "@/lib/appwrite"
+import { useAuth } from "@/lib/auth-context"
+import { Query } from "appwrite"
 
-// Mock user data - in real app, fetch based on username
-const getUserProfile = (username: string) => ({
-  name: username === "arjun_codes" ? "Arjun Patel" : "Sarah Johnson",
-  username: `@${username}`,
-  avatar: "/placeholder.svg?height=120&width=120",
-  bio: username === "arjun_codes" 
-    ? "Software Engineer at Google. Passionate about system design and helping others crack tech interviews."
-    : "Full-stack developer and UI/UX enthusiast. Love creating beautiful and functional web applications.",
-  location: username === "arjun_codes" ? "Mountain View, CA" : "Seattle, WA",
-  website: username === "arjun_codes" ? "arjunpatel.dev" : "sarahjohnson.design",
-  joinedDate: "January 2023",
-  followers: username === "arjun_codes" ? 2341 : 1876,
-  following: username === "arjun_codes" ? 456 : 623,
-  isFollowing: false,
+interface UserProfile {
+  userId: string
+  name: string
+  username: string
+  avatar: string
+  bio: string
+  location: string
+  website: string
+  joinedDate: string
+  followers: number
+  following: number
+  isFollowing: boolean
   stats: {
-    studyStreak: username === "arjun_codes" ? 67 : 34,
-    totalHours: username === "arjun_codes" ? 456 : 289,
-    podsJoined: username === "arjun_codes" ? 12 : 8,
-    resourcesShared: username === "arjun_codes" ? 34 : 19,
-    postsCreated: username === "arjun_codes" ? 89 : 45,
-    helpfulVotes: username === "arjun_codes" ? 234 : 156,
-  },
-})
+    studyStreak: number
+    totalHours: number
+    podsJoined: number
+    resourcesShared: number
+    postsCreated: number
+    helpfulVotes: number
+  }
+}
 
-const getUserPosts = (username: string) => [
-  {
-    id: "1",
-    title: username === "arjun_codes" ? "System Design Interview Tips" : "React Best Practices",
-    content: username === "arjun_codes" 
-      ? "After conducting 50+ system design interviews at Google, here are the most common mistakes I see candidates make..."
-      : "Here are some React patterns I've learned that have made my code more maintainable and performant...",
-    timestamp: "2 days ago",
-    likes: username === "arjun_codes" ? 156 : 89,
-    comments: username === "arjun_codes" ? 23 : 12,
-    shares: username === "arjun_codes" ? 45 : 18,
-    tags: username === "arjun_codes" ? ["SystemDesign", "Interview", "Google"] : ["React", "JavaScript", "Frontend"],
-    isLiked: false,
-    isBookmarked: false,
-  },
-]
+interface Post {
+  id: string
+  title: string
+  content: string
+  timestamp: string
+  likes: number
+  comments: number
+  shares?: number
+  tags: string[]
+  isLiked: boolean
+  isBookmarked: boolean
+}
 
 export default function UserProfilePage() {
   const params = useParams()
   const username = params.username as string
   const router = useRouter()
   const { toast } = useToast()
+  const { user } = useAuth()
   
   const [activeTab, setActiveTab] = useState("posts")
-  const [userProfile] = useState(getUserProfile(username))
-  const [userPosts] = useState(getUserPosts(username))
-  const [isFollowing, setIsFollowing] = useState(userProfile.isFollowing)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [userPosts, setUserPosts] = useState<Post[]>([])
+  const [isFollowing, setIsFollowing] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false)
+
+  // Load profile by username
+  const loadProfile = useCallback(async () => {
+    if (!username) return
+
+    setIsLoading(true)
+    try {
+      // Try to find profile by username (search by name or email prefix)
+      const searchName = username.replace(/_/g, " ")
+      const profile = await profileService.getProfileByUsername(username)
+      
+      if (profile) {
+        const joinedDate = profile.joinedAt
+          ? new Date(profile.joinedAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+          : ""
+
+        setUserProfile({
+          userId: profile.userId || profile.$id,
+          name: profile.name || username,
+          username: `@${username}`,
+          avatar: profile.avatar || "/placeholder.svg?height=120&width=120",
+          bio: profile.bio || "",
+          location: profile.location || "",
+          website: profile.website || "",
+          joinedDate,
+          followers: profile.followers || 0,
+          following: profile.following || 0,
+          isFollowing: false,
+          stats: {
+            studyStreak: profile.studyStreak || 0,
+            totalHours: profile.totalHours || 0,
+            podsJoined: profile.podsJoined || 0,
+            resourcesShared: profile.resourcesShared || 0,
+            postsCreated: profile.postsCreated || 0,
+            helpfulVotes: profile.helpfulVotes || 0,
+          },
+        })
+      } else {
+        toast({
+          title: "User not found",
+          description: "Could not find a user with that username.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Failed to load profile:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load user profile.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }, [username, toast])
+
+  // Load user posts
+  const loadPosts = useCallback(async () => {
+    if (!userProfile?.userId) return
+
+    setIsLoadingPosts(true)
+    try {
+      const result = await feedService.getUserPosts(userProfile.userId)
+      const posts = (result.documents || []).map((p: any) => ({
+        id: p.$id,
+        title: p.content?.substring(0, 50) || "Post",
+        content: p.content || "",
+        timestamp: p.timestamp ? new Date(p.timestamp).toLocaleDateString() : "Recently",
+        likes: p.likes || 0,
+        comments: p.comments || 0,
+        shares: 0,
+        tags: p.tags || [],
+        isLiked: user?.$id ? (p.likedBy || []).includes(user.$id) : false,
+        isBookmarked: false,
+      }))
+      setUserPosts(posts)
+    } catch (error) {
+      console.error("Failed to load posts:", error)
+    } finally {
+      setIsLoadingPosts(false)
+    }
+  }, [userProfile?.userId, user])
+
+  useEffect(() => {
+    loadProfile()
+  }, [loadProfile])
+
+  useEffect(() => {
+    if (userProfile) {
+      loadPosts()
+    }
+  }, [userProfile, loadPosts])
 
   const handleFollow = () => {
+    if (!userProfile) return
     setIsFollowing(!isFollowing)
     toast({
       title: isFollowing ? "Unfollowed" : "Following",
@@ -73,6 +166,7 @@ export default function UserProfilePage() {
   }
 
   const handleMessage = () => {
+    if (!userProfile) return
     router.push("/app/chat")
     toast({
       title: "Message",
@@ -88,11 +182,39 @@ export default function UserProfilePage() {
   }
 
   const handleShare = (postId: string) => {
-    navigator.clipboard.writeText(`https://peerspark.com/post/${postId}`)
+    navigator.clipboard.writeText(`${window.location.origin}/app/feed?post=${postId}`)
     toast({
       title: "Shared",
       description: "Post link copied to clipboard!",
     })
+  }
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading profile...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // User not found
+  if (!userProfile) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-2">User Not Found</h1>
+          <p className="text-muted-foreground mb-4">The user &quot;{username}&quot; could not be found.</p>
+          <Button onClick={() => router.back()}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Go Back
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -141,21 +263,27 @@ export default function UserProfilePage() {
                   </div>
                 </div>
 
-                <p className="text-muted-foreground text-sm">{userProfile.bio}</p>
+                {userProfile.bio && <p className="text-muted-foreground text-sm">{userProfile.bio}</p>}
 
                 <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  <div className="flex items-center space-x-1">
-                    <MapPin className="w-3 h-3" />
-                    <span>{userProfile.location}</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <LinkIcon className="w-3 h-3" />
-                    <span className="text-primary">{userProfile.website}</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <Calendar className="w-3 h-3" />
-                    <span>Joined {userProfile.joinedDate}</span>
-                  </div>
+                  {userProfile.location && (
+                    <div className="flex items-center space-x-1">
+                      <MapPin className="w-3 h-3" />
+                      <span>{userProfile.location}</span>
+                    </div>
+                  )}
+                  {userProfile.website && (
+                    <div className="flex items-center space-x-1">
+                      <LinkIcon className="w-3 h-3" />
+                      <span className="text-primary">{userProfile.website}</span>
+                    </div>
+                  )}
+                  {userProfile.joinedDate && (
+                    <div className="flex items-center space-x-1">
+                      <Calendar className="w-3 h-3" />
+                      <span>Joined {userProfile.joinedDate}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Profile Actions */}

@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -125,8 +126,8 @@ export default function LandingPage() {
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-3">
               <Link href="/" className="flex items-center space-x-2">
-                <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-                  <Zap className="h-5 w-5 text-primary-foreground" />
+                <div className="h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center">
+                  <Image src="/logo.png" alt="PeerSpark" width={32} height={32} className="object-cover" />
                 </div>
                 <span className="font-bold text-xl">PeerSpark</span>
               </Link>
@@ -413,8 +414,8 @@ export default function LandingPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             <div className="col-span-2 md:col-span-1">
               <Link href="/" className="flex items-center space-x-2 mb-4">
-                <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-                  <Zap className="h-5 w-5 text-primary-foreground" />
+                <div className="h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center">
+                  <Image src="/logo.png" alt="PeerSpark" width={32} height={32} className="object-cover" />
                 </div>
                 <span className="font-bold text-xl">PeerSpark</span>
               </Link>

@@ -1,11 +1,11 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { 
-  Zap, 
   ArrowLeft, 
   FileText, 
   Users, 
@@ -53,8 +53,8 @@ export default function TermsOfServicePage() {
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-4">
               <Link href="/" className="flex items-center space-x-2">
-                <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-                  <Zap className="h-5 w-5 text-primary-foreground" />
+                <div className="h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center">
+                  <Image src="/logo.png" alt="PeerSpark" width={20} height={20} className="object-cover" />
                 </div>
                 <span className="font-bold text-xl">PeerSpark</span>
               </Link>
@@ -94,8 +94,8 @@ export default function TermsOfServicePage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid lg:grid-cols-4 gap-8">
-          {/* Table of Contents - Sidebar */}
-          <aside className="lg:col-span-1">
+          {/* Table of Contents - Sidebar (hidden on mobile) */}
+          <aside className="hidden lg:block lg:col-span-1">
             <div className="sticky top-24">
               <Card>
                 <CardContent className="p-4">
@@ -117,7 +117,7 @@ export default function TermsOfServicePage() {
           </aside>
 
           {/* Main Content */}
-          <main className="lg:col-span-3 space-y-12">
+          <main className="col-span-1 lg:col-span-3 space-y-12">
             {/* Key Points Summary */}
             <Card className="bg-primary/5 border-primary/20">
               <CardContent className="p-6">
@@ -919,8 +919,8 @@ export default function TermsOfServicePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded bg-primary flex items-center justify-center">
-                <Zap className="h-4 w-4 text-primary-foreground" />
+              <div className="h-6 w-6 rounded overflow-hidden flex items-center justify-center">
+                <Image src="/logo.png" alt="PeerSpark" width={16} height={16} className="object-cover" />
               </div>
               <span className="font-semibold">PeerSpark</span>
             </div>

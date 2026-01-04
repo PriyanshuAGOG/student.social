@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -8,7 +9,6 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { 
-  Zap, 
   ArrowLeft, 
   Cookie,
   Shield,
@@ -139,8 +139,8 @@ export default function CookiePolicyPage() {
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-4">
               <Link href="/" className="flex items-center space-x-2">
-                <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-                  <Zap className="h-5 w-5 text-primary-foreground" />
+                <div className="h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center">
+                  <Image src="/logo.png" alt="PeerSpark" width={20} height={20} className="object-cover" />
                 </div>
                 <span className="font-bold text-xl">PeerSpark</span>
               </Link>
@@ -178,8 +178,8 @@ export default function CookiePolicyPage() {
       <section className="py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col lg:flex-row gap-8">
-            {/* Sidebar - Table of Contents */}
-            <aside className="lg:w-64 shrink-0">
+            {/* Sidebar - Table of Contents (hidden on mobile) */}
+            <aside className="hidden lg:block lg:w-64 shrink-0">
               <div className="sticky top-24">
                 <Card>
                   <CardHeader>
@@ -218,10 +218,10 @@ export default function CookiePolicyPage() {
                   </p>
                   <div className="space-y-4">
                     {cookieTypes.map((type) => (
-                      <div key={type.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                      <div key={type.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg bg-muted/50 gap-3">
                         <div className="flex items-center gap-3">
-                          <type.icon className="h-5 w-5 text-muted-foreground" />
-                          <div>
+                          <type.icon className="h-5 w-5 text-muted-foreground shrink-0" />
+                          <div className="min-w-0">
                             <Label className="font-medium">{type.name}</Label>
                             {type.required && (
                               <Badge variant="secondary" className="ml-2 text-xs">Required</Badge>
@@ -234,14 +234,16 @@ export default function CookiePolicyPage() {
                             setPreferences(prev => ({ ...prev, [type.id]: checked }))
                           }
                           disabled={type.required}
+                          className="shrink-0"
                         />
                       </div>
                     ))}
                   </div>
-                  <div className="flex gap-2 pt-4">
-                    <Button onClick={handleSavePreferences}>Save Preferences</Button>
+                  <div className="flex flex-col sm:flex-row gap-2 pt-4">
+                    <Button onClick={handleSavePreferences} className="w-full sm:w-auto">Save Preferences</Button>
                     <Button 
                       variant="outline"
+                      className="w-full sm:w-auto"
                       onClick={() => setPreferences({
                         essential: true,
                         functional: true,
@@ -254,6 +256,7 @@ export default function CookiePolicyPage() {
                     </Button>
                     <Button 
                       variant="outline"
+                      className="w-full sm:w-auto"
                       onClick={() => setPreferences({
                         essential: true,
                         functional: false,
@@ -648,8 +651,8 @@ export default function CookiePolicyPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded bg-primary flex items-center justify-center">
-                <Zap className="h-4 w-4 text-primary-foreground" />
+              <div className="h-6 w-6 rounded overflow-hidden flex items-center justify-center">
+                <Image src="/logo.png" alt="PeerSpark" width={16} height={16} className="object-cover" />
               </div>
               <span className="font-semibold">PeerSpark</span>
             </div>

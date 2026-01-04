@@ -6,8 +6,7 @@ const RUNTIME_CACHE = 'peerspark-runtime';
 const ASSETS_TO_CACHE = [
   '/',
   '/manifest.json',
-  '/placeholder-icon.png',
-  '/placeholder-logo.png',
+  '/logo.png',
   '/favicon.ico',
 ];
 
@@ -164,7 +163,7 @@ self.addEventListener('push', (event) => {
   const data = event.data.json();
   const options = {
     body: data.body || 'New notification from PeerSpark',
-    icon: '/placeholder-icon.png',
+    icon: '/logo.png',
     badge: '/favicon.ico',
     tag: data.tag || 'notification',
     requireInteraction: data.requireInteraction || false,

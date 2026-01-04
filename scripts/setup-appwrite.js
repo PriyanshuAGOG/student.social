@@ -146,6 +146,7 @@ const collections = [
       ['type', 'string', 50, true],
       ['podId', 'string', 255, false],
       ['timestamp', 'string', 255, true],
+      ['updatedAt', 'string', 255, false],
       ['likes', 'integer', null, false],
       ['comments', 'integer', null, false],
       ['shares', 'integer', null, false],
@@ -188,6 +189,7 @@ const collections = [
       ['isActive', 'boolean', null, false],
       ['isPublic', 'boolean', null, false],
       ['createdAt', 'string', 255, true],
+      ['updatedAt', 'string', 255, false],
       ['memberCount', 'integer', null, false],
       // Matching metadata
       ['idealLearnerType', 'array-string', 100, false], // Array of strings
@@ -210,9 +212,15 @@ const collections = [
       ['authorId', 'string', 255, true],
       ['uploadedAt', 'string', 255, true],
       ['description', 'string', 2000, false],
+      ['tags', 'array-string', 100, false],
       ['podId', 'string', 255, false],
+      ['podName', 'string', 255, false],
       ['visibility', 'string', 50, false],
+      ['category', 'string', 100, false],
       ['downloads', 'integer', null, false],
+      ['likes', 'integer', null, false],
+      ['views', 'integer', null, false],
+      ['isApproved', 'boolean', null, false],
     ],
   },
   {
@@ -225,7 +233,12 @@ const collections = [
       ['type', 'string', 50, true],
       ['timestamp', 'string', 255, true],
       ['isRead', 'boolean', null, false],
+      ['readAt', 'string', 255, false],
       ['actionUrl', 'string', 500, false],
+      ['actionText', 'string', 255, false],
+      ['imageUrl', 'string', 500, false],
+      ['podId', 'string', 255, false],
+      ['podName', 'string', 255, false],
     ],
   },
   {
@@ -254,6 +267,21 @@ const collections = [
       ['isActive', 'boolean', null, false],
       ['lastMessage', 'string', 500, false],
       ['lastMessageTime', 'string', 255, false],
+    ],
+  },
+  {
+    id: 'comments',
+    name: 'Post Comments',
+    attrs: [
+      ['postId', 'string', 255, true], // Post this comment belongs to
+      ['authorId', 'string', 255, true], // User who wrote the comment
+      ['content', 'string', 2000, true], // Comment text content
+      ['timestamp', 'string', 255, true], // When the comment was created
+      ['likes', 'integer', null, false], // Number of likes on this comment
+      ['likedBy', 'array-string', 255, false], // Array of user IDs who liked
+      ['replyTo', 'string', 255, false], // Parent comment ID for replies (null for top-level)
+      ['authorName', 'string', 255, false], // Denormalized author name
+      ['authorAvatar', 'string', 500, false], // Denormalized author avatar URL
     ],
   },
 ];

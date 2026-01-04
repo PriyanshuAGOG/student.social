@@ -329,11 +329,12 @@ export default function PodDetailPage() {
     }
     try {
       const entry = await podService.addCheckIn(podId, user.$id, checkInNote.trim(), user?.name || "You")
+      const entryData = entry as Record<string, any> | null
       const normalized = {
-        id: entry.$id || entry.id,
-        note: entry.note || checkInNote.trim(),
-        at: entry.createdAt || entry.$createdAt || new Date().toISOString(),
-        by: entry.userName || user?.name || "You",
+        id: entryData?.$id ?? Date.now().toString(),
+        note: entryData?.note ?? checkInNote.trim(),
+        at: entryData?.createdAt ?? new Date().toISOString(),
+        by: entryData?.userName ?? user?.name ?? "You",
       }
       setCheckIns((prev) => [normalized, ...prev].slice(0, 20))
       setCheckInNote("")
@@ -429,20 +430,22 @@ export default function PodDetailPage() {
   const activityItems = useMemo(() => {
     const eventItems = (events || []).map((ev) => ({
       id: ev.$id || ev.id,
-      type: "session",
+      type: "session" as const,
       title: ev.title || "Session",
       meta: new Date(ev.startTime).toLocaleString(),
       description: ev.description || "Upcoming session",
+      timestamp: new Date(ev.startTime).getTime(),
     }))
     const resourceItems = (resources || []).map((res) => ({
       id: res.$id || res.id,
-      type: "resource",
+      type: "resource" as const,
       title: res.title || "Resource",
       meta: new Date(res.$createdAt || res.createdAt || res.updatedAt || Date.now()).toLocaleString(),
       description: res.description || "New resource added",
+      timestamp: new Date(res.$createdAt || res.createdAt || res.updatedAt || Date.now()).getTime(),
     }))
     return [...eventItems, ...resourceItems]
-      .sort((a, b) => new Date(b.meta).getTime() - new Date(a.meta).getTime())
+      .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, 8)
   }, [events, resources])
 
@@ -515,7 +518,7 @@ export default function PodDetailPage() {
         : typeof res.tags === "string"
           ? res.tags.split(",")
           : []
-      raw.forEach((tag) => {
+      raw.forEach((tag: string) => {
         const trimmed = tag.trim().toLowerCase()
         if (trimmed) tags.add(trimmed)
       })

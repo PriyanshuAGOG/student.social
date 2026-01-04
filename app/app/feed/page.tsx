@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Heart, MessageCircle, Share2, Bookmark, Search, Users, Filter, MoreHorizontal, User, Flag, Sparkles, Flame, Clock, Trophy } from 'lucide-react'
 import { CreatePostModal } from "@/components/create-post-modal"
+import { CommentsSection } from "@/components/comments-section"
 import { MobileHeader } from "@/components/mobile-header"
 import { FloatingActionButton } from "@/components/floating-action-button"
 import { useToast } from "@/hooks/use-toast"
@@ -253,11 +254,12 @@ export default function FeedPage() {
     }
   }
 
-  const handleComment = (postId: string) => {
-    toast({
-      title: "Comments",
-      description: "Comment feature coming soon!",
-    })
+  const handleCommentCountChange = (postId: string, newCount: number) => {
+    setPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId ? { ...post, comments: newCount } : post
+      )
+    )
   }
 
   const handlePostClick = (username: string) => {
@@ -533,15 +535,10 @@ export default function FeedPage() {
                           <Heart className={`w-4 h-4 mr-1 md:mr-2 ${post.isLiked ? "fill-current" : ""}`} />
                           <span className="text-xs md:text-sm">{post.likes}</span>
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleComment(post.id)}
-                          className="hover:text-blue-500 h-8 px-2 md:px-3"
-                        >
+                        <div className="flex items-center text-muted-foreground h-8 px-2 md:px-3">
                           <MessageCircle className="w-4 h-4 mr-1 md:mr-2" />
                           <span className="text-xs md:text-sm">{post.comments}</span>
-                        </Button>
+                        </div>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -553,6 +550,15 @@ export default function FeedPage() {
                         </Button>
                       </div>
                     </div>
+
+                    {/* Comments Section */}
+                    {post.kind !== "achievement" && (
+                      <CommentsSection
+                        postId={post.id}
+                        initialCommentCount={post.comments}
+                        onCommentCountChange={(count) => handleCommentCountChange(post.id, count)}
+                      />
+                    )}
                   </CardContent>
                 </Card>
               ))

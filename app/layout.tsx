@@ -22,9 +22,9 @@ export const metadata: Metadata = {
     telephone: false,
   },
   icons: {
-    icon: '/favicon.ico',
-    shortcut: '/favicon.ico',
-    apple: '/placeholder-icon.png',
+    icon: '/logo.png',
+    shortcut: '/logo.png',
+    apple: '/logo.png',
   },
   keywords: [
     'collaborative learning',
@@ -45,7 +45,7 @@ export const metadata: Metadata = {
     description: 'Connect, learn, and grow with peers through collaborative study sessions and AI-powered insights.',
     images: [
       {
-        url: '/placeholder-logo.png',
+        url: '/logo.png',
         width: 512,
         height: 512,
         alt: 'PeerSpark Logo',
@@ -56,7 +56,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'PeerSpark - Collaborative Learning Platform',
     description: 'Connect, learn, and grow with peers through collaborative study sessions and AI-powered insights.',
-    images: ['/placeholder-logo.png'],
+    images: ['/logo.png'],
   },
 }
 

@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, Search, Phone, Video, MoreVertical, Users, Hash, Plus, Smile, Paperclip, ImageIcon, Calendar, Settings, MessageSquare, X, Menu, ArrowLeft, AtSign } from 'lucide-react'
+import { Send, Search, Phone, Video, MoreVertical, Users, Hash, Plus, Smile, Paperclip, ImageIcon, Calendar, Settings, MessageSquare, X, Menu, ArrowLeft, AtSign, Mic, Loader2, Reply, CornerUpLeft } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,6 +49,8 @@ interface Message {
   fileName?: string
   isEdited?: boolean
   mentions?: string[]
+  replyTo?: string | null
+  replyToMessage?: Message | null
 }
 
 export default function ChatPage() {
@@ -59,6 +61,8 @@ export default function ChatPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [showMobileChatList, setShowMobileChatList] = useState(true)
+  const [isListening, setIsListening] = useState(false)
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -67,6 +71,54 @@ export default function ChatPage() {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
+
+  // Voice input handler
+  const startVoiceInput = () => {
+    if (typeof window === 'undefined') return
+    
+    if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
+      const recognition = new SpeechRecognition()
+
+      recognition.continuous = false
+      recognition.interimResults = false
+      recognition.lang = "en-US"
+
+      recognition.onstart = () => {
+        setIsListening(true)
+      }
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript
+        setInputValue(prev => prev + (prev ? ' ' : '') + transcript)
+        setIsListening(false)
+      }
+
+      recognition.onerror = (event: any) => {
+        setIsListening(false)
+        console.error('Speech recognition error:', event.error)
+        toast({
+          title: "Voice input error",
+          description: event.error === 'not-allowed' 
+            ? "Microphone access denied. Please allow microphone access in your browser settings."
+            : "Could not recognize speech. Please try again.",
+          variant: "destructive",
+        })
+      }
+
+      recognition.onend = () => {
+        setIsListening(false)
+      }
+
+      recognition.start()
+    } else {
+      toast({
+        title: "Voice input not supported",
+        description: "Your browser doesn't support voice input. Try using Chrome or Edge.",
+        variant: "destructive",
+      })
+    }
   }
 
   useEffect(() => {
@@ -104,7 +156,22 @@ export default function ChatPage() {
       if (!selectedRoom) return
       try {
         const res = await chatService.getMessages(selectedRoom.$id, 50, 0)
-        setMessages(res.documents || [])
+        const messagesWithReplies = await Promise.all(
+          (res.documents || []).map(async (msg: any) => {
+            if (msg.replyTo) {
+              // Find the replied message in the loaded messages or fetch it
+              const replyMessage = (res.documents || []).find((m: any) => m.$id === msg.replyTo)
+              if (replyMessage) {
+                return { ...msg, replyToMessage: replyMessage }
+              }
+              // Fetch the message if not in the current batch
+              const fetchedReply = await chatService.getMessage(msg.replyTo)
+              return { ...msg, replyToMessage: fetchedReply }
+            }
+            return msg
+          })
+        )
+        setMessages(messagesWithReplies)
       } catch (error) {
         console.error(error)
         setMessages([])
@@ -118,11 +185,18 @@ export default function ChatPage() {
 
     setIsLoading(true)
     const original = inputValue
+    const replyToId = replyingTo?.$id || null
     try {
-      const msg = await chatService.sendMessage(selectedRoom.$id, user.$id, original, "text")
-      setMessages((prev) => [...prev, msg])
+      const msg = await chatService.sendMessage(selectedRoom.$id, user.$id, original, "text", { replyTo: replyToId })
+      // Attach reply info to the new message for display
+      const newMessage: Message = {
+        ...msg,
+        replyToMessage: replyingTo,
+      }
+      setMessages((prev) => [...prev, newMessage])
       const shouldAskAI = original.includes("@ai")
       setInputValue("")
+      setReplyingTo(null)
       scrollToBottom()
 
       if (shouldAskAI) {
@@ -694,7 +768,7 @@ export default function ChatPage() {
                   return (
                     <div
                       key={message.$id}
-                      className={`flex gap-3 ${isCurrent ? "justify-end" : "justify-start"}`}
+                      className={`flex gap-3 group ${isCurrent ? "justify-end" : "justify-start"}`}
                     >
                       {!isCurrent && (
                         <Avatar className="h-8 w-8 mt-1">
@@ -705,44 +779,85 @@ export default function ChatPage() {
                         </Avatar>
                       )}
 
-                      <div className={`max-w-[85%] md:max-w-[80%] ${bubbleClass} p-3`}>
-                        {!isCurrent && (
-                          <p className="text-xs font-medium mb-1 opacity-70">
-                            {message.authorName || "Unknown"}
-                            {isAI && (
-                              <Badge variant="secondary" className="ml-2 text-xs">
-                                AI
-                              </Badge>
+                      <div className="flex flex-col gap-1">
+                        {/* Reply preview */}
+                        {message.replyToMessage && (
+                          <div className={`flex items-center gap-2 text-xs ${isCurrent ? 'justify-end' : 'justify-start'}`}>
+                            <div className="flex items-center gap-1 text-muted-foreground bg-muted/50 px-2 py-1 rounded-lg max-w-[200px]">
+                              <CornerUpLeft className="h-3 w-3 shrink-0" />
+                              <span className="font-medium">{message.replyToMessage.authorName || 'Someone'}</span>
+                              <span className="truncate opacity-75">{message.replyToMessage.content}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-1">
+                          {/* Reply button for others' messages - show on left */}
+                          {!isCurrent && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => setReplyingTo(message)}
+                              title="Reply"
+                            >
+                              <Reply className="h-3 w-3" />
+                            </Button>
+                          )}
+
+                          <div className={`max-w-[85%] md:max-w-[80%] ${bubbleClass} p-3`}>
+                            {!isCurrent && (
+                              <p className="text-xs font-medium mb-1 opacity-70">
+                                {message.authorName || "Unknown"}
+                                {isAI && (
+                                  <Badge variant="secondary" className="ml-2 text-xs">
+                                    AI
+                                  </Badge>
+                                )}
+                              </p>
                             )}
-                          </p>
-                        )}
-                        {message.type === "file" && message.fileUrl ? (
-                          <a
-                            href={message.fileUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-sm underline font-medium"
-                          >
-                            {message.fileName || "Attachment"}
-                          </a>
-                        ) : (
-                          <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                            {message.content.split(/(@\w+)/g).map((part, index) => {
-                              if (part.startsWith("@")) {
-                                return (
-                                  <span key={index} className="text-blue-600 dark:text-blue-400 font-medium">
-                                    {part}
-                                  </span>
-                                )
-                              }
-                              return part
-                            })}
-                          </p>
-                        )}
-                        <p className="text-xs opacity-70 mt-2">
-                          {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          {message.isEdited && <span className="ml-1">(edited)</span>}
-                        </p>
+                            {message.type === "file" && message.fileUrl ? (
+                              <a
+                                href={message.fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-sm underline font-medium"
+                              >
+                                {message.fileName || "Attachment"}
+                              </a>
+                            ) : (
+                              <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                                {message.content.split(/(@\w+)/g).map((part, index) => {
+                                  if (part.startsWith("@")) {
+                                    return (
+                                      <span key={index} className="text-blue-600 dark:text-blue-400 font-medium">
+                                        {part}
+                                      </span>
+                                    )
+                                  }
+                                  return part
+                                })}
+                              </p>
+                            )}
+                            <p className="text-xs opacity-70 mt-2">
+                              {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              {message.isEdited && <span className="ml-1">(edited)</span>}
+                            </p>
+                          </div>
+
+                          {/* Reply button for own messages - show on right */}
+                          {isCurrent && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity order-first"
+                              onClick={() => setReplyingTo(message)}
+                              title="Reply"
+                            >
+                              <Reply className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
 
                       {isCurrent && (
@@ -765,6 +880,26 @@ export default function ChatPage() {
             {/* Message Input */}
             <div className="sticky bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm supports-[backdrop-filter]:bg-card/80 p-3 md:p-4 pb-[calc(env(safe-area-inset-bottom,0px)+68px)] md:pb-4">
               <div className="max-w-4xl mx-auto">
+                {/* Reply Preview */}
+                {replyingTo && (
+                  <div className="flex items-center justify-between bg-muted/50 rounded-t-lg px-3 py-2 mb-2 border border-b-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Reply className="h-4 w-4 text-primary shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-primary">Replying to {replyingTo.authorName || 'message'}</p>
+                        <p className="text-xs text-muted-foreground truncate">{replyingTo.content}</p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 shrink-0"
+                      onClick={() => setReplyingTo(null)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
                 <div className="flex gap-2 items-end">
                   <div className="flex-1 relative">
                     <Textarea
@@ -772,11 +907,21 @@ export default function ChatPage() {
                       value={inputValue}
                       onChange={(e) => setInputValue(e.target.value)}
                       onKeyPress={handleKeyPress}
-                      placeholder={`Message ${selectedRoom.name}...`}
+                      placeholder={replyingTo ? `Reply to ${replyingTo.authorName || 'message'}...` : `Message ${selectedRoom.name}...`}
                       className="min-h-[44px] max-h-24 md:max-h-32 resize-none pr-12 md:pr-32 text-base"
                       disabled={isLoading}
                     />
                     <div className="absolute right-2 bottom-2 flex gap-0.5 md:gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 md:h-8 md:w-8 p-0"
+                        onClick={startVoiceInput}
+                        disabled={isLoading || isListening}
+                        title="Voice input"
+                      >
+                        <Mic className={`h-4 w-4 ${isListening ? "text-red-500 animate-pulse" : ""}`} />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -793,10 +938,11 @@ export default function ChatPage() {
                         className="h-7 w-7 md:h-8 md:w-8 p-0 hidden sm:flex"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isLoading}
+                        title="Attach file"
                       >
                         <Paperclip className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 md:h-8 md:w-8 p-0 hidden sm:flex" disabled={isLoading}>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 md:h-8 md:w-8 p-0 hidden sm:flex" onClick={() => fileInputRef.current?.click()} disabled={isLoading} title="Attach image">
                         <ImageIcon className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="sm" className="h-7 w-7 md:h-8 md:w-8 p-0 hidden md:flex" disabled={isLoading}>

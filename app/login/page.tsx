@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Eye, EyeOff, Github, Mail, Zap } from "lucide-react"
+import { Eye, EyeOff, Github, Mail } from "lucide-react"
+import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
@@ -19,12 +20,55 @@ import { authService } from "@/lib/appwrite"
 function LoginPageContent() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isCheckingSession, setIsCheckingSession] = useState(true)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const router = useRouter()
   const { toast } = useToast()
   const searchParams = useSearchParams()
-  const { refreshUser } = useAuth()
+  const { refreshUser, isAuthenticated, loading: authLoading, checkSession, hasActiveSession, sessionChecked } = useAuth()
+
+  // Check for existing session and redirect if authenticated
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      try {
+        setIsCheckingSession(true)
+        
+        // Wait for auth to finish loading
+        if (authLoading) return
+        
+        // If already authenticated, redirect to feed
+        if (isAuthenticated && hasActiveSession) {
+          toast({
+            title: "Welcome back!",
+            description: "You already have an active session.",
+          })
+          router.replace("/app/feed")
+          return
+        }
+        
+        // Double-check session if not yet checked
+        if (!sessionChecked) {
+          const hasSession = await checkSession()
+          if (hasSession) {
+            toast({
+              title: "Session restored",
+              description: "Redirecting to your feed...",
+            })
+            router.replace("/app/feed")
+            return
+          }
+        }
+      } catch (err) {
+        // No active session, stay on login page
+        console.log('No active session found')
+      } finally {
+        setIsCheckingSession(false)
+      }
+    }
+    
+    checkExistingSession()
+  }, [isAuthenticated, authLoading, hasActiveSession, sessionChecked, checkSession, router, toast])
 
   useEffect(() => {
     try {
@@ -32,6 +76,12 @@ function LoginPageContent() {
         toast({
           title: "Verification Email Sent",
           description: "Please check your email and verify your account before signing in.",
+        })
+      }
+      if (searchParams?.get("session") === "expired") {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue.",
         })
       }
     } catch (err) {
@@ -54,6 +104,17 @@ function LoginPageContent() {
     setIsLoading(true)
 
     try {
+      // First check if there's already an active session
+      const hasExistingSession = await checkSession()
+      if (hasExistingSession) {
+        toast({
+          title: "Already logged in",
+          description: "You already have an active session. Redirecting...",
+        })
+        router.replace("/app/feed")
+        return
+      }
+
       // Use real Appwrite authentication
       const session = await authService.login(email, password)
       // Refresh auth context with the new user
@@ -69,7 +130,7 @@ function LoginPageContent() {
             title: "Welcome back!",
             description: "You've been successfully logged in.",
           })
-          router.push("/app/home")
+          router.replace("/app/feed")
           return
         }
       } catch (e) {
@@ -82,10 +143,30 @@ function LoginPageContent() {
       })
       
       // Redirect to onboarding for new users
-      router.push("/onboarding")
+      router.replace("/onboarding")
     } catch (error: any) {
       console.error("Login error:", error)
-      const errorMessage = error?.message || error?.toString() || "Login failed. Please check your credentials."
+      let errorMessage = error?.message || error?.toString() || "Login failed. Please check your credentials."
+      
+      // Handle specific error cases with user-friendly messages
+      if (errorMessage.includes('Creation of a session is prohibited') || errorMessage.includes('session is active')) {
+        // There's already an active session - redirect instead of showing error
+        toast({
+          title: "Session Active",
+          description: "You already have an active session. Redirecting...",
+        })
+        await refreshUser()
+        router.replace("/app/feed")
+        return
+      }
+      
+      if (errorMessage.includes('Invalid credentials') || errorMessage.includes('Invalid email or password')) {
+        errorMessage = "Invalid email or password. Please try again."
+      } else if (errorMessage.includes('Rate limit')) {
+        errorMessage = "Too many login attempts. Please wait a moment and try again."
+      } else if (errorMessage.includes('User not found')) {
+        errorMessage = "No account found with this email. Please register first."
+      }
       
       toast({
         title: "Login Failed",
@@ -104,12 +185,24 @@ function LoginPageContent() {
     })
   }
 
+  // Show loading while checking for existing session
+  if (isCheckingSession || authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Checking session...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center mb-8">
-          <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center mr-3">
-            <Zap className="w-6 h-6 text-primary-foreground" />
+          <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center mr-3">
+            <Image src="/logo.png" alt="PeerSpark" width={40} height={40} className="object-cover" />
           </div>
           <span className="text-2xl font-bold">PeerSpark</span>
         </div>

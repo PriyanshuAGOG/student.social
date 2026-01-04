@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -11,7 +12,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useToast } from "@/hooks/use-toast"
 import { 
-  Zap, 
   ArrowLeft, 
   Mail, 
   MessageSquare, 
@@ -163,8 +163,8 @@ export default function ContactPage() {
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-4">
               <Link href="/" className="flex items-center space-x-2">
-                <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-                  <Zap className="h-5 w-5 text-primary-foreground" />
+                <div className="h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center">
+                  <Image src="/logo.png" alt="PeerSpark" width={20} height={20} className="object-cover" />
                 </div>
                 <span className="font-bold text-xl">PeerSpark</span>
               </Link>
@@ -480,8 +480,8 @@ export default function ContactPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded bg-primary flex items-center justify-center">
-                <Zap className="h-4 w-4 text-primary-foreground" />
+              <div className="h-6 w-6 rounded overflow-hidden flex items-center justify-center">
+                <Image src="/logo.png" alt="PeerSpark" width={16} height={16} className="object-cover" />
               </div>
               <span className="font-semibold">PeerSpark</span>
             </div>

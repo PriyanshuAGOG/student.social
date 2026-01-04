@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -18,155 +18,218 @@ import {
   MoreHorizontal,
   Clock,
   Zap,
+  Loader2,
+  RefreshCw,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { notificationService, podService } from "@/lib/appwrite"
+import { useAuth } from "@/lib/auth-context"
+import { useRouter } from "next/navigation"
 
-const NOTIFICATIONS = [
-  {
-    id: "1",
-    type: "pod-invite",
-    title: "Pod Invitation",
-    message: "Arjun Patel invited you to join 'Advanced DSA Bootcamp'",
-    timestamp: "2 minutes ago",
-    read: false,
-    avatar: "/placeholder.svg?height=32&width=32",
-    actionRequired: true,
-    podName: "Advanced DSA Bootcamp",
-  },
-  {
-    id: "2",
-    type: "session-reminder",
-    title: "Session Starting Soon",
-    message: "Biology Study Group starts in 15 minutes",
-    timestamp: "15 minutes ago",
-    read: false,
-    avatar: "/placeholder.svg?height=32&width=32",
-    actionRequired: true,
-    podName: "NEET Biology Squad",
-  },
-  {
-    id: "3",
-    type: "achievement",
-    title: "Achievement Unlocked!",
-    message: "You earned the 'Study Streak Master' badge for maintaining a 15-day streak",
-    timestamp: "1 hour ago",
-    read: false,
-    avatar: "/placeholder.svg?height=32&width=32",
-    actionRequired: false,
-  },
-  {
-    id: "4",
-    type: "comment",
-    title: "New Comment",
-    message: "Riya Sharma commented on your post about dynamic programming",
-    timestamp: "2 hours ago",
-    read: true,
-    avatar: "/placeholder.svg?height=32&width=32",
-    actionRequired: false,
-  },
-  {
-    id: "5",
-    type: "resource-shared",
-    title: "Resource Shared",
-    message: "New notes on 'React Hooks' shared in Design Thinking Hub",
-    timestamp: "4 hours ago",
-    read: true,
-    avatar: "/placeholder.svg?height=32&width=32",
-    actionRequired: false,
-    podName: "Design Thinking Hub",
-  },
-  {
-    id: "6",
-    type: "like",
-    title: "Post Liked",
-    message: "Priya Gupta and 12 others liked your study progress post",
-    timestamp: "6 hours ago",
-    read: true,
-    avatar: "/placeholder.svg?height=32&width=32",
-    actionRequired: false,
-  },
-  {
-    id: "7",
-    type: "streak-warning",
-    title: "Streak Alert",
-    message: "Don't break your 15-day streak! Study for at least 30 minutes today",
-    timestamp: "1 day ago",
-    read: true,
-    avatar: "/placeholder.svg?height=32&width=32",
-    actionRequired: true,
-  },
-  {
-    id: "8",
-    type: "pod-update",
-    title: "Pod Update",
-    message: "DSA Masters pod schedule has been updated for next week",
-    timestamp: "2 days ago",
-    read: true,
-    avatar: "/placeholder.svg?height=32&width=32",
-    actionRequired: false,
-    podName: "DSA Masters",
-  },
-]
+interface Notification {
+  $id: string
+  userId: string
+  title: string
+  message: string
+  type: string
+  isRead: boolean
+  timestamp: string
+  actionUrl?: string
+  actionText?: string
+  imageUrl?: string
+  podId?: string
+  podName?: string
+  actionRequired?: boolean
+}
+
+// Helper to format relative time
+function formatRelativeTime(dateString: string): string {
+  try {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffInMs = now.getTime() - date.getTime()
+    const diffInMinutes = Math.floor(diffInMs / (1000 * 60))
+    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60))
+    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24))
+
+    if (diffInMinutes < 1) return "Just now"
+    if (diffInMinutes < 60) return `${diffInMinutes} minute${diffInMinutes > 1 ? "s" : ""} ago`
+    if (diffInHours < 24) return `${diffInHours} hour${diffInHours > 1 ? "s" : ""} ago`
+    if (diffInDays < 7) return `${diffInDays} day${diffInDays > 1 ? "s" : ""} ago`
+    return date.toLocaleDateString()
+  } catch {
+    return dateString
+  }
+}
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState(NOTIFICATIONS)
+  const [notifications, setNotifications] = useState<Notification[]>([])
   const [filter, setFilter] = useState("all")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const { toast } = useToast()
+  const { user, loading: authLoading } = useAuth()
+  const router = useRouter()
 
-  const handleMarkAsRead = (id: string) => {
-    setNotifications((prev) => prev.map((notif) => (notif.id === id ? { ...notif, read: true } : notif)))
-    toast({
-      title: "Marked as read",
-      description: "Notification has been marked as read",
-    })
+  // Load notifications from database
+  const loadNotifications = useCallback(async (showRefreshState = false) => {
+    if (!user?.$id) return
+
+    if (showRefreshState) {
+      setIsRefreshing(true)
+    }
+
+    try {
+      const result = await notificationService.getUserNotifications(user.$id, 100)
+      
+      // Transform notifications to match expected format
+      const transformedNotifications = result.documents.map((doc: any) => ({
+        $id: doc.$id,
+        userId: doc.userId,
+        title: doc.title,
+        message: doc.message,
+        type: doc.type || "info",
+        isRead: doc.isRead || false,
+        timestamp: doc.timestamp,
+        actionUrl: doc.actionUrl,
+        actionText: doc.actionText,
+        imageUrl: doc.imageUrl,
+        podId: doc.podId,
+        podName: doc.podName,
+        actionRequired: ["pod_invite", "pod-invite", "session_reminder", "session-reminder", "streak_warning", "streak-warning"].includes(doc.type),
+      }))
+
+      setNotifications(transformedNotifications)
+    } catch (error) {
+      console.error("Failed to load notifications:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load notifications. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+      setIsRefreshing(false)
+    }
+  }, [user, toast])
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      loadNotifications()
+    } else if (!authLoading && !user) {
+      router.push("/login")
+    }
+  }, [user, authLoading, loadNotifications, router])
+
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      await notificationService.markAsRead(id)
+      setNotifications((prev) => prev.map((notif) => (notif.$id === id ? { ...notif, isRead: true } : notif)))
+      toast({
+        title: "Marked as read",
+        description: "Notification has been marked as read",
+      })
+    } catch (error) {
+      console.error("Failed to mark as read:", error)
+      toast({
+        title: "Error",
+        description: "Failed to mark notification as read",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleMarkAllAsRead = () => {
-    setNotifications((prev) => prev.map((notif) => ({ ...notif, read: true })))
-    toast({
-      title: "All notifications marked as read",
-      description: "All your notifications have been marked as read",
-    })
+  const handleMarkAllAsRead = async () => {
+    if (!user?.$id) return
+
+    try {
+      await notificationService.markAllAsRead(user.$id)
+      setNotifications((prev) => prev.map((notif) => ({ ...notif, isRead: true })))
+      toast({
+        title: "All notifications marked as read",
+        description: "All your notifications have been marked as read",
+      })
+    } catch (error) {
+      console.error("Failed to mark all as read:", error)
+      toast({
+        title: "Error",
+        description: "Failed to mark all notifications as read",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleAcceptInvite = (podName: string) => {
-    toast({
-      title: "Invitation Accepted",
-      description: `You've joined ${podName}!`,
-    })
+  const handleAcceptInvite = async (notification: Notification) => {
+    if (!notification.podId) {
+      toast({
+        title: "Error",
+        description: "Invalid pod invitation",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      await podService.joinPod(notification.podId)
+      await handleMarkAsRead(notification.$id)
+      toast({
+        title: "Invitation Accepted",
+        description: `You've joined ${notification.podName || "the pod"}!`,
+      })
+      router.push(`/app/pods/${notification.podId}`)
+    } catch (error: any) {
+      console.error("Failed to accept invite:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to join pod",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleDeclineInvite = (podName: string) => {
+  const handleDeclineInvite = async (notification: Notification) => {
+    await handleMarkAsRead(notification.$id)
     toast({
       title: "Invitation Declined",
-      description: `You've declined the invitation to ${podName}`,
+      description: `You've declined the invitation to ${notification.podName || "the pod"}`,
     })
   }
 
-  const handleJoinSession = (podName: string) => {
+  const handleJoinSession = (notification: Notification) => {
+    if (notification.actionUrl) {
+      router.push(notification.actionUrl)
+    } else if (notification.podId) {
+      router.push(`/app/pods/${notification.podId}`)
+    }
     toast({
       title: "Joining Session",
-      description: `Connecting you to ${podName} session...`,
+      description: `Connecting you to ${notification.podName || "the"} session...`,
     })
   }
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case "pod-invite":
+      case "pod_invite":
         return <UserPlus className="w-5 h-5 text-blue-500" />
       case "session-reminder":
+      case "session_reminder":
         return <Calendar className="w-5 h-5 text-accent" />
       case "achievement":
         return <Trophy className="w-5 h-5 text-yellow-500" />
       case "comment":
         return <MessageSquare className="w-5 h-5 text-green-500" />
       case "resource-shared":
+      case "resource_shared":
         return <BookOpen className="w-5 h-5 text-purple-500" />
       case "like":
         return <Heart className="w-5 h-5 text-red-500" />
       case "streak-warning":
+      case "streak_warning":
         return <Zap className="w-5 h-5 text-accent" />
       case "pod-update":
+      case "pod_update":
+      case "pod_join":
         return <Users className="w-5 h-5 text-blue-500" />
       default:
         return <Bell className="w-5 h-5 text-muted-foreground" />
@@ -176,19 +239,31 @@ export default function NotificationsPage() {
   const filteredNotifications = notifications.filter((notif) => {
     switch (filter) {
       case "unread":
-        return !notif.read
+        return !notif.isRead
       case "action-required":
         return notif.actionRequired
       case "pods":
-        return ["pod-invite", "session-reminder", "pod-update"].includes(notif.type)
+        return ["pod-invite", "pod_invite", "session-reminder", "session_reminder", "pod-update", "pod_update", "pod_join"].includes(notif.type)
       case "social":
-        return ["comment", "like", "resource-shared"].includes(notif.type)
+        return ["comment", "like", "resource-shared", "resource_shared"].includes(notif.type)
       default:
         return true
     }
   })
 
-  const unreadCount = notifications.filter((n) => !n.read).length
+  const unreadCount = notifications.filter((n) => !n.isRead).length
+
+  // Loading state
+  if (authLoading || isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading notifications...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -207,7 +282,16 @@ export default function NotificationsPage() {
             <p className="text-sm text-muted-foreground">Stay updated with your community</p>
           </div>
           <div className="flex items-center space-x-2">
-            <Button variant="outline" size="sm" onClick={handleMarkAllAsRead}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => loadNotifications(true)}
+              disabled={isRefreshing}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} disabled={unreadCount === 0}>
               <Check className="mr-2 h-4 w-4" />
               Mark All
             </Button>
@@ -234,7 +318,15 @@ export default function NotificationsPage() {
               <p className="text-muted-foreground">Stay updated with your learning community</p>
             </div>
             <div className="flex items-center space-x-2">
-              <Button variant="outline" onClick={handleMarkAllAsRead}>
+              <Button 
+                variant="outline" 
+                onClick={() => loadNotifications(true)}
+                disabled={isRefreshing}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+              <Button variant="outline" onClick={handleMarkAllAsRead} disabled={unreadCount === 0}>
                 <Check className="mr-2 h-4 w-4" />
                 Mark All Read
               </Button>
@@ -287,9 +379,9 @@ export default function NotificationsPage() {
             <div className="space-y-2">
               {filteredNotifications.map((notification) => (
                 <Card
-                  key={notification.id}
+                  key={notification.$id}
                   className={`transition-colors hover:bg-secondary/50 ${
-                    !notification.read ? "border-primary/20 bg-primary/5" : ""
+                    !notification.isRead ? "border-primary/20 bg-primary/5" : ""
                   }`}
                 >
                   <CardContent className="p-4">
@@ -301,12 +393,12 @@ export default function NotificationsPage() {
                           <div className="flex-1">
                             <div className="flex items-center space-x-2 mb-1">
                               <h4 className="font-semibold text-sm">{notification.title}</h4>
-                              {!notification.read && <div className="w-2 h-2 bg-primary rounded-full"></div>}
+                              {!notification.isRead && <div className="w-2 h-2 bg-primary rounded-full"></div>}
                             </div>
                             <p className="text-sm text-muted-foreground mb-2">{notification.message}</p>
                             <div className="flex items-center space-x-2 text-xs text-muted-foreground">
                               <Clock className="w-3 h-3" />
-                              <span>{notification.timestamp}</span>
+                              <span>{formatRelativeTime(notification.timestamp)}</span>
                               {notification.podName && (
                                 <>
                                   <span>•</span>
@@ -319,8 +411,8 @@ export default function NotificationsPage() {
                           </div>
 
                           <div className="flex items-center space-x-2">
-                            {!notification.read && (
-                              <Button variant="ghost" size="sm" onClick={() => handleMarkAsRead(notification.id)}>
+                            {!notification.isRead && (
+                              <Button variant="ghost" size="sm" onClick={() => handleMarkAsRead(notification.$id)}>
                                 <Check className="w-4 h-4" />
                               </Button>
                             )}
@@ -333,35 +425,35 @@ export default function NotificationsPage() {
                         {/* Action Buttons */}
                         {notification.actionRequired && (
                           <div className="flex items-center space-x-2 mt-3">
-                            {notification.type === "pod-invite" && (
+                            {(notification.type === "pod-invite" || notification.type === "pod_invite") && (
                               <>
                                 <Button
                                   size="sm"
                                   className="bg-primary hover:bg-primary/90"
-                                  onClick={() => handleAcceptInvite(notification.podName!)}
+                                  onClick={() => handleAcceptInvite(notification)}
                                 >
                                   Accept
                                 </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleDeclineInvite(notification.podName!)}
+                                  onClick={() => handleDeclineInvite(notification)}
                                   className="bg-transparent"
                                 >
                                   Decline
                                 </Button>
                               </>
                             )}
-                            {notification.type === "session-reminder" && (
+                            {(notification.type === "session-reminder" || notification.type === "session_reminder") && (
                               <Button
                                 size="sm"
                                 className="bg-primary hover:bg-primary/90"
-                                onClick={() => handleJoinSession(notification.podName!)}
+                                onClick={() => handleJoinSession(notification)}
                               >
                                 Join Session
                               </Button>
                             )}
-                            {notification.type === "streak-warning" && (
+                            {(notification.type === "streak-warning" || notification.type === "streak_warning") && (
                               <Button size="sm" className="bg-accent hover:bg-accent/90">
                                 Start Studying
                               </Button>

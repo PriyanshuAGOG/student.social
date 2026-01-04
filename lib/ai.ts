@@ -57,7 +57,7 @@ async function tryAIRequest(apiKey: string, messages: ChatMessage[], model: stri
   const body = {
     model,
     messages,
-    max_tokens: maxTokens || 400,
+    max_tokens: maxTokens || 4096, // Increased from 400 to allow longer responses
     temperature: 0.3,
   }
 
