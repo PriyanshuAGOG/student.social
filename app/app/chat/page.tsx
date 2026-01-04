@@ -60,6 +60,7 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingRooms, setIsLoadingRooms] = useState(true)
   const [showMobileChatList, setShowMobileChatList] = useState(true)
   const [isListening, setIsListening] = useState(false)
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
@@ -128,7 +129,7 @@ export default function ChatPage() {
   useEffect(() => {
     const loadRooms = async () => {
       if (!user?.$id) return
-      setIsLoading(true)
+      setIsLoadingRooms(true)
       try {
         const { podRooms, directRooms } = await chatService.getUserChatRooms(user.$id)
         const normalized = [...(podRooms || []), ...(directRooms || [])].map((room: any) => ({
@@ -138,14 +139,12 @@ export default function ChatPage() {
           name: room.name || room.displayName || room.podName || room.$id,
         })) as ChatRoom[]
         setRooms(normalized)
-        if (normalized.length > 0) {
-          setSelectedRoom(normalized[0])
-        }
+        // Don't auto-select a room - let user choose
       } catch (error: any) {
         console.error(error)
         toast({ title: "Failed to load chats", description: error?.message, variant: "destructive" })
       } finally {
-        setIsLoading(false)
+        setIsLoadingRooms(false)
       }
     }
     loadRooms()
@@ -359,7 +358,28 @@ export default function ChatPage() {
           <TabsContent value="all" className="flex-1 mt-2">
             <ScrollArea className="flex-1">
               <div className="space-y-1 p-2">
-                {filteredRooms.map((room) => (
+                {isLoadingRooms ? (
+                  // Loading skeletons
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <Card key={`skeleton-${i}`} className="animate-pulse">
+                      <CardContent className="p-3">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 bg-muted rounded-full" />
+                          <div className="flex-1">
+                            <div className="h-4 bg-muted rounded w-24 mb-2" />
+                            <div className="h-3 bg-muted rounded w-32" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                ) : filteredRooms.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No conversations yet</p>
+                  </div>
+                ) : (
+                  filteredRooms.map((room) => (
                   <Card
                     key={room.$id}
                     className={`cursor-pointer transition-colors hover:bg-muted/50 ${
@@ -399,7 +419,8 @@ export default function ChatPage() {
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                ))
+                )}
               </div>
             </ScrollArea>
           </TabsContent>
@@ -973,11 +994,31 @@ export default function ChatPage() {
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                <MessageSquare className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Select a conversation</h3>
-              <p className="text-muted-foreground">Choose a chat from the sidebar to start messaging</p>
+              {isLoadingRooms ? (
+                <>
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Loading conversations...</h3>
+                  <p className="text-muted-foreground">Please wait while we load your chats</p>
+                </>
+              ) : rooms.length === 0 ? (
+                <>
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">No conversations yet</h3>
+                  <p className="text-muted-foreground">Join a pod or start a direct message to begin chatting</p>
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Select a conversation</h3>
+                  <p className="text-muted-foreground">Choose a chat from the sidebar to start messaging</p>
+                </>
+              )}
             </div>
           </div>
         )}

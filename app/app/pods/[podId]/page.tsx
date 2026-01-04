@@ -20,7 +20,9 @@ import {
   VaultTab, 
   MembersTab, 
   CalendarTab, 
-  ChatTab 
+  ChatTab,
+  PodChatTab,
+  EnhancedMembersTab
 } from "@/components/pods/tabs"
 
 const FALLBACK_POD = {
@@ -737,29 +739,26 @@ export default function PodDetailPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 md:px-8 pb-20 md:pb-8">
-        {/* Navigation Tabs */}
+        {/* Navigation Tabs - Consolidated to 4 */}
         <div className="mb-6">
           <div className="flex space-x-1 bg-secondary/50 rounded-lg p-1 max-w-fit overflow-x-auto">
             {[
               { value: "overview", label: "Overview", icon: Home },
-              { value: "activity", label: "Activity", icon: Zap },
-              { value: "classroom", label: "Classroom", icon: Video },
               { value: "chat", label: "Chat", icon: MessageSquare },
-              { value: "vault", label: "Vault", icon: FolderOpen },
               { value: "members", label: "Members", icon: Users },
-              { value: "calendar", label: "Calendar", icon: Calendar },
+              { value: "classroom", label: "Study Room", icon: Video },
             ].map((tab) => (
               <button
                 key={tab.value}
                 onClick={() => setActiveTab(tab.value)}
-                className={`flex items-center space-x-2 px-3 md:px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${
+                className={`flex items-center space-x-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${
                   activeTab === tab.value
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <tab.icon className="w-4 h-4" />
-                <span className="hidden sm:inline">{tab.label}</span>
+                <span>{tab.label}</span>
               </button>
             ))}
           </div>
@@ -790,25 +789,38 @@ export default function PodDetailPage() {
             handleAddCheckIn={handleAddCheckIn}
             handleToggleRsvp={handleToggleRsvp}
             handleJoinUpcoming={handleJoinUpcoming}
-            handleOpenChat={handleOpenChat}
+            handleOpenChat={() => setActiveTab("chat")}
             handleOpenCalendar={handleOpenCalendar}
             handleOpenVault={handleOpenVault}
             onTabChange={setActiveTab}
           />
         )}
 
-        {activeTab === "activity" && (
-          <ActivityTab
-            activityFeed={activityFeed}
-            upcomingEvent={upcomingEvent}
-            resources={resources}
-            cheers={cheers}
-            reactionCounts={reactionCounts}
-            handleCheer={handleCheer}
-            handleJoinUpcoming={handleJoinUpcoming}
-            handleOpenCalendar={handleOpenCalendar}
-            handleOpenVault={handleOpenVault}
-            formatAgo={formatAgo}
+        {activeTab === "chat" && (
+          <PodChatTab
+            podId={podId}
+            podName={pod.name}
+            members={memberProfiles}
+          />
+        )}
+
+        {activeTab === "members" && (
+          <EnhancedMembersTab
+            podId={podId}
+            pod={pod}
+            memberProfiles={memberProfiles}
+            isCreator={pod.creatorId === user?.$id}
+            onMemberInvited={() => {
+              // Refresh pod data
+              podService.getPodDetails(podId).then((podDoc) => {
+                const parsedMembers = typeof podDoc.members === "string" ? JSON.parse(podDoc.members) : podDoc.members || []
+                setPod((prev: typeof pod | null) => ({
+                  ...prev,
+                  ...podDoc,
+                  members: parsedMembers.length,
+                }))
+              }).catch(console.error)
+            }}
           />
         )}
 
@@ -818,37 +830,9 @@ export default function PodDetailPage() {
             podName={pod.name}
             members={memberProfiles}
             resources={resources}
-            onOpenChat={handleOpenChat}
+            onOpenChat={() => setActiveTab("chat")}
             onOpenVault={handleOpenVault}
           />
-        )}
-
-        {activeTab === "chat" && (
-          <ChatTab handleOpenChat={handleOpenChat} />
-        )}
-
-        {activeTab === "vault" && (
-          <VaultTab
-            resources={resources}
-            resourceFilter={resourceFilter}
-            selectedTag={selectedTag}
-            resourceSearch={resourceSearch}
-            availableTypes={availableTypes}
-            availableTags={availableTags}
-            filteredResources={filteredResources}
-            setResourceFilter={setResourceFilter}
-            setSelectedTag={setSelectedTag}
-            setResourceSearch={setResourceSearch}
-            handleOpenVault={handleOpenVault}
-          />
-        )}
-
-        {activeTab === "members" && (
-          <MembersTab pod={pod} memberProfiles={memberProfiles} />
-        )}
-
-        {activeTab === "calendar" && (
-          <CalendarTab handleOpenCalendar={handleOpenCalendar} />
         )}
       </div>
     </div>
