@@ -646,160 +646,278 @@ export const profileService = {
       throw error
     }
   },
+
+  // Follow a user - creates two-way relationship
+  async followUser(followerId: string, followingId: string) {
+    try {
+      if (!followerId || !followingId) {
+        throw new Error("Both user IDs are required")
+      }
+
+      if (followerId === followingId) {
+        throw new Error("You cannot follow yourself")
+      }
+
+      const followerProfile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, followerId)
+      const followingProfile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, followingId)
+
+      const following = Array.isArray(followerProfile.following) ? followerProfile.following : []
+      if (following.includes(followingId)) {
+        return { success: true, message: "Already following" }
+      }
+
+      const newFollowing = [...following, followingId]
+      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, followerId, {
+        following: newFollowing,
+        followingCount: newFollowing.length,
+      })
+
+      const followers = Array.isArray(followingProfile.followers) ? followingProfile.followers : []
+      const newFollowers = [...followers, followerId]
+      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, followingId, {
+        followers: newFollowers,
+        followerCount: newFollowers.length,
+      })
+
+      // Create notification
+      try {
+        await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
+          userId: followingId,
+          type: "follow",
+          actor: followerId,
+          actorName: followerProfile.name,
+          actorAvatar: followerProfile.avatar,
+          message: `${followerProfile.name} started following you`,
+          read: false,
+          createdAt: new Date().toISOString(),
+        })
+      } catch (e) {
+        console.error("Failed to create notification:", e)
+      }
+
+      return { success: true }
+    } catch (error) {
+      console.error("Follow user error:", error)
+      throw error
+    }
+  },
+
+  // Unfollow a user - removes two-way relationship
+  async unfollowUser(followerId: string, followingId: string) {
+    try {
+      if (!followerId || !followingId) {
+        throw new Error("Both user IDs are required")
+      }
+
+      const followerProfile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, followerId)
+      const followingProfile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, followingId)
+
+      const following = Array.isArray(followerProfile.following) ? followerProfile.following : []
+      const newFollowing = following.filter((id: string) => id !== followingId)
+
+      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, followerId, {
+        following: newFollowing,
+        followingCount: newFollowing.length,
+      })
+
+      const followers = Array.isArray(followingProfile.followers) ? followingProfile.followers : []
+      const newFollowers = followers.filter((id: string) => id !== followerId)
+
+      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, followingId, {
+        followers: newFollowers,
+        followerCount: newFollowers.length,
+      })
+
+      return { success: true }
+    } catch (error) {
+      console.error("Unfollow user error:", error)
+      throw error
+    }
+  },
+
+  // Check if user follows another
+  async isFollowing(followerId: string, followingId: string): Promise<boolean> {
+    try {
+      const profile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, followerId)
+      const following = Array.isArray(profile.following) ? profile.following : []
+      return following.includes(followingId)
+    } catch (error) {
+      console.error("Check following error:", error)
+      return false
+    }
+  },
 }
 
 // Pod/Team Functions
 export const podService = {
-  // Create new pod
-  // Note: Database schema only has: teamId, name, description, creatorId, members, subject, difficulty, isActive, isPublic, createdAt, memberCount
+  /**
+   * Create a new pod - DATABASE ONLY (no Teams dependency)
+   */
   async createPod(name: string, description: string, userId: string, metadata: any = {}) {
     try {
-      // Create team in Appwrite Teams
-      const team = await teams.create("unique()", name, [userId])
-
-      // Store pod metadata in database (only attributes that exist in schema)
-      const pod = await databases.createDocument(DATABASE_ID, COLLECTIONS.PODS, team.$id, {
-        teamId: team.$id,
-        name: name,
-        description: description,
-        creatorId: userId,
-        members: [userId], // Must be an array, not JSON string
-        subject: metadata.subject || "",
-        difficulty: metadata.difficulty || "Beginner",
-        isActive: true,
-        isPublic: metadata.isPublic !== false,
-        createdAt: new Date().toISOString(),
-        memberCount: 1,
-        idealLearnerType: metadata.idealLearnerType || [],
-        sessionType: metadata.sessionType || [],
-        averageSessionLength: metadata.averageSessionLength || null,
-        commonAvailability: metadata.commonAvailability || [],
-        matchingTags: metadata.matchingTags || [],
-      })
-
-      // Create default chat room for the pod
-      // Note: chat_rooms schema has: type, podId, name, createdAt, isActive
-      await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, `${team.$id}_general`, {
-        podId: team.$id,
-        name: "General",
-        type: "pod",
-        createdAt: new Date().toISOString(),
-        isActive: true,
-      })
-
-      // Send welcome message to the new pod chat
-      try {
-        await databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, "unique()", {
-          roomId: `${team.$id}_general`,
-          authorId: "system",
-          content: `🎉 Welcome to ${name}! This is your pod's group chat. Use it to coordinate study sessions, share resources, and support each other.`,
-          type: "system",
-          timestamp: new Date().toISOString(),
-          isEdited: false,
-          replyTo: null,
-          fileUrl: null,
-          reactions: [],
-        })
-      } catch (msgError) {
-        console.warn("Failed to send welcome message:", msgError)
+      if (!name || !name.trim()) {
+        throw new Error("Pod name is required")
       }
 
-      return { team, pod }
+      if (name.length > 100) {
+        throw new Error("Pod name too long (max 100 characters)")
+      }
+
+      // Upload pod image if provided
+      let imageUrl = ""
+      if (metadata.image) {
+        try {
+          const response = await storage.createFile(BUCKETS.POD_IMAGES, "unique()", metadata.image)
+          imageUrl = storage.getFileView(BUCKETS.POD_IMAGES, response.$id).toString()
+        } catch (e) {
+          console.error("Failed to upload pod image:", e)
+        }
+      }
+
+      // Create the pod document (database-only, no Teams)
+      const pod = await databases.createDocument(DATABASE_ID, COLLECTIONS.PODS, "unique()", {
+        name: name.trim(),
+        description: description || "",
+        creatorId: userId,
+        members: [userId], // Creator is first member
+        memberCount: 1,
+        image: imageUrl,
+        category: metadata.category || metadata.subject || "general",
+        isPrivate: metadata.isPrivate || false,
+        isActive: true,
+        isPublic: metadata.isPublic !== false,
+        subject: metadata.subject || "",
+        difficulty: metadata.difficulty || "Beginner",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+
+      // Create a chat room for the pod
+      try {
+        await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", {
+          podId: pod.$id,
+          name: `${name} Chat`,
+          type: "pod",
+          members: [userId],
+          createdAt: new Date().toISOString(),
+          isActive: true,
+        })
+      } catch (e) {
+        console.error("Failed to create pod chat room:", e)
+      }
+
+      // Send welcome message
+      try {
+        const chatRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
+          Query.equal("podId", pod.$id),
+        ])
+
+        if (chatRooms.documents.length > 0) {
+          await databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, "unique()", {
+            roomId: chatRooms.documents[0].$id,
+            senderId: "system",
+            content: `🎉 Welcome to ${name}! This is your pod's group chat.`,
+            timestamp: new Date().toISOString(),
+            readBy: [],
+          })
+        }
+      } catch (e) {
+        console.error("Failed to send welcome message:", e)
+      }
+
+      return { pod }
     } catch (error) {
       console.error("Create pod error:", error)
       throw error
     }
   },
 
-  // Join pod - handles both direct join and invite-based joining
+  /**
+   * Join a pod - FIXED with proper member count and chat room
+   */
   async joinPod(podId: string, userId: string, userEmail?: string) {
     try {
-      // Get the pod first to verify it exists
+      if (!podId || !userId) {
+        throw new Error("Pod ID and User ID are required")
+      }
+
       const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
-      
-      if (!pod) {
-        throw new Error("Pod not found")
-      }
 
-      // Handle members as array (new format) or JSON string (legacy)
-      let currentMembers: string[] = []
-      if (Array.isArray(pod.members)) {
-        currentMembers = pod.members
-      } else if (typeof pod.members === 'string') {
-        try { currentMembers = JSON.parse(pod.members) } catch { currentMembers = [] }
-      }
-
-      // Check if user is already a member
-      if (currentMembers.includes(userId)) {
-        console.log("User is already a member of this pod")
-        return { success: true, alreadyMember: true }
-      }
-
-      // Try to add user to Appwrite team (optional - may fail due to permissions)
-      // The main membership is tracked in the database
-      try {
-        if (userEmail) {
-          const inviteUrl = typeof window !== 'undefined' ? `${window.location.origin}/app/pods` : 'https://example.com/app/pods'
-          await teams.createMembership(podId, [], inviteUrl, userEmail)
+      // Check if already a member
+      const members = Array.isArray(pod.members) ? pod.members : []
+      if (members.includes(userId)) {
+        return {
+          success: true,
+          message: "Already a member",
+          memberCount: members.length,
+          members: members,
+          pod: pod,
         }
-      } catch (teamError: any) {
-        // Team membership is optional - we primarily use database for tracking
-        // This may fail due to missing email or team permissions
-        console.warn("Team membership creation failed (non-critical):", teamError?.message)
       }
 
-      // Update pod member count and list in database (this is the primary membership record)
-      const updatedMembers = [...new Set([...currentMembers, userId])] // Avoid duplicates
+      // Add user to members
+      const updatedMembers = [...members, userId]
 
-      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, {
+      // Update pod with new members
+      const updated = await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, {
+        members: updatedMembers,
         memberCount: updatedMembers.length,
-        members: updatedMembers, // Store as array, not JSON string
         updatedAt: new Date().toISOString(),
       })
 
-      // Get the user's profile for notification
-      let userName = "A new member"
+      // VERIFICATION STEP: Re-fetch to ensure count is correct
+      const verified = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+      const verifiedMembers = Array.isArray(verified.members) ? verified.members : []
+
+      // Add user to pod's chat room
       try {
-        const userProfile = await profileService.getProfile(userId)
-        if (userProfile?.name) {
-          userName = userProfile.name
+        const chatRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
+          Query.equal("podId", podId),
+        ])
+
+        if (chatRooms.documents.length > 0) {
+          const chatRoom = chatRooms.documents[0]
+          const chatMembers = Array.isArray(chatRoom.members) ? chatRoom.members : []
+
+          if (!chatMembers.includes(userId)) {
+            await databases.updateDocument(
+              DATABASE_ID,
+              COLLECTIONS.CHAT_ROOMS,
+              chatRoom.$id,
+              {
+                members: [...chatMembers, userId],
+              }
+            )
+          }
         }
       } catch (e) {
-        // Use default name
+        console.error("Failed to add user to chat room:", e)
       }
 
       // Create notification for pod creator
       try {
-        await notificationService.createNotification(
-          pod.creatorId,
-          "New Member Joined",
-          `${userName} joined your pod "${pod.name}"`,
-          "pod_join",
-          { podId, userId },
-        )
-      } catch (notifError) {
-        console.warn("Failed to create notification:", notifError)
+        if (pod.creatorId !== userId) {
+          const userProfile = await profileService.getProfile(userId)
+          await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
+            userId: pod.creatorId,
+            type: "pod_join",
+            actor: userId,
+            actorName: userProfile?.name || "Someone",
+            message: `${userProfile?.name || "Someone"} joined your pod: ${pod.name}`,
+            read: false,
+            createdAt: new Date().toISOString(),
+          })
+        }
+      } catch (e) {
+        console.error("Failed to create notification:", e)
       }
 
-      // Send system message to pod chat announcing new member
-      try {
-        const chatRoomId = `${pod.teamId || podId}_general`
-        await databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, "unique()", {
-          roomId: chatRoomId,
-          authorId: "system",
-          content: `👋 ${userName} joined the pod!`,
-          type: "system",
-          timestamp: new Date().toISOString(),
-          isEdited: false,
-          replyTo: null,
-          fileUrl: null,
-          reactions: [],
-        })
-      } catch (chatError) {
-        console.warn("Failed to send join message to chat:", chatError)
+      return {
+        success: true,
+        memberCount: verifiedMembers.length,
+        members: verifiedMembers,
+        pod: updated,
       }
-
-      return { success: true, alreadyMember: false }
     } catch (error: any) {
       console.error("Join pod error:", error)
       throw new Error(error?.message || "Failed to join pod")
@@ -844,73 +962,522 @@ export const podService = {
     }
   },
 
-  // Leave pod
+  /**
+   * Leave a pod
+   */
   async leavePod(podId: string, userId: string) {
     try {
-      // Get user's membership and remove from team
-      const memberships = await teams.listMemberships(podId)
-      const membership = memberships.memberships.find((m) => m.userId === userId)
-
-      if (membership) {
-        await teams.deleteMembership(podId, membership.$id)
+      if (!podId || !userId) {
+        throw new Error("Pod ID and User ID are required")
       }
 
-      // Update pod member count and list
       const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
-      // Handle members as array (new format) or JSON string (legacy)
-      let currentMembers: string[] = []
-      if (Array.isArray(pod.members)) {
-        currentMembers = pod.members
-      } else if (typeof pod.members === 'string') {
-        try { currentMembers = JSON.parse(pod.members) } catch { currentMembers = [] }
-      }
-      const updatedMembers = currentMembers.filter((id: string) => id !== userId)
 
+      const members = Array.isArray(pod.members) ? pod.members : []
+      if (!members.includes(userId)) {
+        throw new Error("User is not a member of this pod")
+      }
+
+      // Remove user from members
+      const updatedMembers = members.filter((id: string) => id !== userId)
+
+      // Update pod
       await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, {
-        memberCount: Math.max(0, updatedMembers.length),
-        members: updatedMembers, // Store as array, not JSON string
+        members: updatedMembers,
+        memberCount: updatedMembers.length,
         updatedAt: new Date().toISOString(),
       })
 
-      return true
+      // Remove user from pod's chat room
+      try {
+        const chatRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
+          Query.equal("podId", podId),
+        ])
+
+        if (chatRooms.documents.length > 0) {
+          const chatRoom = chatRooms.documents[0]
+          const chatMembers = Array.isArray(chatRoom.members) ? chatRoom.members : []
+
+          await databases.updateDocument(
+            DATABASE_ID,
+            COLLECTIONS.CHAT_ROOMS,
+            chatRoom.$id,
+            {
+              members: chatMembers.filter((id: string) => id !== userId),
+            }
+          )
+        }
+      } catch (e) {
+        console.error("Failed to remove user from chat room:", e)
+      }
+
+      return { success: true, memberCount: updatedMembers.length }
     } catch (error) {
       console.error("Leave pod error:", error)
       throw error
     }
   },
 
-  // Get user's pods
-  async getUserPods(userId: string) {
+  /**
+   * Get user's pods with pagination
+   */
+  async getUserPods(userId: string, limit = 50, offset = 0) {
     try {
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.PODS, [Query.contains('members', userId)])
+      if (!userId) {
+        throw new Error("User ID is required")
+      }
+
+      const pods = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTIONS.PODS,
+        [
+          Query.search("members", userId),
+          Query.orderDesc("createdAt"),
+          Query.limit(Math.min(limit, 100)),
+          Query.offset(Math.max(offset, 0)),
+        ]
+      )
+
+      return pods
     } catch (error) {
       console.error("Get user pods error:", error)
-      return { documents: [] }
+      return { documents: [], total: 0 }
     }
   },
 
-  // Get all public pods
+  /**
+   * Get all pods with filters and pagination
+   */
   async getAllPods(limit = 50, offset = 0, filters: any = {}) {
     try {
-      const queries = [Query.equal('isPublic', true), Query.equal('isActive', true)]
+      const queries = [
+        Query.orderDesc("createdAt"),
+        Query.limit(Math.min(limit, 100)),
+        Query.offset(Math.max(offset, 0)),
+      ]
 
-      if (filters.subject) queries.push(Query.equal('subject', filters.subject))
-      if (filters.difficulty) queries.push(Query.equal('difficulty', filters.difficulty))
-      if (filters.search) queries.push(Query.contains('name', filters.search))
+      if (filters.isPublic !== undefined) {
+        queries.push(Query.equal('isPublic', filters.isPublic))
+      }
+      if (filters.subject) {
+        queries.push(Query.equal('subject', filters.subject))
+      }
+      if (filters.difficulty) {
+        queries.push(Query.equal('difficulty', filters.difficulty))
+      }
+      if (filters.search) {
+        queries.push(Query.search('name', filters.search))
+      }
 
       return await databases.listDocuments(DATABASE_ID, COLLECTIONS.PODS, queries)
     } catch (error) {
       console.error("Get all pods error:", error)
-      return { documents: [] }
+      return { documents: [], total: 0 }
     }
   },
 
-  // Get pod details
+  /**
+   * Get pod details by ID
+   */
   async getPodDetails(podId: string) {
     try {
-      return await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+      if (!podId) {
+        throw new Error("Pod ID is required")
+      }
+
+      const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+      return pod
     } catch (error) {
       console.error("Get pod details error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Update pod information
+   */
+  async updatePod(podId: string, updates: { name?: string; description?: string; image?: File }) {
+    try {
+      if (!podId) {
+        throw new Error("Pod ID is required")
+      }
+
+      const updateData: any = {
+        updatedAt: new Date().toISOString(),
+      }
+
+      if (updates.name !== undefined) {
+        if (!updates.name.trim()) {
+          throw new Error("Pod name cannot be empty")
+        }
+        updateData.name = updates.name.trim()
+      }
+
+      if (updates.description !== undefined) {
+        updateData.description = updates.description
+      }
+
+      if (updates.image) {
+        const response = await storage.createFile(BUCKETS.POD_IMAGES, "unique()", updates.image)
+        updateData.image = storage.getFileView(BUCKETS.POD_IMAGES, response.$id).toString()
+      }
+
+      const updated = await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, updateData)
+      return updated
+    } catch (error) {
+      console.error("Update pod error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Delete a pod (creator only)
+   */
+  async deletePod(podId: string, userId: string) {
+    try {
+      if (!podId || !userId) {
+        throw new Error("Pod ID and User ID are required")
+      }
+
+      const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+
+      // Verify user is creator
+      if (pod.creatorId !== userId) {
+        throw new Error("Only the pod creator can delete this pod")
+      }
+
+      // Delete pod image if exists
+      if (pod.image) {
+        try {
+          const fileId = pod.image.split("/").pop()?.split("?")[0]
+          if (fileId) {
+            await storage.deleteFile(BUCKETS.POD_IMAGES, fileId)
+          }
+        } catch (e) {
+          console.error("Failed to delete pod image:", e)
+        }
+      }
+
+      // Delete chat rooms
+      const chatRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
+        Query.equal("podId", podId),
+      ])
+
+      for (const chatRoom of chatRooms.documents) {
+        try {
+          await databases.deleteDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, chatRoom.$id)
+        } catch (e) {
+          console.error("Failed to delete chat room:", e)
+        }
+      }
+
+      // Finally delete the pod
+      await databases.deleteDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+      return { success: true }
+    } catch (error) {
+      console.error("Delete pod error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Get member count for a pod
+   */
+  async getMemberCount(podId: string): Promise<number> {
+    try {
+      if (!podId) {
+        throw new Error("Pod ID is required")
+      }
+
+      const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+      const members = Array.isArray(pod.members) ? pod.members : []
+
+      return members.length
+    } catch (error) {
+      console.error("Get member count error:", error)
+      return 0
+    }
+  },
+
+  /**
+   * Get pod members with profiles
+   */
+  async getPodMembers(podId: string, limit = 100) {
+    try {
+      if (!podId) {
+        throw new Error("Pod ID is required")
+      }
+
+      const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+      const memberIds = Array.isArray(pod.members) ? pod.members : []
+
+      // Fetch member profiles
+      const members = await Promise.all(
+        memberIds.map(async (memberId: string) => {
+          try {
+            const profile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, memberId)
+            return {
+              $id: memberId,
+              name: profile.name,
+              avatar: profile.avatar,
+              email: profile.email,
+            }
+          } catch (e) {
+            return { $id: memberId, name: `User ${memberId.slice(0, 6)}` }
+          }
+        })
+      )
+
+      return {
+        documents: members.slice(0, limit),
+        total: members.length,
+      }
+    } catch (error) {
+      console.error("Get pod members error:", error)
+      return { documents: [], total: 0 }
+    }
+  },
+
+  /**
+   * Generate invite link for pod
+   */
+  async generateInviteLink(podId: string, userId: string, expiryDays = 7) {
+    try {
+      if (!podId || !userId) {
+        throw new Error("Pod ID and User ID are required")
+      }
+
+      const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+
+      // Verify user is creator or admin
+      const admins = Array.isArray(pod.admins) ? pod.admins : []
+      if (pod.creatorId !== userId && !admins.includes(userId)) {
+        throw new Error("Only pod creator or admins can generate invite links")
+      }
+
+      // Generate invite code
+      const inviteCode = `${podId.slice(0, 8)}-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`
+      const expiry = new Date()
+      expiry.setDate(expiry.getDate() + expiryDays)
+
+      // Update pod with invite code
+      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, {
+        inviteCode,
+        inviteExpiry: expiry.toISOString(),
+      })
+
+      return {
+        inviteCode,
+        inviteLink: typeof window !== 'undefined' 
+          ? `${window.location.origin}/app/pods/join?code=${inviteCode}` 
+          : `https://peerspark.com/app/pods/join?code=${inviteCode}`,
+        expiresAt: expiry.toISOString(),
+      }
+    } catch (error) {
+      console.error("Generate invite link error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Join pod with invite code
+   */
+  async joinWithInviteCode(inviteCode: string, userId: string) {
+    try {
+      if (!inviteCode || !userId) {
+        throw new Error("Invite code and User ID are required")
+      }
+
+      // Find pod with this invite code
+      const pods = await databases.listDocuments(DATABASE_ID, COLLECTIONS.PODS, [
+        Query.equal("inviteCode", inviteCode),
+      ])
+
+      if (pods.documents.length === 0) {
+        throw new Error("Invalid invite code")
+      }
+
+      const pod = pods.documents[0]
+
+      // Check if invite is expired
+      if (pod.inviteExpiry) {
+        const expiry = new Date(pod.inviteExpiry)
+        if (expiry < new Date()) {
+          throw new Error("Invite code has expired")
+        }
+      }
+
+      // Join the pod
+      return await this.joinPod(pod.$id, userId)
+    } catch (error) {
+      console.error("Join with invite code error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Make member admin
+   */
+  async makeAdmin(podId: string, userId: string, targetUserId: string) {
+    try {
+      if (!podId || !userId || !targetUserId) {
+        throw new Error("Pod ID, User ID, and Target User ID are required")
+      }
+
+      const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+
+      // Verify user is creator
+      if (pod.creatorId !== userId) {
+        throw new Error("Only pod creator can make members admin")
+      }
+
+      // Check if target is a member
+      const members = Array.isArray(pod.members) ? pod.members : []
+      if (!members.includes(targetUserId)) {
+        throw new Error("User is not a member of this pod")
+      }
+
+      // Add to admins
+      const admins = Array.isArray(pod.admins) ? pod.admins : []
+      if (!admins.includes(targetUserId)) {
+        admins.push(targetUserId)
+      }
+
+      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, {
+        admins,
+      })
+
+      // Create notification
+      try {
+        const targetProfile = await profileService.getProfile(targetUserId)
+        await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
+          userId: targetUserId,
+          type: "admin_promotion",
+          message: `You are now an admin of ${pod.name}`,
+          actor: userId,
+          podId,
+          read: false,
+          createdAt: new Date().toISOString(),
+        })
+      } catch (e) {
+        console.error("Failed to create notification:", e)
+      }
+
+      return { success: true, admins }
+    } catch (error) {
+      console.error("Make admin error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Remove admin role
+   */
+  async removeAdmin(podId: string, userId: string, targetUserId: string) {
+    try {
+      if (!podId || !userId || !targetUserId) {
+        throw new Error("Pod ID, User ID, and Target User ID are required")
+      }
+
+      const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+
+      // Verify user is creator
+      if (pod.creatorId !== userId) {
+        throw new Error("Only pod creator can remove admin role")
+      }
+
+      // Remove from admins
+      const admins = Array.isArray(pod.admins) ? pod.admins : []
+      const updatedAdmins = admins.filter((id: string) => id !== targetUserId)
+
+      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, {
+        admins: updatedAdmins,
+      })
+
+      return { success: true, admins: updatedAdmins }
+    } catch (error) {
+      console.error("Remove admin error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Remove member from pod (admin/creator only)
+   */
+  async removeMember(podId: string, userId: string, targetUserId: string) {
+    try {
+      if (!podId || !userId || !targetUserId) {
+        throw new Error("Pod ID, User ID, and Target User ID are required")
+      }
+
+      const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+
+      // Verify user is creator or admin
+      const admins = Array.isArray(pod.admins) ? pod.admins : []
+      if (pod.creatorId !== userId && !admins.includes(userId)) {
+        throw new Error("Only pod creator or admins can remove members")
+      }
+
+      // Can't remove creator
+      if (targetUserId === pod.creatorId) {
+        throw new Error("Cannot remove pod creator")
+      }
+
+      // Check if target is a member
+      const members = Array.isArray(pod.members) ? pod.members : []
+      if (!members.includes(targetUserId)) {
+        throw new Error("User is not a member of this pod")
+      }
+
+      // Remove from members
+      const updatedMembers = members.filter((id: string) => id !== targetUserId)
+
+      // Update pod
+      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, {
+        members: updatedMembers,
+        memberCount: updatedMembers.length,
+      })
+
+      // Remove from chat room
+      try {
+        const chatRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
+          Query.equal("podId", podId),
+        ])
+
+        if (chatRooms.documents.length > 0) {
+          const chatRoom = chatRooms.documents[0]
+          const chatMembers = Array.isArray(chatRoom.members) ? chatRoom.members : []
+
+          await databases.updateDocument(
+            DATABASE_ID,
+            COLLECTIONS.CHAT_ROOMS,
+            chatRoom.$id,
+            {
+              members: chatMembers.filter((id: string) => id !== targetUserId),
+            }
+          )
+        }
+      } catch (e) {
+        console.error("Failed to remove from chat room:", e)
+      }
+
+      // Create notification
+      try {
+        await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
+          userId: targetUserId,
+          type: "removed_from_pod",
+          message: `You were removed from ${pod.name}`,
+          podId,
+          read: false,
+          createdAt: new Date().toISOString(),
+        })
+      } catch (e) {
+        console.error("Failed to create notification:", e)
+      }
+
+      return { success: true, memberCount: updatedMembers.length }
+    } catch (error) {
+      console.error("Remove member error:", error)
       throw error
     }
   },
@@ -1322,21 +1889,70 @@ export const studyPlanService = {
 
 // Chat/Messaging Functions
 export const chatService = {
-  // Send message to pod or direct chat
-  // Note: messages schema has: roomId, authorId, content, type, timestamp, isEdited, replyTo, fileUrl, reactions
-  async sendMessage(roomId: string, userId: string, content: string, type = "text", metadata: any = {}) {
+  /**
+   * Send a message with proper validation
+   */
+  async sendMessage(
+    roomId: string,
+    senderId: string,
+    content: string,
+    metadata: { senderName?: string; senderAvatar?: string } = {}
+  ) {
     try {
-      const message = await databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, "unique()", {
-        roomId: roomId,
-        authorId: userId,
-        content: content,
-        type: type, // text, image, file, audio, video
-        timestamp: new Date().toISOString(),
-        isEdited: false,
-        replyTo: metadata.replyTo || null,
-        fileUrl: metadata.fileUrl || null,
-        reactions: [], // Must be an array per Appwrite schema
-      })
+      // Validate inputs
+      if (!roomId || !senderId || !content) {
+        throw new Error("Room ID, Sender ID, and content are required")
+      }
+
+      if (!content.trim()) {
+        throw new Error("Message cannot be empty")
+      }
+
+      if (content.length > 5000) {
+        throw new Error("Message exceeds 5000 character limit")
+      }
+
+      // Get sender profile if name not provided
+      let senderName = metadata.senderName || ""
+      let senderAvatar = metadata.senderAvatar || ""
+
+      if (!senderName) {
+        try {
+          const profile = await profileService.getProfile(senderId)
+          senderName = profile.name || `User ${senderId.slice(0, 6)}`
+          senderAvatar = profile.avatar || ""
+        } catch (e) {
+          senderName = `User ${senderId.slice(0, 6)}`
+        }
+      }
+
+      // Create message
+      const message = await databases.createDocument(
+        DATABASE_ID,
+        COLLECTIONS.MESSAGES,
+        "unique()",
+        {
+          roomId: roomId,
+          senderId: senderId,
+          content: content.trim(),
+          senderName: senderName,
+          senderAvatar: senderAvatar,
+          timestamp: new Date().toISOString(),
+          readBy: [senderId],
+          isEdited: false,
+        }
+      )
+
+      // Update chat room's last message timestamp
+      try {
+        await databases.updateDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, roomId, {
+          lastMessage: content.substring(0, 100),
+          lastMessageTime: new Date().toISOString(),
+          lastMessageSenderId: senderId,
+        })
+      } catch (e) {
+        console.error("Failed to update chat room:", e)
+      }
 
       return message
     } catch (error) {
@@ -1345,13 +1961,30 @@ export const chatService = {
     }
   },
 
-  // Get messages for a room/chat
+  /**
+   * Get messages from a chat room with pagination - FIXED
+   */
   async getMessages(roomId: string, limit = 50, offset = 0) {
     try {
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.MESSAGES, [Query.equal('roomId', roomId)])
+      if (!roomId) {
+        throw new Error("Room ID is required")
+      }
+
+      const messages = await databases.listDocuments(DATABASE_ID, COLLECTIONS.MESSAGES, [
+        Query.equal("roomId", roomId),
+        Query.orderDesc("timestamp"),
+        Query.limit(Math.min(limit, 100)),
+        Query.offset(Math.max(offset, 0)),
+      ])
+
+      // Reverse to get chronological order
+      return {
+        documents: messages.documents.reverse(),
+        total: messages.total,
+      }
     } catch (error) {
       console.error("Get messages error:", error)
-      return { documents: [] }
+      return { documents: [], total: 0 }
     }
   },
 
@@ -1481,35 +2114,142 @@ export const chatService = {
       return { podRooms: [], directRooms: [] }
     }
   },
+
+  /**
+   * Mark message as read
+   */
+  async markMessageAsRead(messageId: string, userId: string) {
+    try {
+      if (!messageId || !userId) {
+        throw new Error("Message ID and User ID are required")
+      }
+
+      const message = await databases.getDocument(DATABASE_ID, COLLECTIONS.MESSAGES, messageId)
+      const readBy = Array.isArray(message.readBy) ? message.readBy : []
+
+      if (!readBy.includes(userId)) {
+        readBy.push(userId)
+        await databases.updateDocument(DATABASE_ID, COLLECTIONS.MESSAGES, messageId, {
+          readBy: readBy,
+        })
+      }
+
+      return { success: true }
+    } catch (error) {
+      console.error("Mark message as read error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Create a direct chat room between two users
+   */
+  async createDirectChat(userId1: string, userId2: string) {
+    try {
+      if (!userId1 || !userId2) {
+        throw new Error("Both user IDs are required")
+      }
+
+      // Check if chat already exists
+      const existing = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
+        Query.equal("type", "direct"),
+      ])
+
+      const existingChat = existing.documents.find(
+        (room: any) =>
+          room.members &&
+          room.members.length === 2 &&
+          room.members.includes(userId1) &&
+          room.members.includes(userId2)
+      )
+
+      if (existingChat) {
+        return existingChat
+      }
+
+      // Create new direct chat
+      const chatRoom = await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", {
+        type: "direct",
+        members: [userId1, userId2],
+        createdAt: new Date().toISOString(),
+      })
+
+      return chatRoom
+    } catch (error) {
+      console.error("Create direct chat error:", error)
+      throw error
+    }
+  },
 }
 
 // Resource/File Functions
 export const resourceService = {
-  // Upload resource
-  async uploadResource(file: File, metadata: any) {
+  /**
+   * Upload a resource with validation
+   */
+  async uploadResource(
+    userId: string,
+    file: File,
+    metadata: {
+      title?: string
+      description?: string
+      podId?: string
+      tags?: string[]
+    } = {}
+  ) {
     try {
-      const uploaded = await storage.createFile(BUCKETS.RESOURCES, "unique()", file)
-      const fileUrl = storage.getFileView(BUCKETS.RESOURCES, uploaded.$id)
+      if (!userId || !file) {
+        throw new Error("User ID and file are required")
+      }
 
-      const resource = await databases.createDocument(DATABASE_ID, COLLECTIONS.RESOURCES, "unique()", {
-        fileId: uploaded.$id,
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.type,
-        fileUrl: fileUrl.toString(),
-        title: metadata.title,
-        description: metadata.description,
-        tags: metadata.tags || [],
-        authorId: metadata.authorId,
-        podId: metadata.podId || null,
-        visibility: metadata.visibility || "public", // public, pod, private
-        category: metadata.category || "other",
-        uploadedAt: new Date().toISOString(),
-        downloads: 0,
-        likes: 0,
-        views: 0,
-        isApproved: true, // Auto-approve for now
-      })
+      // Validate file type
+      const allowedTypes = [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "text/plain",
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+      ]
+
+      if (!allowedTypes.includes(file.type)) {
+        throw new Error(`File type not allowed. Allowed: PDF, Word, Excel, Images, TXT`)
+      }
+
+      // Validate file size (50MB max)
+      if (file.size > 50 * 1024 * 1024) {
+        throw new Error("File too large (max 50MB)")
+      }
+
+      // Upload file
+      const response = await storage.createFile(BUCKETS.RESOURCES, "unique()", file)
+      const fileUrl = storage.getFileView(BUCKETS.RESOURCES, response.$id).toString()
+      const downloadUrl = storage.getFileDownload(BUCKETS.RESOURCES, response.$id).toString()
+
+      // Create resource document
+      const resource = await databases.createDocument(
+        DATABASE_ID,
+        COLLECTIONS.RESOURCES,
+        "unique()",
+        {
+          uploadedBy: userId,
+          title: metadata.title || file.name,
+          description: metadata.description || "",
+          fileUrl: fileUrl,
+          downloadUrl: downloadUrl,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+          podId: metadata.podId || null,
+          tags: Array.isArray(metadata.tags) ? metadata.tags.slice(0, 10) : [],
+          bookmarkedBy: [],
+          downloads: 0,
+          createdAt: new Date().toISOString(),
+        }
+      )
 
       return resource
     } catch (error) {
@@ -1518,40 +2258,126 @@ export const resourceService = {
     }
   },
 
-  // Get resources with filters
-  async getResources(filters: any = {}, limit = 50, offset = 0) {
+  /**
+   * Get resources with filtering
+   */
+  async getResources(podId?: string, limit = 50, offset = 0) {
     try {
-      const queries: string[] = []
+      const queries: any[] = [
+        Query.orderDesc("createdAt"),
+        Query.limit(Math.min(limit, 100)),
+        Query.offset(Math.max(offset, 0)),
+      ]
 
-      if (filters.authorId) queries.push(Query.equal("authorId", filters.authorId))
-      if (filters.podId) queries.push(Query.equal("podId", filters.podId))
-      if (filters.visibility) queries.push(Query.equal("visibility", filters.visibility))
-      if (filters.category) queries.push(Query.equal("category", filters.category))
-      if (filters.search) queries.push(Query.contains("title", filters.search))
-      queries.push(Query.limit(limit))
-      queries.push(Query.offset(offset))
-      queries.push(Query.orderDesc("uploadedAt"))
+      if (podId) {
+        queries.push(Query.equal("podId", podId))
+      }
 
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.RESOURCES, queries)
+      const resources = await databases.listDocuments(DATABASE_ID, COLLECTIONS.RESOURCES, queries)
+
+      return resources
     } catch (error) {
       console.error("Get resources error:", error)
-      return { documents: [] }
+      return { documents: [], total: 0 }
     }
   },
 
-  // Download resource
-  async downloadResource(resourceId: string) {
+  /**
+   * Get bookmarked resources for a user
+   */
+  async getBookmarkedResources(userId: string, limit = 50, offset = 0) {
     try {
+      if (!userId) {
+        throw new Error("User ID is required")
+      }
+
+      const resources = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTIONS.RESOURCES,
+        [
+          Query.search("bookmarkedBy", userId),
+          Query.orderDesc("createdAt"),
+          Query.limit(Math.min(limit, 100)),
+          Query.offset(Math.max(offset, 0)),
+        ]
+      )
+
+      return resources
+    } catch (error) {
+      console.error("Get bookmarked resources error:", error)
+      return { documents: [], total: 0 }
+    }
+  },
+
+  /**
+   * Toggle bookmark on resource
+   */
+  async toggleBookmarkResource(resourceId: string, userId: string) {
+    try {
+      if (!resourceId || !userId) {
+        throw new Error("Resource ID and User ID are required")
+      }
+
+      const resource = await databases.getDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId)
+      const bookmarkedBy = Array.isArray(resource.bookmarkedBy) ? resource.bookmarkedBy : []
+
+      const isBookmarked = bookmarkedBy.includes(userId)
+      const newBookmarkedBy = isBookmarked
+        ? bookmarkedBy.filter((id: string) => id !== userId)
+        : [...bookmarkedBy, userId]
+
+      const updated = await databases.updateDocument(
+        DATABASE_ID,
+        COLLECTIONS.RESOURCES,
+        resourceId,
+        {
+          bookmarkedBy: newBookmarkedBy,
+        }
+      )
+
+      return {
+        success: true,
+        bookmarked: !isBookmarked,
+        resource: updated,
+      }
+    } catch (error) {
+      console.error("Toggle bookmark resource error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Delete a resource
+   */
+  async deleteResource(resourceId: string, userId: string) {
+    try {
+      if (!resourceId || !userId) {
+        throw new Error("Resource ID and User ID are required")
+      }
+
       const resource = await databases.getDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId)
 
-      // Increment download count
-      await databases.updateDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId, {
-        downloads: resource.downloads + 1,
-      })
+      // Verify ownership
+      if (resource.uploadedBy !== userId) {
+        throw new Error("Only the uploader can delete this resource")
+      }
 
-      return storage.getFileDownload(BUCKETS.RESOURCES, resource.fileId)
+      // Delete file from storage
+      try {
+        const fileId = resource.fileUrl?.split("/").pop()?.split("?")[0]
+        if (fileId) {
+          await storage.deleteFile(BUCKETS.RESOURCES, fileId)
+        }
+      } catch (e) {
+        console.error("Failed to delete resource file:", e)
+      }
+
+      // Delete document
+      await databases.deleteDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId)
+
+      return { success: true }
     } catch (error) {
-      console.error("Download resource error:", error)
+      console.error("Delete resource error:", error)
       throw error
     }
   },
@@ -1559,275 +2385,313 @@ export const resourceService = {
 
 // Feed/Posts Functions
 export const feedService = {
-  // Create post
-  // Note: posts schema has: authorId, content, type, podId, timestamp, likes, comments, imageUrl, visibility, tags, likedBy, authorName, authorAvatar, authorUsername
-  async createPost(authorId: string, content: string, type = "text", metadata: any = {}) {
+  /**
+   * Create a new post with proper validation and image handling
+   */
+  async createPost(
+    authorId: string,
+    content: string,
+    metadata: {
+      type?: string
+      imageFiles?: File[]
+      visibility?: string
+      podId?: string
+      tags?: string[]
+      authorName?: string
+      authorAvatar?: string
+      authorUsername?: string
+    } = {}
+  ) {
     try {
-      // Get author profile for denormalized display data
+      // Validate content
+      if (!content || !content.trim()) {
+        throw new Error("Post content cannot be empty")
+      }
+
+      if (content.length > 5000) {
+        throw new Error("Post content exceeds 5000 character limit")
+      }
+
+      // Get author profile info
       let authorName = metadata.authorName || ""
       let authorAvatar = metadata.authorAvatar || ""
       let authorUsername = metadata.authorUsername || ""
-      
+
       if (!authorName) {
         try {
           const profile = await profileService.getProfile(authorId)
           if (profile) {
             authorName = profile.name || ""
             authorAvatar = profile.avatar || ""
-            authorUsername = profile.email ? `@${profile.email.split("@")[0]}` : `@user_${authorId.slice(0, 6)}`
+            authorUsername = profile.username || `@user_${authorId.slice(0, 6)}`
           }
         } catch (e) {
-          // Use defaults
+          console.error("Failed to fetch profile:", e)
         }
       }
 
-      // Also try to get name from account if profile didn't have it
-      if (!authorName) {
-        try {
-          const user = await account.get()
-          if (user) {
-            authorName = user.name || ""
-            authorUsername = user.email ? `@${user.email.split("@")[0]}` : `@user_${authorId.slice(0, 6)}`
-          }
-        } catch (e) {
-          // Use defaults
-        }
+      // Fallback username if not found
+      if (!authorUsername) {
+        authorUsername = `@user_${authorId.slice(0, 6)}`
       }
 
-      // Ensure we have at least a fallback name
-      if (!authorName) {
-        authorName = `User ${authorId.slice(0, 6)}`
+      // Handle image uploads if provided
+      let imageUrls: string[] = []
+      if (metadata.imageFiles && metadata.imageFiles.length > 0) {
+        const uploadedFiles = await Promise.all(
+          metadata.imageFiles.map(async (file) => {
+            const response = await storage.createFile(BUCKETS.POST_IMAGES, "unique()", file)
+            // Generate view URL
+            return storage.getFileView(BUCKETS.POST_IMAGES, response.$id).toString()
+          })
+        )
+        imageUrls = uploadedFiles
       }
 
-      return await databases.createDocument(DATABASE_ID, COLLECTIONS.POSTS, "unique()", {
+      // Ensure pod visibility and podId are consistent
+      const visibility = metadata.visibility || "public"
+      const podId = visibility === "pod" ? metadata.podId || null : null
+
+      // Create post document
+      const post = await databases.createDocument(DATABASE_ID, COLLECTIONS.POSTS, "unique()", {
         authorId: authorId,
         content: content,
-        type: type, // text, image, resource, achievement, poll
-        podId: metadata.podId || null,
-        imageUrl: metadata.imageUrl || null,
+        type: metadata.type || "text",
+        podId: podId,
+        imageUrls: imageUrls,
         timestamp: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         likes: 0,
         comments: 0,
-        likedBy: [], // Must be an array, not JSON string
-        visibility: metadata.visibility || "public", // public, pod, followers
-        tags: metadata.tags || [], // Must be an array, not JSON string
-        // Denormalized author info for display
+        saves: 0,
+        likedBy: [],
+        savedBy: [],
+        visibility: visibility,
+        tags: Array.isArray(metadata.tags) ? metadata.tags.slice(0, 10) : [],
         authorName: authorName,
         authorAvatar: authorAvatar,
         authorUsername: authorUsername,
       })
+
+      return post
     } catch (error) {
       console.error("Create post error:", error)
       throw error
     }
   },
 
-  // Get posts by user ID
+  /**
+   * Get posts by user with proper pagination
+   */
   async getUserPosts(userId: string, limit = 50, offset = 0) {
     try {
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.POSTS, [Query.equal('authorId', userId)])
+      if (!userId) {
+        throw new Error("User ID is required")
+      }
+
+      const posts = await databases.listDocuments(DATABASE_ID, COLLECTIONS.POSTS, [
+        Query.equal("authorId", userId),
+        Query.orderDesc("timestamp"),
+        Query.limit(Math.min(limit, 100)),
+        Query.offset(Math.max(offset, 0)),
+      ])
+
+      return posts
     } catch (error) {
       console.error("Get user posts error:", error)
-      return { documents: [] }
+      return { documents: [], total: 0 }
     }
   },
 
-  // Get feed posts
+  /**
+   * Get feed posts (public + user's pods) with proper pagination
+   */
   async getFeedPosts(userId?: string, limit = 20, offset = 0) {
     try {
       // Fetch public posts
-      const publicPosts = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTIONS.POSTS,
-        [Query.equal('visibility', 'public')]
-      )
+      const publicPosts = await databases.listDocuments(DATABASE_ID, COLLECTIONS.POSTS, [
+        Query.equal("visibility", "public"),
+        Query.orderDesc("timestamp"),
+        Query.limit(Math.min(limit, 100)),
+        Query.offset(Math.max(offset, 0)),
+      ])
 
-      // Optionally fetch pod posts if user has pods
       let podPosts: any = { documents: [] }
+
+      // If user is provided, also fetch pod posts
       if (userId) {
-        const userPods = await podService.getUserPods(userId)
-        const podIds = userPods.documents.map((pod: any) => pod.teamId)
-        if (podIds.length > 0) {
-          podPosts = await databases.listDocuments(
-            DATABASE_ID,
-            COLLECTIONS.POSTS,
-            [Query.equal('visibility', 'pod')]
-          )
+        try {
+          // Get user's pod IDs
+          const userPodsResponse = await databases.listDocuments(DATABASE_ID, COLLECTIONS.PODS, [
+            Query.search("members", userId),
+          ])
+
+          const podIds = userPodsResponse.documents.map((pod: any) => pod.$id)
+
+          // Get posts from user's pods
+          if (podIds.length > 0) {
+            podPosts = await databases.listDocuments(DATABASE_ID, COLLECTIONS.POSTS, [
+              Query.equal("visibility", "pod"),
+              Query.orderDesc("timestamp"),
+              Query.limit(Math.min(limit, 100)),
+              Query.offset(Math.max(offset, 0)),
+            ])
+          }
+        } catch (e) {
+          console.error("Failed to fetch pod posts:", e)
         }
       }
 
-      // Merge and sort by timestamp desc
-      const combined = [...(publicPosts?.documents || []), ...(podPosts?.documents || [])]
-      combined.sort((a: any, b: any) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+      // Merge and sort by timestamp
+      const allPosts = [...(publicPosts?.documents || []), ...(podPosts?.documents || [])]
+      allPosts.sort((a: any, b: any) => {
+        const timeA = new Date(a.timestamp || "").getTime()
+        const timeB = new Date(b.timestamp || "").getTime()
+        return timeB - timeA
+      })
 
-      // Enrich posts with author info if missing
-      const profileCache = new Map<string, any>()
-      const enrichedPosts = await Promise.all(
-        combined.map(async (post: any) => {
-          // If authorName is already set, no need to fetch
-          if (post.authorName && post.authorName !== "Someone") {
-            return post
-          }
+      // Return only the limit number of posts
+      return {
+        documents: allPosts.slice(0, limit),
+        total: allPosts.length,
+      }
+    } catch (error) {
+      console.error("Get feed posts error:", error)
+      return { documents: [], total: 0 }
+    }
+  },
 
-          // Try to get author info from profile
-          const authorId = post.authorId
-          if (!authorId) return post
+  /**
+   * Get saved posts with proper pagination
+   */
+  async getSavedPosts(userId: string, limit = 50, offset = 0) {
+    try {
+      if (!userId) {
+        throw new Error("User ID is required")
+      }
 
-          // Check cache first
-          if (profileCache.has(authorId)) {
-            const cached = profileCache.get(authorId)
-            return {
-              ...post,
-              authorName: cached?.name || `User ${authorId.slice(0, 6)}`,
-              authorAvatar: cached?.avatar || "",
-              authorUsername: cached?.email ? `@${cached.email.split("@")[0]}` : `@user_${authorId.slice(0, 6)}`,
-            }
-          }
+      const savedPosts = await databases.listDocuments(DATABASE_ID, COLLECTIONS.SAVED_POSTS, [
+        Query.equal("userId", userId),
+        Query.orderDesc("savedAt"),
+        Query.limit(Math.min(limit, 100)),
+        Query.offset(Math.max(offset, 0)),
+      ])
 
+      // Fetch full post documents
+      const posts = await Promise.all(
+        savedPosts.documents.map(async (saved: any) => {
           try {
-            const profile = await profileService.getProfile(authorId)
-            profileCache.set(authorId, profile)
-            return {
-              ...post,
-              authorName: profile?.name || `User ${authorId.slice(0, 6)}`,
-              authorAvatar: profile?.avatar || "",
-              authorUsername: profile?.email ? `@${profile.email.split("@")[0]}` : `@user_${authorId.slice(0, 6)}`,
-            }
-          } catch {
-            return {
-              ...post,
-              authorName: `User ${authorId.slice(0, 6)}`,
-              authorAvatar: "",
-              authorUsername: `@user_${authorId.slice(0, 6)}`,
-            }
+            const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, saved.postId)
+            return post
+          } catch (e) {
+            console.error("Failed to fetch post:", saved.postId, e)
+            return null
           }
         })
       )
 
-      return { documents: enrichedPosts }
-    } catch (error) {
-      console.error("Get feed posts error:", error)
-      return { documents: [] }
-    }
-  },
+      // Filter out null posts
+      const validPosts = posts.filter((p) => p !== null)
 
-  // Like/unlike post
-  async toggleLike(postId: string, userId: string) {
-    try {
-      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
-      const currentLikes = post.likes || 0
-      const likedBy = post.likedBy || []
-
-      const isLiked = likedBy.includes(userId)
-      const newLikes = isLiked ? currentLikes - 1 : currentLikes + 1
-      const newLikedBy = isLiked ? likedBy.filter((id: string) => id !== userId) : [...likedBy, userId]
-
-      return await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, postId, {
-        likes: newLikes,
-        likedBy: newLikedBy,
-      })
-    } catch (error) {
-      console.error("Toggle like error:", error)
-      throw error
-    }
-  },
-
-  // Subscribe to real-time posts
-  subscribeToFeed(callback: (post: any) => void) {
-    // For now, we'll use polling instead of real-time subscriptions
-    const pollPosts = async () => {
-      try {
-        const posts = await this.getFeedPosts(undefined, 1)
-        if (posts.documents.length > 0) {
-          callback(posts.documents[0])
-        }
-      } catch (error) {
-        console.error("Poll posts error:", error)
+      return {
+        documents: validPosts,
+        total: validPosts.length,
       }
-    }
-
-    const interval = setInterval(pollPosts, 5000) // Poll every 5 seconds
-    return () => clearInterval(interval)
-  },
-
-  // Get saved posts for a user
-  async getSavedPosts(userId: string, limit = 50, offset = 0) {
-    try {
-      // Get posts where the user has bookmarked them
-      // Note: This assumes posts have a savedBy array field or we store saved posts separately
-      const posts = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTIONS.POSTS,
-        []
-      )
-      
-      // Filter posts that the user has saved (bookmarked)
-      // For now, we'll try to find posts with savedBy array containing userId
-      const savedPosts = posts.documents.filter((post: any) => {
-        const savedBy = post.savedBy || post.bookmarkedBy || []
-        return savedBy.includes(userId)
-      })
-      
-      return { documents: savedPosts }
     } catch (error) {
       console.error("Get saved posts error:", error)
-      return { documents: [] }
+      return { documents: [], total: 0 }
     }
   },
 
-  // Save/unsave a post (bookmark)
-  async toggleSavePost(postId: string, userId: string) {
+  /**
+   * Update a post with validation
+   */
+  async updatePost(postId: string, updates: { content?: string; tags?: string[] }) {
     try {
-      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
-      const savedBy = post.savedBy || post.bookmarkedBy || []
-      
-      const isSaved = savedBy.includes(userId)
-      const newSavedBy = isSaved 
-        ? savedBy.filter((id: string) => id !== userId) 
-        : [...savedBy, userId]
-      
-      return await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, postId, {
-        savedBy: newSavedBy,
-      })
-    } catch (error) {
-      console.error("Toggle save post error:", error)
-      throw error
-    }
-  },
-
-  // Update post
-  async updatePost(postId: string, userId: string, updates: { content?: string; tags?: string[]; imageUrl?: string }) {
-    try {
-      // Verify the user owns the post
-      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
-      if (post.authorId !== userId) {
-        throw new Error("You can only edit your own posts")
+      if (!postId) {
+        throw new Error("Post ID is required")
       }
+
+      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
 
       const updateData: any = {
         updatedAt: new Date().toISOString(),
       }
-      
-      if (updates.content !== undefined) updateData.content = updates.content
-      if (updates.tags !== undefined) updateData.tags = updates.tags
-      if (updates.imageUrl !== undefined) updateData.imageUrl = updates.imageUrl
 
-      return await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, postId, updateData)
+      if (updates.content !== undefined) {
+        if (!updates.content || !updates.content.trim()) {
+          throw new Error("Post content cannot be empty")
+        }
+        if (updates.content.length > 5000) {
+          throw new Error("Post content exceeds 5000 character limit")
+        }
+        updateData.content = updates.content
+      }
+
+      if (Array.isArray(updates.tags)) {
+        updateData.tags = updates.tags.slice(0, 10)
+      }
+
+      const updatedPost = await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, postId, updateData)
+      return updatedPost
     } catch (error) {
       console.error("Update post error:", error)
       throw error
     }
   },
 
-  // Delete post
-  async deletePost(postId: string, userId: string) {
+  /**
+   * Delete a post and all related data
+   */
+  async deletePost(postId: string) {
     try {
-      // Verify the user owns the post
-      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
-      if (post.authorId !== userId) {
-        throw new Error("You can only delete your own posts")
+      if (!postId) {
+        throw new Error("Post ID is required")
       }
 
+      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
+
+      // Delete images from storage
+      if (post.imageUrls && Array.isArray(post.imageUrls)) {
+        for (const imageUrl of post.imageUrls) {
+          try {
+            const fileId = imageUrl.split("/").pop()?.split("?")[0]
+            if (fileId) {
+              await storage.deleteFile(BUCKETS.POST_IMAGES, fileId)
+            }
+          } catch (e) {
+            console.error("Failed to delete image:", e)
+          }
+        }
+      }
+
+      // Delete all comments on this post
+      const comments = await databases.listDocuments(DATABASE_ID, COLLECTIONS.COMMENTS, [
+        Query.equal("postId", postId),
+      ])
+
+      for (const comment of comments.documents) {
+        try {
+          await databases.deleteDocument(DATABASE_ID, COLLECTIONS.COMMENTS, comment.$id)
+        } catch (e) {
+          console.error("Failed to delete comment:", e)
+        }
+      }
+
+      // Delete saved post entries
+      const savedEntries = await databases.listDocuments(DATABASE_ID, COLLECTIONS.SAVED_POSTS, [
+        Query.equal("postId", postId),
+      ])
+
+      for (const entry of savedEntries.documents) {
+        try {
+          await databases.deleteDocument(DATABASE_ID, COLLECTIONS.SAVED_POSTS, entry.$id)
+        } catch (e) {
+          console.error("Failed to delete saved entry:", e)
+        }
+      }
+
+      // Finally delete the post itself
       await databases.deleteDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
       return { success: true }
     } catch (error) {
@@ -1835,64 +2699,223 @@ export const feedService = {
       throw error
     }
   },
+
+  /**
+   * Toggle like on post with proper validation
+   */
+  async toggleLike(postId: string, userId: string) {
+    try {
+      if (!postId || !userId) {
+        throw new Error("Post ID and User ID are required")
+      }
+
+      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
+
+      const likedBy = Array.isArray(post.likedBy) ? post.likedBy : []
+      const isLiked = likedBy.includes(userId)
+
+      const newLikedBy = isLiked ? likedBy.filter((id: string) => id !== userId) : [...likedBy, userId]
+
+      const updated = await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, postId, {
+        likes: newLikedBy.length,
+        likedBy: newLikedBy,
+      })
+
+      // Create notification for post author if liking (not self-like)
+      if (!isLiked && post.authorId !== userId) {
+        try {
+          await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
+            userId: post.authorId,
+            type: "like",
+            actor: userId,
+            postId: postId,
+            message: `Someone liked your post`,
+            read: false,
+            createdAt: new Date().toISOString(),
+          })
+        } catch (e) {
+          console.error("Failed to create like notification:", e)
+        }
+      }
+
+      return {
+        likes: newLikedBy.length,
+        isLiked: !isLiked,
+        post: updated,
+      }
+    } catch (error) {
+      console.error("Toggle like error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Get post likes
+   */
+  async getPostLikes(postId: string) {
+    try {
+      if (!postId) {
+        throw new Error("Post ID is required")
+      }
+
+      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
+      return {
+        likes: post.likes || 0,
+        likedBy: Array.isArray(post.likedBy) ? post.likedBy : [],
+      }
+    } catch (error) {
+      console.error("Get post likes error:", error)
+      return { likes: 0, likedBy: [] }
+    }
+  },
+
+  /**
+   * Toggle save post status
+   */
+  async toggleSavePost(postId: string, userId: string) {
+    try {
+      if (!postId || !userId) {
+        throw new Error("Post ID and User ID are required")
+      }
+
+      // Check if post is already saved
+      const existing = await databases.listDocuments(DATABASE_ID, COLLECTIONS.SAVED_POSTS, [
+        Query.equal("postId", postId),
+        Query.equal("userId", userId),
+      ])
+
+      if (existing.documents.length > 0) {
+        // Already saved, remove it
+        await databases.deleteDocument(DATABASE_ID, COLLECTIONS.SAVED_POSTS, existing.documents[0].$id)
+        return { saved: false }
+      } else {
+        // Not saved, create new save
+        await databases.createDocument(DATABASE_ID, COLLECTIONS.SAVED_POSTS, "unique()", {
+          postId: postId,
+          userId: userId,
+          savedAt: new Date().toISOString(),
+        })
+        return { saved: true }
+      }
+    } catch (error) {
+      console.error("Toggle save post error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Check if post is saved by user
+   */
+  async isPostSaved(postId: string, userId: string): Promise<boolean> {
+    try {
+      const result = await databases.listDocuments(DATABASE_ID, COLLECTIONS.SAVED_POSTS, [
+        Query.equal("postId", postId),
+        Query.equal("userId", userId),
+      ])
+
+      return result.documents.length > 0
+    } catch (error) {
+      console.error("Check save status error:", error)
+      return false
+    }
+  },
 }
 
 // Comment Functions
-// Note: comments schema has: postId, authorId, content, timestamp, likes, likedBy, replyTo, authorName, authorAvatar
 export const commentService = {
-  // Create a new comment on a post
-  async createComment(postId: string, authorId: string, content: string, replyTo?: string) {
+  /**
+   * Create a comment with proper validation
+   */
+  async createComment(
+    postId: string,
+    authorId: string,
+    content: string,
+    metadata: {
+      authorName?: string
+      authorAvatar?: string
+      authorUsername?: string
+    } = {}
+  ) {
     try {
-      // Get author profile for denormalized data
-      let authorName = `User ${authorId.slice(0, 6)}`
-      let authorAvatar = ""
-      
-      try {
-        const profile = await profileService.getProfile(authorId)
-        if (profile) {
-          authorName = profile.name || authorName
-          authorAvatar = profile.avatar || ""
-        }
-      } catch (e) {
-        // Use defaults
+      // Validate inputs
+      if (!postId || !authorId || !content) {
+        throw new Error("Post ID, Author ID, and content are required")
       }
 
-      const comment = await databases.createDocument(DATABASE_ID, COLLECTIONS.COMMENTS, "unique()", {
-        postId,
-        authorId,
-        content,
-        timestamp: new Date().toISOString(),
-        likes: 0,
-        likedBy: [],
-        replyTo: replyTo || null,
-        authorName,
-        authorAvatar,
+      if (!content.trim()) {
+        throw new Error("Comment content cannot be empty")
+      }
+
+      if (content.length > 2000) {
+        throw new Error("Comment content exceeds 2000 character limit")
+      }
+
+      // Fetch post to verify it exists
+      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
+
+      // Get comment author profile
+      let authorName = metadata.authorName || ""
+      let authorAvatar = metadata.authorAvatar || ""
+      let authorUsername = metadata.authorUsername || ""
+
+      if (!authorName) {
+        try {
+          const profile = await profileService.getProfile(authorId)
+          if (profile) {
+            authorName = profile.name || ""
+            authorAvatar = profile.avatar || ""
+            authorUsername = profile.username || `@user_${authorId.slice(0, 6)}`
+          }
+        } catch (e) {
+          console.error("Failed to fetch profile:", e)
+        }
+      }
+
+      if (!authorUsername) {
+        authorUsername = `@user_${authorId.slice(0, 6)}`
+      }
+
+      // Create comment
+      const comment = await databases.createDocument(
+        DATABASE_ID,
+        COLLECTIONS.COMMENTS,
+        "unique()",
+        {
+          postId: postId,
+          authorId: authorId,
+          content: content,
+          timestamp: new Date().toISOString(),
+          likes: 0,
+          likedBy: [],
+          authorName: authorName,
+          authorAvatar: authorAvatar,
+          authorUsername: authorUsername,
+        }
+      )
+
+      // Increment post comment count
+      await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, postId, {
+        comments: (post.comments || 0) + 1,
       })
 
-      // Increment comment count on the post
-      try {
-        const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
-        await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, postId, {
-          comments: (post.comments || 0) + 1,
-        })
-      } catch (e) {
-        console.warn("Failed to update post comment count:", e)
-      }
-
-      // Notify post author (if different from commenter)
-      try {
-        const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
-        if (post.authorId && post.authorId !== authorId) {
-          await notificationService.createNotification(
-            post.authorId,
-            "New Comment",
-            `${authorName} commented on your post`,
-            "comment",
-            { postId, commentId: comment.$id }
-          )
+      // Create notification for post author (if not self-commenting)
+      if (post.authorId !== authorId) {
+        try {
+          await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
+            userId: post.authorId,
+            type: "comment",
+            actor: authorId,
+            actorName: authorName,
+            actorAvatar: authorAvatar,
+            postId: postId,
+            commentId: comment.$id,
+            message: `${authorName} commented on your post`,
+            read: false,
+            createdAt: new Date().toISOString(),
+          })
+        } catch (e) {
+          console.error("Failed to create notification:", e)
         }
-      } catch (e) {
-        console.warn("Failed to create comment notification:", e)
       }
 
       return comment
@@ -1902,29 +2925,48 @@ export const commentService = {
     }
   },
 
-  // Get comments for a post
-  async getComments(postId: string, limit = 50) {
+  /**
+   * Get comments for a post with proper pagination and ordering
+   */
+  async getComments(postId: string, limit = 50, offset = 0) {
     try {
-      const comments = await databases.listDocuments(DATABASE_ID, COLLECTIONS.COMMENTS, [
-        Query.equal('postId', postId),
-        Query.orderDesc('timestamp'),
-        Query.limit(limit),
-      ])
+      if (!postId) {
+        throw new Error("Post ID is required")
+      }
+
+      const comments = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTIONS.COMMENTS,
+        [
+          Query.equal("postId", postId),
+          Query.orderAsc("timestamp"),
+          Query.limit(Math.min(limit, 100)),
+          Query.offset(Math.max(offset, 0)),
+        ]
+      )
+
       return comments
     } catch (error) {
       console.error("Get comments error:", error)
-      return { documents: [] }
+      return { documents: [], total: 0 }
     }
   },
 
-  // Get replies to a comment
+  /**
+   * Get replies to a comment
+   */
   async getReplies(commentId: string, limit = 20) {
     try {
+      if (!commentId) {
+        throw new Error("Comment ID is required")
+      }
+
       const replies = await databases.listDocuments(DATABASE_ID, COLLECTIONS.COMMENTS, [
-        Query.equal('replyTo', commentId),
-        Query.orderAsc('timestamp'),
-        Query.limit(limit),
+        Query.equal("replyTo", commentId),
+        Query.orderAsc("timestamp"),
+        Query.limit(Math.min(limit, 100)),
       ])
+
       return replies
     } catch (error) {
       console.error("Get replies error:", error)
@@ -1932,68 +2974,125 @@ export const commentService = {
     }
   },
 
-  // Toggle like on a comment
+  /**
+   * Toggle like on comment with proper validation
+   */
   async toggleLike(commentId: string, userId: string) {
     try {
-      const comment = await databases.getDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId)
-      const currentLikes = comment.likes || 0
-      const likedBy = comment.likedBy || []
+      if (!commentId || !userId) {
+        throw new Error("Comment ID and User ID are required")
+      }
 
+      const comment = await databases.getDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId)
+
+      const likedBy = Array.isArray(comment.likedBy) ? comment.likedBy : []
       const isLiked = likedBy.includes(userId)
-      const newLikes = isLiked ? currentLikes - 1 : currentLikes + 1
+
       const newLikedBy = isLiked ? likedBy.filter((id: string) => id !== userId) : [...likedBy, userId]
 
-      return await databases.updateDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId, {
-        likes: newLikes,
-        likedBy: newLikedBy,
-      })
+      const updated = await databases.updateDocument(
+        DATABASE_ID,
+        COLLECTIONS.COMMENTS,
+        commentId,
+        {
+          likes: newLikedBy.length,
+          likedBy: newLikedBy,
+        }
+      )
+
+      return {
+        likes: newLikedBy.length,
+        isLiked: !isLiked,
+        comment: updated,
+      }
     } catch (error) {
-      console.error("Toggle comment like error:", error)
+      console.error("Toggle like comment error:", error)
       throw error
     }
   },
 
-  // Update a comment
-  async updateComment(commentId: string, userId: string, content: string) {
+  /**
+   * Update comment with validation
+   */
+  async updateComment(commentId: string, content: string) {
     try {
-      const comment = await databases.getDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId)
-      if (comment.authorId !== userId) {
-        throw new Error("You can only edit your own comments")
+      if (!commentId || !content) {
+        throw new Error("Comment ID and content are required")
       }
 
-      return await databases.updateDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId, {
-        content,
-        updatedAt: new Date().toISOString(),
-      })
+      if (!content.trim()) {
+        throw new Error("Comment content cannot be empty")
+      }
+
+      if (content.length > 2000) {
+        throw new Error("Comment content exceeds 2000 character limit")
+      }
+
+      const updated = await databases.updateDocument(
+        DATABASE_ID,
+        COLLECTIONS.COMMENTS,
+        commentId,
+        {
+          content: content,
+          updatedAt: new Date().toISOString(),
+        }
+      )
+
+      return updated
     } catch (error) {
       console.error("Update comment error:", error)
       throw error
     }
   },
 
-  // Delete a comment
-  async deleteComment(commentId: string, userId: string) {
+  /**
+   * Delete comment with proper cleanup
+   */
+  async deleteComment(commentId: string) {
     try {
+      if (!commentId) {
+        throw new Error("Comment ID is required")
+      }
+
+      // Get comment details to find post
       const comment = await databases.getDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId)
-      if (comment.authorId !== userId) {
-        throw new Error("You can only delete your own comments")
-      }
 
-      // Decrement comment count on the post
-      try {
-        const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, comment.postId)
-        await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, comment.postId, {
-          comments: Math.max(0, (post.comments || 0) - 1),
-        })
-      } catch (e) {
-        console.warn("Failed to update post comment count:", e)
-      }
-
+      // Delete the comment first
       await databases.deleteDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId)
+
+      // Then decrement post comment count
+      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, comment.postId)
+      const newCommentCount = Math.max((post.comments || 1) - 1, 0)
+
+      await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, comment.postId, {
+        comments: newCommentCount,
+      })
+
       return { success: true }
     } catch (error) {
       console.error("Delete comment error:", error)
       throw error
+    }
+  },
+
+  /**
+   * Get comment likes
+   */
+  async getCommentLikes(commentId: string) {
+    try {
+      if (!commentId) {
+        throw new Error("Comment ID is required")
+      }
+
+      const comment = await databases.getDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId)
+
+      return {
+        likes: comment.likes || 0,
+        likedBy: Array.isArray(comment.likedBy) ? comment.likedBy : [],
+      }
+    } catch (error) {
+      console.error("Get comment likes error:", error)
+      return { likes: 0, likedBy: [] }
     }
   },
 }
@@ -2168,6 +3267,275 @@ export const notificationService = {
 
     const interval = setInterval(pollNotifications, 10000) // Poll every 10 seconds
     return () => clearInterval(interval)
+  },
+}
+
+// Analytics Service
+export const analyticsService = {
+  /**
+   * Track study time
+   */
+  async trackStudyTime(userId: string, podId: string, duration: number, subject?: string) {
+    try {
+      // For now, store in user profile or create an analytics collection
+      const profile = await profileService.getProfile(userId)
+      
+      // Create activity log entry
+      await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
+        userId,
+        type: "activity_log",
+        message: `Studied for ${Math.floor(duration / 60)} minutes`,
+        metadata: JSON.stringify({ podId, duration, subject, type: "study" }),
+        timestamp: new Date().toISOString(),
+      })
+
+      return { success: true, duration }
+    } catch (error) {
+      console.error("Track study time error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Track user activity
+   */
+  async trackActivity(userId: string, action: string, metadata: any = {}) {
+    try {
+      await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
+        userId,
+        type: "activity_log",
+        message: action,
+        metadata: JSON.stringify({ ...metadata, action, timestamp: new Date().toISOString() }),
+        timestamp: new Date().toISOString(),
+      })
+
+      return { success: true }
+    } catch (error) {
+      console.error("Track activity error:", error)
+      return { success: false }
+    }
+  },
+
+  /**
+   * Get study stats for user
+   */
+  async getStudyStats(userId: string, startDate?: string, endDate?: string) {
+    try {
+      // Get user's pods
+      const pods = await podService.getUserPods(userId, 100, 0)
+      
+      // Get calendar events (study sessions)
+      const events = await calendarService.getUserEvents(userId, startDate, endDate)
+      
+      // Calculate stats
+      const totalPods = pods.documents.length
+      const totalStudySessions = events.documents.filter((e: any) => e.type === "study").length
+      const completedSessions = events.documents.filter((e: any) => e.isCompleted).length
+      
+      return {
+        totalPods,
+        totalStudySessions,
+        completedSessions,
+        completionRate: totalStudySessions > 0 ? (completedSessions / totalStudySessions) * 100 : 0,
+        events: events.documents,
+      }
+    } catch (error) {
+      console.error("Get study stats error:", error)
+      return { totalPods: 0, totalStudySessions: 0, completedSessions: 0, completionRate: 0, events: [] }
+    }
+  },
+
+  /**
+   * Get activity log
+   */
+  async getActivityLog(userId: string, limit = 50, offset = 0) {
+    try {
+      const activities = await databases.listDocuments(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, [
+        Query.equal("userId", userId),
+        Query.equal("type", "activity_log"),
+        Query.orderDesc("timestamp"),
+        Query.limit(limit),
+        Query.offset(offset),
+      ])
+
+      return activities
+    } catch (error) {
+      console.error("Get activity log error:", error)
+      return { documents: [], total: 0 }
+    }
+  },
+
+  /**
+   * Get pod statistics
+   */
+  async getPodStats(podId: string) {
+    try {
+      const pod = await podService.getPodDetails(podId)
+      const members = await podService.getPodMembers(podId, 100)
+      const events = await calendarService.getPodEvents(podId, 100, 0)
+      
+      // Get messages count
+      let messagesCount = 0
+      try {
+        const chatRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
+          Query.equal("podId", podId),
+        ])
+        
+        if (chatRooms.documents.length > 0) {
+          const messages = await databases.listDocuments(DATABASE_ID, COLLECTIONS.MESSAGES, [
+            Query.equal("roomId", chatRooms.documents[0].$id),
+          ])
+          messagesCount = messages.total
+        }
+      } catch (e) {
+        console.error("Failed to get messages count:", e)
+      }
+
+      return {
+        memberCount: members.total,
+        eventsCount: events.documents.length,
+        messagesCount,
+        createdAt: pod.createdAt,
+        activity: "active", // Could calculate based on last message/event
+      }
+    } catch (error) {
+      console.error("Get pod stats error:", error)
+      return { memberCount: 0, eventsCount: 0, messagesCount: 0, activity: "unknown" }
+    }
+  },
+
+  /**
+   * Get resource usage stats
+   */
+  async getResourceStats(userId: string) {
+    try {
+      // Get user's uploaded resources
+      const resources = await databases.listDocuments(DATABASE_ID, COLLECTIONS.RESOURCES, [
+        Query.equal("uploadedBy", userId),
+      ])
+
+      return {
+        totalResources: resources.total,
+        resources: resources.documents,
+      }
+    } catch (error) {
+      console.error("Get resource stats error:", error)
+      return { totalResources: 0, resources: [] }
+    }
+  },
+
+  /**
+   * Get achievement progress
+   */
+  async getAchievementProgress(userId: string) {
+    try {
+      const profile = await profileService.getProfile(userId)
+      
+      return {
+        level: profile?.level || 1,
+        totalPoints: profile?.totalPoints || 0,
+        studyStreak: profile?.studyStreak || 0,
+        badges: profile?.badges || [],
+      }
+    } catch (error) {
+      console.error("Get achievement progress error:", error)
+      return { level: 1, totalPoints: 0, studyStreak: 0, badges: [] }
+    }
+  },
+
+  /**
+   * Generate analytics report
+   */
+  async generateReport(userId: string, startDate: string, endDate: string) {
+    try {
+      const studyStats = await this.getStudyStats(userId, startDate, endDate)
+      const activityLog = await this.getActivityLog(userId, 100, 0)
+      const achievements = await this.getAchievementProgress(userId)
+      const resourceStats = await this.getResourceStats(userId)
+
+      return {
+        period: { startDate, endDate },
+        studyStats,
+        achievements,
+        resourceStats,
+        activityLog: activityLog.documents,
+        generatedAt: new Date().toISOString(),
+      }
+    } catch (error) {
+      console.error("Generate report error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Export analytics (placeholder - would need actual PDF/CSV generation)
+   */
+  async exportAnalytics(userId: string, format: "pdf" | "csv" = "csv") {
+    try {
+      const report = await this.generateReport(userId, "", "")
+      
+      // For CSV format, convert to CSV string
+      if (format === "csv") {
+        const csv = `User Analytics Report
+Generated: ${report.generatedAt}
+
+Study Stats:
+Total Pods: ${report.studyStats.totalPods}
+Total Sessions: ${report.studyStats.totalStudySessions}
+Completed: ${report.studyStats.completedSessions}
+Completion Rate: ${report.studyStats.completionRate}%
+
+Achievements:
+Level: ${report.achievements.level}
+Points: ${report.achievements.totalPoints}
+Streak: ${report.achievements.studyStreak} days
+Badges: ${report.achievements.badges.length}
+
+Resources:
+Total: ${report.resourceStats.totalResources}
+`
+        return { format: "csv", data: csv, filename: `analytics-${userId}-${Date.now()}.csv` }
+      }
+
+      return { format, data: JSON.stringify(report, null, 2), filename: `analytics-${userId}-${Date.now()}.json` }
+    } catch (error) {
+      console.error("Export analytics error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Update learning goals (stored in profile)
+   */
+  async updateLearningGoals(userId: string, goals: string[]) {
+    try {
+      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
+        learningGoals: goals,
+      })
+
+      return { success: true, goals }
+    } catch (error) {
+      console.error("Update learning goals error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Track goal progress
+   */
+  async trackGoalProgress(userId: string, goalId: string, progress: number) {
+    try {
+      await this.trackActivity(userId, "Goal Progress Updated", {
+        goalId,
+        progress,
+        timestamp: new Date().toISOString(),
+      })
+
+      return { success: true, goalId, progress }
+    } catch (error) {
+      console.error("Track goal progress error:", error)
+      throw error
+    }
   },
 }
 

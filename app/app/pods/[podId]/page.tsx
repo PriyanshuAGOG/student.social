@@ -128,7 +128,7 @@ export default function PodDetailPage() {
           setMemberProfiles([])
         }
 
-        const res = await resourceService.getResources({ podId }, 6, 0)
+        const res = await resourceService.getResources(podId, 6, 0)
         setResources(res.documents || [])
 
         if (calendarService.getPodEvents) {

@@ -114,10 +114,9 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
         }
       } catch {}
 
-      const msg = await chatService.sendMessage(chatRoomId, user.$id, inputValue.trim(), "text", {
-        replyTo: replyingTo?.$id || null,
-        authorName,
-        authorAvatar,
+      const msg = await chatService.sendMessage(chatRoomId, user.$id, inputValue.trim(), {
+        senderName: authorName,
+        senderAvatar: authorAvatar,
       })
       
       const newMessage: Message = {

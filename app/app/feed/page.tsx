@@ -215,14 +215,13 @@ export default function FeedPage() {
     }
     try {
       const updated = await feedService.toggleLike(postId, user.$id)
-      const likedBy = updated.likedBy || []
       setPosts((prev) =>
         prev.map((post) =>
           post.id === postId
             ? {
                 ...post,
                 likes: updated.likes || 0,
-                isLiked: likedBy.includes(user.$id),
+                isLiked: updated.isLiked,
               }
             : post,
         ),
@@ -289,9 +288,10 @@ export default function FeedPage() {
     setIsCelebrating(true)
     try {
       const visibility = celebrationPod === "public" ? "public" : "pod"
-      const created = await feedService.createPost(user.$id, celebrationText.trim(), "achievement", {
+      const created = await feedService.createPost(user.$id, celebrationText.trim(), {
+        type: "achievement",
         visibility,
-        podId: celebrationPod === "public" ? null : celebrationPod,
+        podId: celebrationPod === "public" ? undefined : celebrationPod,
         tags: ["celebration", "milestone"],
       })
       const podMeta = celebrationPod === "public" ? undefined : pods.find((p: any) => p.$id === celebrationPod || p.teamId === celebrationPod)

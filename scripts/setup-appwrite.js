@@ -179,24 +179,30 @@ const collections = [
     id: 'pods',
     name: 'Study Pods',
     attrs: [
-      ['teamId', 'string', 255, true],
+      // ✅ FIXED: Removed teamId - no longer using Appwrite Teams API
       ['name', 'string', 255, true],
       ['description', 'string', 2000, true],
       ['creatorId', 'string', 255, true],
-      ['members', 'array-string', 255, true], // Array of user IDs
+      ['members', 'array-string', 255, true], // Array of user IDs - database-only approach
+      ['memberCount', 'integer', null, true], // ✅ FIXED: Required for accurate counts
       ['subject', 'string', 100, false],
       ['difficulty', 'string', 50, false],
       ['isActive', 'boolean', null, false],
       ['isPublic', 'boolean', null, false],
       ['createdAt', 'string', 255, true],
       ['updatedAt', 'string', 255, false],
-      ['memberCount', 'integer', null, false],
+      ['image', 'string', 500, false], // Pod image URL
+      ['maxMembers', 'integer', null, false], // Maximum allowed members
       // Matching metadata
       ['idealLearnerType', 'array-string', 100, false], // Array of strings
       ['sessionType', 'array-string', 100, false], // Array of strings
       ['averageSessionLength', 'integer', null, false],
       ['commonAvailability', 'array-string', 100, false], // Array of strings
       ['matchingTags', 'array-string', 100, false], // Array of strings
+      // Admin features
+      ['admins', 'array-string', 255, false], // Array of admin user IDs
+      ['inviteCode', 'string', 255, false], // Invite link code
+      ['inviteExpiry', 'string', 255, false], // When invite expires
     ],
   },
   {
@@ -228,17 +234,26 @@ const collections = [
     name: 'Notifications',
     attrs: [
       ['userId', 'string', 255, true],
-      ['title', 'string', 255, true],
+      ['title', 'string', 255, false], // Optional title
       ['message', 'string', 1000, true],
-      ['type', 'string', 50, true],
+      ['type', 'string', 50, true], // 'info', 'pod_join', 'comment', 'activity_log', etc.
       ['timestamp', 'string', 255, true],
       ['isRead', 'boolean', null, false],
+      ['read', 'boolean', null, false], // Alias for isRead
       ['readAt', 'string', 255, false],
+      ['createdAt', 'string', 255, false], // Alias for timestamp
       ['actionUrl', 'string', 500, false],
       ['actionText', 'string', 255, false],
       ['imageUrl', 'string', 500, false],
       ['podId', 'string', 255, false],
       ['podName', 'string', 255, false],
+      ['postId', 'string', 255, false],
+      ['commentId', 'string', 255, false],
+      // ✅ NEW: For activity tracking and social notifications
+      ['actor', 'string', 255, false], // User ID who performed the action
+      ['actorName', 'string', 255, false], // Actor's display name
+      ['actorAvatar', 'string', 500, false], // Actor's avatar URL
+      ['metadata', 'string', 2000, false], // JSON string for additional data
     ],
   },
   {
@@ -259,29 +274,43 @@ const collections = [
     id: 'chat_rooms',
     name: 'Chat Rooms',
     attrs: [
-      ['type', 'string', 50, true],
-      ['podId', 'string', 255, false],
+      ['type', 'string', 50, true], // 'pod' or 'direct'
+      ['podId', 'string', 255, false], // ✅ FIXED: Pod ID for pod chats
       ['name', 'string', 255, false],
-      ['participants', 'array-string', 255, false], // Array of user IDs for direct chats
+      ['members', 'array-string', 255, true], // ✅ FIXED: Required members array
+      ['participants', 'array-string', 255, false], // Array of user IDs for direct chats (alias for members)
       ['createdAt', 'string', 255, true],
+      ['updatedAt', 'string', 255, false], // ✅ NEW: Last update timestamp
       ['isActive', 'boolean', null, false],
       ['lastMessage', 'string', 500, false],
-      ['lastMessageTime', 'string', 255, false],
+      ['unreadCount', 'integer', null, false], // ✅ NEW: Unread message count
     ],
   },
   {
     id: 'comments',
-    name: 'Post Comments',
+    name: 'Comments',
     attrs: [
-      ['postId', 'string', 255, true], // Post this comment belongs to
-      ['authorId', 'string', 255, true], // User who wrote the comment
-      ['content', 'string', 2000, true], // Comment text content
-      ['timestamp', 'string', 255, true], // When the comment was created
-      ['likes', 'integer', null, false], // Number of likes on this comment
-      ['likedBy', 'array-string', 255, false], // Array of user IDs who liked
-      ['replyTo', 'string', 255, false], // Parent comment ID for replies (null for top-level)
-      ['authorName', 'string', 255, false], // Denormalized author name
-      ['authorAvatar', 'string', 500, false], // Denormalized author avatar URL
+      ['postId', 'string', 255, true],
+      ['userId', 'string', 255, true],
+      ['content', 'string', 2000, true],
+      ['createdAt', 'string', 255, true],
+      ['updatedAt', 'string', 255, false], // ✅ NEW: When comment was last edited
+      ['likes', 'integer', null, false],
+      ['likedBy', 'array-string', 255, false],
+      ['replyTo', 'string', 255, false],
+      ['authorName', 'string', 255, false],
+      ['authorAvatar', 'string', 500, false],
+      ['authorUsername', 'string', 255, false], // ✅ NEW: Denormalized author username
+      ['isEdited', 'boolean', null, false], // ✅ NEW: Whether comment was edited
+    ],
+  },
+  {
+    id: 'saved_posts',
+    name: 'Saved Posts',
+    attrs: [
+      ['userId', 'string', 255, true], // User who saved the post
+      ['postId', 'string', 255, true], // Post that was saved
+      ['savedAt', 'string', 255, true], // When the post was saved
     ],
   },
 ];
@@ -291,6 +320,7 @@ const buckets = [
   { id: 'resources', name: 'Study Resources' },
   { id: 'attachments', name: 'Message Attachments' },
   { id: 'post_images', name: 'Post Images' },
+  { id: 'pod_images', name: 'Pod Images' }, // ✅ NEW: For pod cover photos
 ];
 
 async function setup() {

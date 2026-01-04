@@ -229,7 +229,7 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
     
     setIsSubmitting(true)
     try {
-      const rawComment = await commentService.createComment(postId, user.$id, newComment.trim(), replyingTo || undefined)
+      const rawComment = await commentService.createComment(postId, user.$id, newComment.trim(), {})
       const comment = rawComment as unknown as Comment
       
       if (replyingTo) {
@@ -279,7 +279,7 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
       const updateLikes = (comments: Comment[]): Comment[] => {
         return comments.map(c => {
           if (c.$id === commentId) {
-            return { ...c, likes: updated.likes, likedBy: updated.likedBy }
+            return { ...c, likes: updated.likes, isLiked: updated.isLiked }
           }
           if (c.replies) {
             return { ...c, replies: updateLikes(c.replies) }
@@ -298,7 +298,7 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
     if (!user?.$id) return
     
     try {
-      await commentService.deleteComment(commentId, user.$id)
+      await commentService.deleteComment(commentId)
       
       // Remove from local state
       const removeComment = (comments: Comment[]): Comment[] => {
@@ -324,7 +324,7 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
     if (!user?.$id) return
     
     try {
-      await commentService.updateComment(commentId, user.$id, content)
+      await commentService.updateComment(commentId, content)
       
       // Update local state
       const updateContent = (comments: Comment[]): Comment[] => {
