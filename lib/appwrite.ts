@@ -914,6 +914,7 @@ export const podService = {
             await databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, "unique()", {
               roomId: chatRoomId,
               senderId: "system",
+              authorId: "system",
               senderName: "System",
               senderAvatar: "",
               content: `${joinerName} joined the pod`,
@@ -1292,8 +1293,9 @@ export const podService = {
 
       const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
 
-      // Verify user is creator or admin when userId is provided
-      if (userId) {
+      // Only verify permissions if userId is explicitly provided and non-empty
+      // If userId is not provided or empty, allow public invite link generation
+      if (userId && userId.trim()) {
         const admins = Array.isArray(pod.admins) ? pod.admins : []
         if (pod.creatorId !== userId && !admins.includes(userId)) {
           throw new Error("Only pod creator or admins can generate invite links")
@@ -1942,7 +1944,6 @@ export const chatService = {
     if (!userA || !userB) throw new Error("Both user IDs are required")
 
     const members = [userA, userB].sort()
-    const roomKey = `dm_${members[0]}_${members[1]}`
 
     // Try to find an existing DM room
     try {
@@ -1959,8 +1960,8 @@ export const chatService = {
       console.warn("DM lookup failed, will attempt to create", err)
     }
 
-    // Create the room
-    const room = await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, roomKey, {
+    // Create the room with auto-generated ID (stays under 36 chars Appwrite limit)
+    const room = await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", {
       name: "Direct Messages",
       type: "dm",
       members,
@@ -2016,6 +2017,7 @@ export const chatService = {
         {
           roomId: roomId,
           senderId: senderId,
+          authorId: senderId,
           content: content.trim(),
           senderName: senderName,
           senderAvatar: senderAvatar,
@@ -2420,7 +2422,7 @@ export const resourceService = {
   async getResources(podId?: string, limit = 50, offset = 0) {
     try {
       const queries: any[] = [
-        Query.orderDesc("createdAt"),
+        Query.orderDesc("$createdAt"),
         Query.limit(Math.min(limit, 100)),
         Query.offset(Math.max(offset, 0)),
       ]
@@ -3366,9 +3368,11 @@ export const notificationService = {
   // Create notification
   async createNotification(userId: string, title: string, message: string, type = "info", metadata: any = {}) {
     try {
+      // Ensure title is always set (Appwrite schema requires it)
+      const notificationTitle = title && title.trim() ? title : type.charAt(0).toUpperCase() + type.slice(1)
       return await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
         userId: userId,
-        title: title,
+        title: notificationTitle,
         message: message,
         type: type, // info, success, warning, error, pod_join, message, resource, event
         isRead: false,
