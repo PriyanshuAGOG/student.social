@@ -6,7 +6,8 @@
  * Complete member management with invite functionality, member list, and admin controls.
  */
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -74,12 +75,41 @@ export function EnhancedMembersTab({
   const [isInviting, setIsInviting] = useState(false)
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [inviteLink, setInviteLink] = useState("")
   const { user } = useAuth()
   const { toast } = useToast()
 
-  const inviteLink = podService.generateInviteLink(podId)
+  useEffect(() => {
+    let cancelled = false
+    const loadInviteLink = async () => {
+      try {
+        const result = await podService.generateInviteLink(podId, user?.$id)
+        const link = typeof result === "string" ? result : result?.inviteLink
+        if (!cancelled && link) {
+          setInviteLink(link)
+        }
+      } catch (error: any) {
+        if (cancelled) return
+        setInviteLink("")
+        toast({
+          title: "Invite link unavailable",
+          description: error?.message || "Could not generate invite link",
+          variant: "destructive",
+        })
+      }
+    }
+
+    loadInviteLink()
+    return () => {
+      cancelled = true
+    }
+  }, [podId, user?.$id, toast])
   
   const handleCopyLink = async () => {
+    if (!inviteLink) {
+      toast({ title: "Invite link unavailable", description: "Try again in a moment", variant: "destructive" })
+      return
+    }
     try {
       await navigator.clipboard.writeText(inviteLink)
       setLinkCopied(true)
@@ -279,6 +309,13 @@ export function EnhancedMembersTab({
 }
 
 function MemberCard({ member, isCreator, isCurrentUser }: { member: Member; isCreator: boolean; isCurrentUser: boolean }) {
+  const router = useRouter()
+
+  const handleMessage = () => {
+    if (isCurrentUser) return
+    router.push(`/app/messages/${member.id}`)
+  }
+
   return (
     <div className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
       <div className="relative">
@@ -323,7 +360,7 @@ function MemberCard({ member, isCreator, isCurrentUser }: { member: Member; isCr
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleMessage} disabled={isCurrentUser}>
             <MessageSquare className="w-4 h-4 mr-2" />
             Message
           </DropdownMenuItem>

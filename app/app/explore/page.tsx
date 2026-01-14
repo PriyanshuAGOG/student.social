@@ -201,24 +201,36 @@ export default function ExplorePage() {
     })
   }
 
-  const handleShare = (pod: Pod) => {
+  const handleShare = async (pod: Pod) => {
     const podId = pod.$id || pod.teamId
     if (!podId) return
 
-    const inviteLink = podService.generateInviteLink(podId)
+    try {
+      const result = await podService.generateInviteLink(podId, user?.$id)
+      const inviteLink = typeof result === "string" ? result : result?.inviteLink || ""
+      if (!inviteLink) {
+        throw new Error("Invite link not available")
+      }
     
-    // Try to copy to clipboard
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(inviteLink).then(() => {
-        toast({
-          title: "Link copied!",
-          description: `Share link for ${pod.name} copied to clipboard.`,
+      // Try to copy to clipboard
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(inviteLink).then(() => {
+          toast({
+            title: "Link copied!",
+            description: `Share link for ${pod.name} copied to clipboard.`,
+          })
+        }).catch(() => {
+          setInviteLinkDialog({ open: true, link: inviteLink, podName: pod.name })
         })
-      }).catch(() => {
+      } else {
         setInviteLinkDialog({ open: true, link: inviteLink, podName: pod.name })
+      }
+    } catch (error: any) {
+      toast({
+        title: "Invite link unavailable",
+        description: error?.message || "Unable to generate invite link",
+        variant: "destructive",
       })
-    } else {
-      setInviteLinkDialog({ open: true, link: inviteLink, podName: pod.name })
     }
   }
 

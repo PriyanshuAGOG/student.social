@@ -91,10 +91,18 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
     if (isOpen) loadProfileAndPods()
   }, [isOpen, authUser?.$id])
 
+  const displayName = profile?.name || authUser?.name || ""
+  const username = displayName
+    ? `@${displayName.toLowerCase().replace(/\s+/g, "_")}`
+    : authUser?.email
+      ? `@${authUser.email.split("@")[0]}`
+      : ""
+  const avatar = profile?.avatar || ""
+
   const user = {
-    name: authUser?.name || profile?.name || "",
-    avatar: profile?.avatar || "",
-    username: authUser?.email ? `@${authUser.email.split("@")[0]}` : "",
+    name: displayName,
+    avatar,
+    username,
   }
 
   const handleAddTag = (tag: string) => {
@@ -129,10 +137,14 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
       const visibility = selectedPod === "public" ? "public" : "pod"
       const podId = selectedPod === "public" ? null : selectedPod
 
-      const created = await feedService.createPost(authUser.$id, content.trim(), "text", {
+      const created = await feedService.createPost(authUser.$id, content.trim(), {
+        type: "text",
         podId,
         visibility,
         tags,
+        authorName: displayName,
+        authorAvatar: avatar,
+        authorUsername: username,
       })
 
       const podMeta = podId ? pods.find((p) => p.$id === podId || p.teamId === podId) : undefined

@@ -68,7 +68,7 @@ export default function FeedPage() {
   const [activeTab, setActiveTab] = useState("all")
   const { toast } = useToast()
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [achievements, setAchievements] = useState<Post[]>([])
   const [studyingNow, setStudyingNow] = useState<StudyingNowUser[]>([])
@@ -76,6 +76,11 @@ export default function FeedPage() {
   const [celebrationPod, setCelebrationPod] = useState<string>("public")
   const [isCelebrating, setIsCelebrating] = useState(false)
   const [pods, setPods] = useState<any[]>([])
+
+  const formatUsername = (name?: string) =>
+    name && name.trim().length > 0
+      ? `@${name.trim().toLowerCase().replace(/\s+/g, "_")}`
+      : ""
 
   useEffect(() => {
     const load = async () => {
@@ -87,11 +92,17 @@ export default function FeedPage() {
           podService.getUserPods(user.$id),
           profileService.getAllProfiles(200, 0),
         ])
+        const profileMap = new Map<string, any>()
+        ;(profilesRes.documents || []).forEach((prof: any) => {
+          profileMap.set(prof.$id, prof)
+        })
+
         const mapped: Post[] = (res.documents || []).map((d: any) => {
-          const authorName = d.authorName || d.author?.name || d.author || "Someone"
+          const authorProfile = profileMap.get(d.authorId) || profileMap.get(d.author?.id)
+          const authorName = authorProfile?.name || d.authorName || d.author?.name || d.author || "Someone"
           const authorUsername =
-            d.authorUsername || d.author?.username || (d.authorId ? `@${String(d.authorId).slice(0, 6)}` : "")
-          const authorAvatar = d.authorAvatar || d.author?.avatar || "/placeholder.svg"
+            formatUsername(authorProfile?.name) || d.authorUsername || d.author?.username || (d.authorId ? `@${String(d.authorId).slice(0, 6)}` : "")
+          const authorAvatar = authorProfile?.avatar || d.authorAvatar || d.author?.avatar || "/placeholder.svg"
           const likedBy = d.likedBy || []
 
           return {
@@ -293,16 +304,22 @@ export default function FeedPage() {
         visibility,
         podId: celebrationPod === "public" ? undefined : celebrationPod,
         tags: ["celebration", "milestone"],
+        authorName: profile?.name || user.name,
+        authorAvatar: profile?.avatar,
+        authorUsername: formatUsername(profile?.name || user.name) || (user.email ? `@${user.email.split("@")[0]}` : ""),
       })
       const podMeta = celebrationPod === "public" ? undefined : pods.find((p: any) => p.$id === celebrationPod || p.teamId === celebrationPod)
+      const celebrationName = profile?.name || user.name || "You"
+      const celebrationAvatar = profile?.avatar || "/placeholder.svg"
+      const celebrationUsername = formatUsername(profile?.name || user.name) || (user.email ? `@${user.email.split("@")[0]}` : "")
       const newPost: Post = {
         id: created.$id,
         title: "Celebration",
         content: celebrationText.trim(),
         author: {
-          name: user.name || "You",
-          avatar: "/placeholder.svg",
-          username: user.email ? `@${user.email.split("@")[0]}` : "",
+          name: celebrationName,
+          avatar: celebrationAvatar,
+          username: celebrationUsername,
         },
         timestamp: created.timestamp || new Date().toISOString(),
         likes: 0,

@@ -40,6 +40,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(true)
+  const [isSyncing, setIsSyncing] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -58,8 +59,11 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
 
   // Load messages
   useEffect(() => {
-    const loadMessages = async () => {
-      setIsLoading(true)
+    let initialized = false
+
+    const loadMessages = async (showSpinner = false) => {
+      if (showSpinner) setIsLoading(true)
+      else setIsSyncing(true)
       try {
         const res = await chatService.getMessages(chatRoomId, 100, 0)
         const messagesData = res.documents || []
@@ -88,13 +92,14 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
         console.error("Failed to load messages:", error)
       } finally {
         setIsLoading(false)
+        setIsSyncing(false)
       }
     }
     
-    loadMessages()
+    loadMessages(true)
     
-    // Poll for new messages every 3 seconds
-    const interval = setInterval(loadMessages, 3000)
+    // Poll for new messages every 3 seconds without flicker
+    const interval = setInterval(() => loadMessages(false), 3000)
     return () => clearInterval(interval)
   }, [chatRoomId, members])
 
@@ -194,6 +199,9 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                   )}
                 </div>
               </div>
+              {isSyncing && !isLoading && (
+                <Badge variant="outline" className="text-[10px]">Updating…</Badge>
+              )}
             </div>
           </div>
         </CardHeader>

@@ -118,6 +118,14 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
     setImagePreview(imagePreview.filter((_, i) => i !== index))
   }
 
+  const displayName = profile?.name || user?.name || ""
+  const username = displayName
+    ? `@${displayName.toLowerCase().replace(/\s+/g, "_")}`
+    : user?.email
+      ? `@${user.email.split("@")[0]}`
+      : ""
+  const avatar = profile?.avatar || ""
+
   const handleAddTag = (tag: string) => {
     if (tag && !tags.includes(tag) && tags.length < 5) {
       setTags([...tags, tag])
@@ -164,6 +172,9 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
           visibility: visibility,
           podId: selectedPodId || null,
           tags: tags,
+          authorName: displayName,
+          authorAvatar: avatar,
+          authorUsername: username,
         }
       )
 
