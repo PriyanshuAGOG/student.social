@@ -83,11 +83,17 @@ export function CoursesTab({ podId, podName }: CoursesTabProps) {
         if (response.ok) {
           const data = await response.json()
           if (data.course) {
-            setCourse(data.course)
+            // Parse JSON fields from strings
+            const parsedCourse = {
+              ...data.course,
+              chapters: typeof data.course.chapters === 'string' ? JSON.parse(data.course.chapters || '[]') : data.course.chapters,
+              assignments: typeof data.course.assignments === 'string' ? JSON.parse(data.course.assignments || '[]') : data.course.assignments,
+              dailyTasks: typeof data.course.dailyTasks === 'string' ? JSON.parse(data.course.dailyTasks || '[]') : data.course.dailyTasks,
+              notes: typeof data.course.notes === 'string' ? JSON.parse(data.course.notes || '[]') : data.course.notes,
+            }
+            setCourse(parsedCourse)
           }
         }
-      } catch (error) {
-        console.error("Error loading pod course:", error)
       } finally {
         setIsLoading(false)
       }
@@ -124,7 +130,15 @@ export function CoursesTab({ podId, podName }: CoursesTabProps) {
       }
 
       const data = await response.json()
-      setCourse(data.course)
+      // Parse JSON fields from strings
+      const parsedCourse = {
+        ...data.course,
+        chapters: typeof data.course.chapters === 'string' ? JSON.parse(data.course.chapters || '[]') : data.course.chapters,
+        assignments: typeof data.course.assignments === 'string' ? JSON.parse(data.course.assignments || '[]') : data.course.assignments,
+        dailyTasks: typeof data.course.dailyTasks === 'string' ? JSON.parse(data.course.dailyTasks || '[]') : data.course.dailyTasks,
+        notes: typeof data.course.notes === 'string' ? JSON.parse(data.course.notes || '[]') : data.course.notes,
+      }
+      setCourse(parsedCourse)
       setYoutubeUrl("")
       setCourseTitle("")
 

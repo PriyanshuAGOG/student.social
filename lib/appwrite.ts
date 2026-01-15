@@ -1,13 +1,6 @@
 import { Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query } from "appwrite"
 import { rankPodsForUser } from "./pod-matching"
 
-// Debug function to log initialization
-const debugLog = (message: string, data?: any) => {
-  if (typeof window !== "undefined") {
-    console.log(`[Appwrite] ${message}`, data || "")
-  }
-}
-
 // Initialize Appwrite Client with your credentials
 const endpoint = typeof window !== "undefined" 
   ? process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT 
@@ -15,9 +8,6 @@ const endpoint = typeof window !== "undefined"
 const projectId = typeof window !== "undefined"
   ? process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
   : process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
-
-debugLog("Initializing with endpoint:", endpoint)
-debugLog("Initializing with project:", projectId)
 
 const client = new Client()
 export { client }
@@ -33,8 +23,6 @@ client
   .setEndpoint(endpoint || "https://fra.cloud.appwrite.io/v1")
   .setProject(projectId || "68921a0d00146e65d29b")
 
-debugLog("Client initialized successfully")
-
 // Initialize Appwrite services with proper client
 export const account = new Account(client)
 export const databases = new Databases(client)
@@ -47,7 +35,6 @@ const matchCache = new Map<string, { timestamp: number; data: any[] }>()
 const MATCH_CACHE_TTL = 1000 * 60 * 5 // 5 minutes
 
 // Verify Account service has methods
-debugLog("Account service methods:", Object.keys(account).slice(0, 5))
 
 // Database and Collection IDs - You'll need to create these in Appwrite
 export const DATABASE_ID = "peerspark-main-db"
@@ -171,7 +158,7 @@ export const authService = {
 
       // Create user profile in database
       try {
-        console.log(`[register] Creating profile for user: ${user.$id}, name: ${name}, email: ${email}`)
+  
         const profile = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
           userId: user.$id,
           name: name,
@@ -191,7 +178,7 @@ export const authService = {
           availability: [],
           currentFocusAreas: [],
         })
-        console.log(`[register] Profile created successfully:`, { id: profile.$id, name: profile.name })
+
       } catch (profileError: any) {
         // Profile creation might fail due to permissions - this is OK for now
         // The profile will be created on first login instead
@@ -284,11 +271,11 @@ export const authService = {
             isOnline: true,
             lastSeen: new Date().toISOString(),
           })
-          console.log(`[login] Updated profile status for user: ${user.$id}`)
+
         } catch (profileError: any) {
           // Profile might not exist - try to create it
           if (profileError?.code === 404 || profileError?.message?.includes('not be found')) {
-            console.log(`[login] Profile not found for user ${user.$id}, creating new profile`)
+
             try {
               const newProfile = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
                 userId: user.$id,
@@ -309,7 +296,7 @@ export const authService = {
                 availability: [],
                 currentFocusAreas: [],
               })
-              console.log(`[login] Profile created successfully:`, { id: newProfile.$id, name: newProfile.name })
+
             } catch (createError) {
               console.error("[login] Failed to create profile:", createError)
             }
@@ -507,13 +494,7 @@ export const profileService = {
   // Get user profile
   async getProfile(userId: string) {
     try {
-      console.log(`[getProfile] Attempting to fetch profile for user: ${userId}`)
       const profile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId)
-      console.log(`[getProfile] Successfully fetched profile:`, { 
-        userId: profile.$id, 
-        name: profile.name,
-        email: profile.email 
-      })
       return profile
     } catch (error: any) {
       // Profile not found is expected for new users
