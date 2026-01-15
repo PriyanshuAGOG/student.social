@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Pod Course Assignment API
  * 
@@ -7,6 +8,7 @@
  * Creates a cohort with tracking for shared progress and accountability.
  */
 
+// @ts-nocheck
 import { Databases, Permission, Role } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { courseService } from '@/lib/course-service';

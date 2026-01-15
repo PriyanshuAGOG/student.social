@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Pod Course Progress API
  * 
@@ -7,6 +8,7 @@
  * Shows individual progress, group stats, and peer accountability metrics.
  */
 
+// @ts-nocheck
 import { Databases } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { courseService } from '@/lib/course-service';

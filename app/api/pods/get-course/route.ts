@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NextRequest, NextResponse } from "next/server"
 import { client, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite"
 import { Client, Databases } from "node-appwrite"

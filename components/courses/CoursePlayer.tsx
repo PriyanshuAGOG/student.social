@@ -13,10 +13,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { CourseChapter, Course } from '@/lib/types/courses';
-import { ChapterNav } from './ChapterNav';
-import { NotesPanel } from './NotesPanel';
-import { AssignmentPanel } from './AssignmentPanel';
-import { ProgressBar } from './ProgressBar';
+import { ChapterNav } from '@/components/courses/ChapterNav';
+import { NotesPanel } from '@/components/courses/NotesPanel';
+import { AssignmentPanel } from '@/components/courses/AssignmentPanel';
+import { ProgressBar } from '@/components/courses/ProgressBar';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {

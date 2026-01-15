@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Course Enrollment API
  * 

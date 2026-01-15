@@ -17,6 +17,7 @@ import {
   getCourseDatabase,
 } from '@/lib/course-service';
 import { callLLM } from '@/lib/ai';
+import { SubmissionStatus } from '@/lib/types/courses';
 
 export async function POST(request: NextRequest) {
   try {
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
       aiGeneratedFeedback: grade.feedback,
       isAutoGraded: grade.isAutoGraded,
       flaggedForReview: grade.flaggedForReview,
-      status: grade.flaggedForReview ? 'ReviewPending' : 'Graded',
+      status: grade.flaggedForReview ? SubmissionStatus.REVIEW_PENDING : SubmissionStatus.GRADED,
     });
 
     console.log(`✅ Grading complete. Score: ${grade.score}, Confidence: ${grade.confidence}`);
@@ -158,11 +159,10 @@ Respond with JSON:
 }`;
 
   try {
-    const response = await callLLM({
-      messages: [{ role: 'user', content: gradingPrompt }],
-      model: 'mistralai/mistral-7b-instruct:free',
-      maxTokens: 1000,
-    });
+    const response = await callLLM(
+      [{ role: 'user', content: gradingPrompt }],
+      { model: 'mistralai/mistral-7b-instruct:free', maxTokens: 1000 }
+    );
 
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
@@ -239,7 +239,7 @@ export async function POST_BATCH(request: NextRequest) {
           aiGeneratedFeedback: grade.feedback,
           isAutoGraded: grade.isAutoGraded,
           flaggedForReview: grade.flaggedForReview,
-          status: grade.flaggedForReview ? 'ReviewPending' : 'Graded',
+          status: grade.flaggedForReview ? SubmissionStatus.REVIEW_PENDING : SubmissionStatus.GRADED,
         });
 
         results.push({

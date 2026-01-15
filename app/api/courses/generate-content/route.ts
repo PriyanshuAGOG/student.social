@@ -172,11 +172,10 @@ Format your response as JSON:
   "keyTakeaways": ["takeaway 1", "takeaway 2", ...]
 }`;
 
-  const response = await callLLM({
-    messages: [{ role: 'user', content: prompt }],
-    model: 'meta-llama/llama-3.2-3b-instruct:free',
-    maxTokens: 800,
-  });
+  const response = await callLLM(
+    [{ role: 'user', content: prompt }],
+    { model: 'meta-llama/llama-3.2-3b-instruct:free', maxTokens: 800 }
+  );
 
   try {
     const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -241,11 +240,10 @@ Format your response as:
 ---JSON_APPLICATIONS---
 ["application 1", "application 2", ...]`;
 
-  const response = await callLLM({
-    messages: [{ role: 'user', content: prompt }],
-    model: 'mistralai/mistral-7b-instruct:free',
-    maxTokens: 2000,
-  });
+  const response = await callLLM(
+    [{ role: 'user', content: prompt }],
+    { model: 'mistralai/mistral-7b-instruct:free', maxTokens: 2000 }
+  );
 
   try {
     const markdownMatch = response.match(/---MARKDOWN---([\s\S]*?)---JSON_CONCEPTS---/);
@@ -338,14 +336,16 @@ Respond with JSON:
   "learningOutcome": "What this tests"
 }`;
 
-        const response = await callLLM({
-          messages: [{ role: 'user', content: prompt }],
-          model:
-            assignmentConfig.difficulty === 'Easy'
-              ? 'meta-llama/llama-3.2-3b-instruct:free'
-              : 'mistralai/mistral-7b-instruct:free',
-          maxTokens: 1200,
-        });
+        const response = await callLLM(
+          [{ role: 'user', content: prompt }],
+          {
+            model:
+              assignmentConfig.difficulty === 'Easy'
+                ? 'meta-llama/llama-3.2-3b-instruct:free'
+                : 'mistralai/mistral-7b-instruct:free',
+            maxTokens: 1200,
+          }
+        );
 
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         if (jsonMatch) {

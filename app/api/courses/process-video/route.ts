@@ -20,6 +20,7 @@ import {
 } from '@/lib/course-service';
 import { getYouTubeVideoId, getTranscript, cleanTranscript, chunkTranscript } from '@/lib/video-utils';
 import { callLLM } from '@/lib/ai';
+import { ChapterContentType } from '@/lib/types/courses';
 
 export async function POST(request: NextRequest) {
   try {
@@ -93,11 +94,10 @@ Detect 5-15 chapters based on the content structure.
 
     let chapters: any[] = [];
     try {
-      const response = await callLLM({
-        messages: [{ role: 'user', content: chapterDetectionPrompt }],
-        model: 'meta-llama/llama-3.2-3b-instruct:free',
-        maxTokens: 2000,
-      });
+      const response = await callLLM(
+        [{ role: 'user', content: chapterDetectionPrompt }],
+        { model: 'meta-llama/llama-3.2-3b-instruct:free', maxTokens: 2000 }
+      );
 
       // Parse JSON response
       const jsonMatch = response.match(/\[[\s\S]*\]/);
@@ -147,7 +147,7 @@ Detect 5-15 chapters based on the content structure.
           videoStartTime: 0, // Would calculate from video if needed
           videoEndTime: duration * 60,
           learningObjectives: chapter.learningObjectives || [],
-          contentType: 'Video',
+          contentType: ChapterContentType.VIDEO,
           transcript: chapterTranscript,
           transcriptCleaned: chapterTranscript,
         });

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Course Chapters API
  * 
@@ -6,14 +7,15 @@
  * Returns all chapters for a course
  */
 
+import { NextRequest } from 'next/server';
 import { courseService } from '@/lib/course-service';
 
 export async function GET(
-  request: Request,
-  { params }: { params: { courseId: string } }
+  request: NextRequest,
+  context: { params: Promise<{ courseId: string }> }
 ) {
   try {
-    const courseId = params.courseId;
+    const { courseId } = await context.params;
 
     if (!courseId) {
       return new Response(

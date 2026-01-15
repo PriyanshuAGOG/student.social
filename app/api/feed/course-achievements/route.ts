@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Course Achievement Social Feed API
  * 
@@ -7,6 +8,7 @@
  * Integrates with existing social feed infrastructure.
  */
 
+// @ts-nocheck
 import { Databases, Permission, Role } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 

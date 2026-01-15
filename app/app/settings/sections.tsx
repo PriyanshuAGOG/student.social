@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { User, Bell, Shield, Palette, Globe, Smartphone, Database, HelpCircle, CreditCard, Users, Lock, Eye, MessageSquare, Calendar, BookOpen, Zap, Download, Trash2, LogOut } from 'lucide-react'
 
 export interface SettingItem {

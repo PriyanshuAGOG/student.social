@@ -10,7 +10,7 @@
  */
 
 import { Databases } from 'appwrite';
-import { Achievement, UserCourseProgress } from '@/lib/types/courses';
+import { Achievement, UserCourseProgress, CourseProgressStatus } from '@/lib/types/courses';
 import { profileService } from '@/lib/appwrite';
 
 export const COURSE_ACHIEVEMENTS = {
@@ -111,7 +111,7 @@ export async function checkAndAwardAchievements(
     }
 
     // 2. Course Complete - 70%+ overall
-    if (progress.finalScore >= 70 && progress.courseStatus === 'Completed') {
+    if (progress.finalScore >= 70 && progress.courseStatus === CourseProgressStatus.COMPLETED) {
       achievedAchievements.push({
         ...COURSE_ACHIEVEMENTS.COURSE_COMPLETE,
         earnedAt: new Date().toISOString(),
@@ -135,7 +135,7 @@ export async function checkAndAwardAchievements(
       (completedDate.getTime() - enrolledDate.getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    if (daysDiff < 7 && progress.courseStatus === 'Completed') {
+    if (daysDiff < 7 && progress.courseStatus === CourseProgressStatus.COMPLETED) {
       achievedAchievements.push({
         ...COURSE_ACHIEVEMENTS.SPEEDRUNNER,
         earnedAt: new Date().toISOString(),
@@ -182,18 +182,22 @@ async function awardAchievementToUser(
 ) {
   try {
     // Get user profile
-    const user = await profileService.getUserProfile(userId, db);
+    const user = await profileService.getProfile(userId);
+    if (!user) {
+      console.warn(`Profile not found for ${userId}, skipping achievement award`);
+      return;
+    }
 
     // Add achievement to badges array
     const badges = user.badges || [];
     badges.push(achievement);
 
     // Update user profile
-    await profileService.updateProfile(userId, { badges }, db);
+    await profileService.updateProfile(userId, { badges });
 
     // Award points
     const newPoints = (user.totalPoints || 0) + achievement.points;
-    await profileService.updateProfile(userId, { totalPoints: newPoints }, db);
+    await profileService.updateProfile(userId, { totalPoints: newPoints });
 
     console.log(
       `✅ Awarded "${achievement.name}" (+${achievement.points} points) to ${userId}`

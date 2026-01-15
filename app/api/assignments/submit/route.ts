@@ -18,6 +18,7 @@ import {
   getOrCreateProgress,
   getCourseDatabase,
 } from '@/lib/course-service';
+import { SubmissionStatus } from '@/lib/types/courses';
 
 export async function POST(request: NextRequest) {
   try {
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest) {
       isAutoGraded: false,
       flaggedForReview: false,
       revisionCount: 0,
-      status: 'Submitted',
+      status: SubmissionStatus.SUBMITTED,
     });
 
     console.log(`✅ Submission ${submission.$id} created`);

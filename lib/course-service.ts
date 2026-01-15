@@ -20,6 +20,9 @@ import {
   CourseDifficulty,
   CourseStatus,
   AssignmentType,
+  CourseProgressStatus,
+  SubmissionStatus,
+  EnrollmentStatus,
 } from '@/lib/types/courses';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db';
@@ -35,6 +38,23 @@ const COLLECTIONS = {
   COURSE_STATS: 'course_stats',
   COURSE_REVIEWS: 'course_reviews',
   CERTIFICATES: 'certificates',
+};
+
+// Utility: remove undefined keys to satisfy Appwrite update requirements and TS index safety
+const removeUndefined = (data: Record<string, unknown>) => {
+  Object.entries(data).forEach(([key, value]) => {
+    if (value === undefined) delete data[key];
+  });
+  return data;
+};
+
+// Utility parsers to coerce stored JSON strings into typed arrays safely
+const parseArray = (value: any) => {
+  try {
+    return JSON.parse(value ?? '[]');
+  } catch {
+    return [];
+  }
 };
 
 // Initialize Appwrite connection (would use existing auth context)
@@ -74,21 +94,34 @@ export async function createCourse(
         prerequisites: JSON.stringify(courseData.prerequisites || []),
       }
     );
-    return course as Course;
+    return {
+      ...course,
+      tags: parseArray(course.tags),
+      prerequisites: parseArray(course.prerequisites),
+    } as unknown as Course;
   } catch (error) {
     console.error('Error creating course:', error);
     throw error;
   }
 }
 
-export async function getCourse(db: Databases, courseId: string): Promise<Course> {
+export async function getCourse(dbOrCourseId: Databases | string, maybeCourseId?: string): Promise<Course> {
   try {
+    const db = (dbOrCourseId as Databases)?.listDocuments ? (dbOrCourseId as Databases) : getCourseDatabase();
+    const courseId = (dbOrCourseId as Databases)?.listDocuments ? maybeCourseId : (dbOrCourseId as string);
+    if (!db) {
+      throw new Error('Database connection failed');
+    }
+    if (!courseId) {
+      throw new Error('Course ID is required');
+    }
+
     const course = await db.getDocument(DATABASE_ID, COLLECTIONS.COURSES, courseId);
     return {
       ...course,
-      tags: JSON.parse(course.tags || '[]'),
-      prerequisites: JSON.parse(course.prerequisites || '[]'),
-    } as Course;
+      tags: parseArray(course.tags),
+      prerequisites: parseArray(course.prerequisites),
+    } as unknown as Course;
   } catch (error) {
     console.error('Error fetching course:', error);
     throw error;
@@ -96,12 +129,20 @@ export async function getCourse(db: Databases, courseId: string): Promise<Course
 }
 
 export async function getAllCourses(
-  db: Databases,
+  dbOrLimit?: Databases | number,
   limit = 20,
   offset = 0,
   filters?: any[]
 ): Promise<{ courses: Course[]; total: number }> {
   try {
+    const db = (dbOrLimit as Databases)?.listDocuments ? (dbOrLimit as Databases) : getCourseDatabase();
+    if (typeof dbOrLimit === 'number') {
+      limit = dbOrLimit;
+    }
+    if (!db) {
+      throw new Error('Database connection failed');
+    }
+
     const queries = [Query.limit(limit), Query.offset(offset)];
     if (filters) queries.push(...filters);
     queries.push(Query.equal('status', CourseStatus.PUBLISHED));
@@ -110,11 +151,11 @@ export async function getAllCourses(
 
     const courses = result.documents.map((doc: any) => ({
       ...doc,
-      tags: JSON.parse(doc.tags || '[]'),
-      prerequisites: JSON.parse(doc.prerequisites || '[]'),
+      tags: parseArray(doc.tags),
+      prerequisites: parseArray(doc.prerequisites),
     }));
 
-    return { courses: courses as Course[], total: result.total };
+    return { courses: courses as unknown as Course[], total: result.total };
   } catch (error) {
     console.error('Error fetching courses:', error);
     throw error;
@@ -134,9 +175,9 @@ export async function getInstructorCourses(
 
     return result.documents.map((doc: any) => ({
       ...doc,
-      tags: JSON.parse(doc.tags || '[]'),
-      prerequisites: JSON.parse(doc.prerequisites || '[]'),
-    })) as Course[];
+      tags: parseArray(doc.tags),
+      prerequisites: parseArray(doc.prerequisites),
+    })) as unknown as Course[];
   } catch (error) {
     console.error('Error fetching instructor courses:', error);
     throw error;
@@ -156,8 +197,7 @@ export async function updateCourse(
       prerequisites: updates.prerequisites ? JSON.stringify(updates.prerequisites) : undefined,
     };
 
-    // Remove undefined keys
-    Object.keys(updateData).forEach((key) => updateData[key] === undefined && delete updateData[key]);
+    removeUndefined(updateData as Record<string, unknown>);
 
     const course = await db.updateDocument(
       DATABASE_ID,
@@ -167,9 +207,9 @@ export async function updateCourse(
     );
     return {
       ...course,
-      tags: JSON.parse(course.tags || '[]'),
-      prerequisites: JSON.parse(course.prerequisites || '[]'),
-    } as Course;
+      tags: parseArray(course.tags),
+      prerequisites: parseArray(course.prerequisites),
+    } as unknown as Course;
   } catch (error) {
     console.error('Error updating course:', error);
     throw error;
@@ -202,7 +242,10 @@ export async function createChapter(
         createdAt: new Date().toISOString(),
       }
     );
-    return chapter as CourseChapter;
+    return {
+      ...chapter,
+      learningObjectives: parseArray(chapter.learningObjectives),
+    } as unknown as CourseChapter;
   } catch (error) {
     console.error('Error creating chapter:', error);
     throw error;
@@ -210,10 +253,19 @@ export async function createChapter(
 }
 
 export async function getChapters(
-  db: Databases,
-  courseId: string
+  dbOrCourseId: Databases | string,
+  maybeCourseId?: string
 ): Promise<CourseChapter[]> {
   try {
+    const db = (dbOrCourseId as Databases)?.listDocuments ? (dbOrCourseId as Databases) : getCourseDatabase();
+    const courseId = (dbOrCourseId as Databases)?.listDocuments ? maybeCourseId : (dbOrCourseId as string);
+    if (!db) {
+      throw new Error('Database connection failed');
+    }
+    if (!courseId) {
+      throw new Error('Course ID is required');
+    }
+
     const result = await db.listDocuments(
       DATABASE_ID,
       COLLECTIONS.COURSE_CHAPTERS,
@@ -222,8 +274,8 @@ export async function getChapters(
 
     return result.documents.map((doc: any) => ({
       ...doc,
-      learningObjectives: JSON.parse(doc.learningObjectives || '[]'),
-    })) as CourseChapter[];
+      learningObjectives: parseArray(doc.learningObjectives),
+    })) as unknown as CourseChapter[];
   } catch (error) {
     console.error('Error fetching chapters:', error);
     throw error;
@@ -243,7 +295,7 @@ export async function updateChapter(
         : undefined,
     };
 
-    Object.keys(updateData).forEach((key) => updateData[key] === undefined && delete updateData[key]);
+    removeUndefined(updateData as Record<string, unknown>);
 
     const chapter = await db.updateDocument(
       DATABASE_ID,
@@ -253,8 +305,8 @@ export async function updateChapter(
     );
     return {
       ...chapter,
-      learningObjectives: JSON.parse(chapter.learningObjectives || '[]'),
-    } as CourseChapter;
+      learningObjectives: parseArray(chapter.learningObjectives),
+    } as unknown as CourseChapter;
   } catch (error) {
     console.error('Error updating chapter:', error);
     throw error;
@@ -389,18 +441,28 @@ function parseAssignment(doc: any): CourseAssignment {
     options: doc.options ? JSON.parse(doc.options) : undefined,
     rubric: JSON.parse(doc.rubric),
     variations: doc.variations ? JSON.parse(doc.variations) : undefined,
-  } as CourseAssignment;
+  } as unknown as CourseAssignment;
 }
 
 // ============= USER PROGRESS =============
 
 export async function getOrCreateProgress(
-  db: Databases,
-  userId: string,
-  courseId: string,
-  totalChapters: number
+  dbOrUserId: Databases | string,
+  maybeUserId?: string,
+  maybeCourseId?: string,
+  totalChapters = 0
 ): Promise<UserCourseProgress> {
   try {
+    const db = (dbOrUserId as Databases)?.listDocuments ? (dbOrUserId as Databases) : getCourseDatabase();
+    const userId = (dbOrUserId as Databases)?.listDocuments ? maybeUserId : (dbOrUserId as string);
+    const courseId = (dbOrUserId as Databases)?.listDocuments ? maybeCourseId : maybeUserId;
+    if (!db) {
+      throw new Error('Database connection failed');
+    }
+    if (!userId || !courseId) {
+      throw new Error('User ID and Course ID are required');
+    }
+
     const existing = await db.listDocuments(
       DATABASE_ID,
       COLLECTIONS.USER_COURSE_PROGRESS,
@@ -408,7 +470,7 @@ export async function getOrCreateProgress(
     );
 
     if (existing.total > 0) {
-      return existing.documents[0] as UserCourseProgress;
+      return existing.documents[0] as unknown as UserCourseProgress;
     }
 
     // Create new progress record
@@ -425,7 +487,7 @@ export async function getOrCreateProgress(
         totalChapters,
         averageScore: 0,
         finalScore: 0,
-        courseStatus: 'InProgress',
+        courseStatus: CourseProgressStatus.IN_PROGRESS,
         certificateEarned: false,
         timeSpent: 0,
         lastAccessedAt: new Date().toISOString(),
@@ -435,7 +497,7 @@ export async function getOrCreateProgress(
       }
     );
 
-    return progress as UserCourseProgress;
+    return progress as unknown as UserCourseProgress;
   } catch (error) {
     console.error('Error getting/creating progress:', error);
     throw error;
@@ -455,7 +517,7 @@ export async function updateProgress(
         : undefined,
     };
 
-    Object.keys(updateData).forEach((key) => updateData[key] === undefined && delete updateData[key]);
+    removeUndefined(updateData as Record<string, unknown>);
 
     const progress = await db.updateDocument(
       DATABASE_ID,
@@ -466,8 +528,8 @@ export async function updateProgress(
 
     return {
       ...progress,
-      bookmarkedChapters: JSON.parse(progress.bookmarkedChapters || '[]'),
-    } as UserCourseProgress;
+      bookmarkedChapters: parseArray(progress.bookmarkedChapters),
+    } as unknown as UserCourseProgress;
   } catch (error) {
     console.error('Error updating progress:', error);
     throw error;
@@ -478,7 +540,7 @@ export async function updateProgress(
 
 export async function submitAssignment(
   db: Databases,
-  submissionData: Omit<AssignmentSubmission, '$id'>
+  submissionData: Omit<AssignmentSubmission, '$id' | 'submittedAt'>
 ): Promise<AssignmentSubmission> {
   try {
     const submission = await db.createDocument(
@@ -490,7 +552,7 @@ export async function submitAssignment(
         submittedAt: new Date().toISOString(),
       }
     );
-    return submission as AssignmentSubmission;
+    return submission as unknown as AssignmentSubmission;
   } catch (error) {
     console.error('Error submitting assignment:', error);
     throw error;
@@ -507,7 +569,7 @@ export async function getSubmission(
       COLLECTIONS.ASSIGNMENT_SUBMISSIONS,
       submissionId
     );
-    return submission as AssignmentSubmission;
+    return submission as unknown as AssignmentSubmission;
   } catch (error) {
     console.error('Error fetching submission:', error);
     throw error;
@@ -526,7 +588,7 @@ export async function updateSubmission(
       submissionId,
       updates
     );
-    return submission as AssignmentSubmission;
+    return submission as unknown as AssignmentSubmission;
   } catch (error) {
     console.error('Error updating submission:', error);
     throw error;
@@ -548,7 +610,7 @@ export async function getUserSubmissions(
       queries
     );
 
-    return result.documents as AssignmentSubmission[];
+    return result.documents as unknown as AssignmentSubmission[];
   } catch (error) {
     console.error('Error fetching user submissions:', error);
     throw error;
@@ -570,7 +632,7 @@ export async function enrollInCourse(
     );
 
     if (existing.total > 0) {
-      return existing.documents[0] as CourseEnrollment;
+      return existing.documents[0] as unknown as CourseEnrollment;
     }
 
     const enrollment = await db.createDocument(
@@ -590,7 +652,7 @@ export async function enrollInCourse(
       enrollmentCount: (course.enrollmentCount || 0) + 1,
     });
 
-    return enrollment as CourseEnrollment;
+    return enrollment as unknown as CourseEnrollment;
   } catch (error) {
     console.error('Error enrolling in course:', error);
     throw error;
@@ -605,10 +667,10 @@ export async function getUserEnrollments(
     const result = await db.listDocuments(
       DATABASE_ID,
       COLLECTIONS.COURSE_ENROLLMENTS,
-      [Query.equal('userId', userId), Query.equal('status', 'Active')]
+      [Query.equal('userId', userId), Query.equal('status', EnrollmentStatus.ACTIVE)]
     );
 
-    return result.documents as CourseEnrollment[];
+    return result.documents as unknown as CourseEnrollment[];
   } catch (error) {
     console.error('Error fetching user enrollments:', error);
     throw error;
@@ -618,10 +680,19 @@ export async function getUserEnrollments(
 // ============= STATISTICS =============
 
 export async function getOrCreateStats(
-  db: Databases,
-  courseId: string
+  dbOrCourseId: Databases | string,
+  maybeCourseId?: string
 ): Promise<CourseStats> {
   try {
+    const db = (dbOrCourseId as Databases)?.listDocuments ? (dbOrCourseId as Databases) : getCourseDatabase();
+    const courseId = (dbOrCourseId as Databases)?.listDocuments ? maybeCourseId : (dbOrCourseId as string);
+    if (!db) {
+      throw new Error('Database connection failed');
+    }
+    if (!courseId) {
+      throw new Error('Course ID is required');
+    }
+
     const existing = await db.listDocuments(
       DATABASE_ID,
       COLLECTIONS.COURSE_STATS,
@@ -629,7 +700,7 @@ export async function getOrCreateStats(
     );
 
     if (existing.total > 0) {
-      return existing.documents[0] as CourseStats;
+      return existing.documents[0] as unknown as CourseStats;
     }
 
     const stats = await db.createDocument(
@@ -649,7 +720,7 @@ export async function getOrCreateStats(
       }
     );
 
-    return stats as CourseStats;
+    return stats as unknown as CourseStats;
   } catch (error) {
     console.error('Error getting/creating stats:', error);
     throw error;
@@ -671,7 +742,7 @@ export async function updateStats(
         updatedAt: new Date().toISOString(),
       }
     );
-    return stats as CourseStats;
+    return stats as unknown as CourseStats;
   } catch (error) {
     console.error('Error updating stats:', error);
     throw error;
@@ -682,7 +753,7 @@ export async function updateStats(
 
 export async function createCertificate(
   db: Databases,
-  certData: Omit<Certificate, '$id'>
+  certData: Omit<Certificate, '$id' | 'createdAt'>
 ): Promise<Certificate> {
   try {
     const cert = await db.createDocument(
@@ -694,7 +765,7 @@ export async function createCertificate(
         createdAt: new Date().toISOString(),
       }
     );
-    return cert as Certificate;
+    return cert as unknown as Certificate;
   } catch (error) {
     console.error('Error creating certificate:', error);
     throw error;
@@ -712,7 +783,7 @@ export async function getUserCertificates(
       [Query.equal('userId', userId), Query.orderDesc('createdAt')]
     );
 
-    return result.documents as Certificate[];
+    return result.documents as unknown as Certificate[];
   } catch (error) {
     console.error('Error fetching user certificates:', error);
     throw error;

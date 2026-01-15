@@ -30,7 +30,7 @@ export async function getRecommendedNextDifficulty(
     const submissions = await getUserSubmissions(db, userId);
 
     if (submissions.length === 0) {
-      return 'Easy'; // Start with easy
+      return AssignmentDifficulty.EASY; // Start with easy
     }
 
     // Calculate average score from last 5 submissions
@@ -41,17 +41,17 @@ export async function getRecommendedNextDifficulty(
 
     // Recommend difficulty based on performance
     if (avgScore >= 90) {
-      return 'Hard'; // User is excelling, try harder assignments
+      return AssignmentDifficulty.HARD; // User is excelling, try harder assignments
     } else if (avgScore >= 75) {
-      return 'Medium'; // User is doing well, try medium
+      return AssignmentDifficulty.MEDIUM; // User is doing well, try medium
     } else if (avgScore >= 50) {
-      return 'Easy'; // User struggling, go back to easy
+      return AssignmentDifficulty.EASY; // User struggling, go back to easy
     } else {
-      return 'Easy'; // User struggling significantly, focus on easy
+      return AssignmentDifficulty.EASY; // User struggling significantly, focus on easy
     }
   } catch (error) {
     console.error('Error calculating difficulty:', error);
-    return 'Easy';
+    return AssignmentDifficulty.EASY;
   }
 }
 
