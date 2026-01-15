@@ -39,11 +39,22 @@ interface CourseData {
 }
 
 interface Chapter {
-  id: string
+  id?: string
+  chapterNumber?: number
   title: string
   description: string
-  learningObjectives: string[]
-  duration: number
+  objectives?: string[]
+  learningObjectives?: string[]
+  estimatedMinutes?: number
+  duration?: number
+  locked: boolean
+  contentGenerated: boolean
+  content?: string
+  keyPoints?: string[]
+  assignments?: Assignment[]
+  notes?: string[]
+  resources?: string[]
+  error?: string
 }
 
 interface Assignment {
@@ -114,7 +125,7 @@ export function CoursesTab({ podId, podName }: CoursesTabProps) {
 
     setIsGenerating(true)
     try {
-      const response = await fetch("/api/pods/generate-course", {
+      const response = await fetch("/api/pods/generate-course-streaming", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -133,21 +144,27 @@ export function CoursesTab({ podId, podName }: CoursesTabProps) {
       // Parse JSON fields from strings
       const parsedCourse = {
         ...data.course,
-        chapters: typeof data.course.chapters === 'string' ? JSON.parse(data.course.chapters || '[]') : data.course.chapters,
-        assignments: typeof data.course.assignments === 'string' ? JSON.parse(data.course.assignments || '[]') : data.course.assignments,
-        dailyTasks: typeof data.course.dailyTasks === 'string' ? JSON.parse(data.course.dailyTasks || '[]') : data.course.dailyTasks,
-        notes: typeof data.course.notes === 'string' ? JSON.parse(data.course.notes || '[]') : data.course.notes,
+        chapters: Array.isArray(data.course.chapters) 
+          ? data.course.chapters 
+          : typeof data.course.chapters === 'string' 
+            ? JSON.parse(data.course.chapters || '[]') 
+            : [],
+        assignments: typeof data.course.assignments === 'string' ? JSON.parse(data.course.assignments || '[]') : data.course.assignments || [],
+        dailyTasks: typeof data.course.dailyTasks === 'string' ? JSON.parse(data.course.dailyTasks || '[]') : data.course.dailyTasks || [],
+        notes: typeof data.course.notes === 'string' ? JSON.parse(data.course.notes || '[]') : data.course.notes || [],
       }
       setCourse(parsedCourse)
       setYoutubeUrl("")
       setCourseTitle("")
 
       toast({
-        title: "Course Generation Started",
-        description: "Your pod course is being generated. This may take a few minutes.",
+        title: "Course Structure Created",
+        description: "Chapter stubs are ready! Content is being generated in the background. Check back soon!",
       })
+
+      // Start polling for updates
+      pollCourseProgress(data.course.$id)
     } catch (error) {
-      console.error("Error generating course:", error)
       toast({
         title: "Error Generating Course",
         description: error instanceof Error ? error.message : "Failed to start course generation",
@@ -156,6 +173,55 @@ export function CoursesTab({ podId, podName }: CoursesTabProps) {
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  // Poll for course updates
+  const pollCourseProgress = async (courseId: string) => {
+    const maxAttempts = 60 // 5 minutes
+    let attempts = 0
+
+    const poll = async () => {
+      if (attempts >= maxAttempts) return
+
+      try {
+        const response = await fetch(`/api/pods/get-course?podId=${podId}`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.course) {
+            const parsedCourse = {
+              ...data.course,
+              chapters: typeof data.course.chapters === 'string' ? JSON.parse(data.course.chapters || '[]') : data.course.chapters,
+            }
+            setCourse(parsedCourse)
+
+            if (parsedCourse.status === 'error') {
+              toast({
+                title: "Course Generation Failed",
+                description: "There was an error generating the course. Please try again.",
+                variant: "destructive",
+              })
+              return
+            }
+
+            if (parsedCourse.status !== 'completed') {
+              attempts++
+              setTimeout(poll, 5000) // Poll every 5 seconds
+            } else {
+              toast({
+                title: "Course Ready!",
+                description: "Your course has been fully generated. Start learning!",
+              })
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Poll error:", error)
+        attempts++
+        setTimeout(poll, 5000)
+      }
+    }
+
+    poll()
   }
 
   if (isLoading) {
@@ -316,8 +382,25 @@ export function CoursesTab({ podId, podName }: CoursesTabProps) {
 
               {course.status === "generating" && (
                 <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                  <p className="text-sm text-blue-900 dark:text-blue-100">
-                    Your course is being generated. Check back in a few minutes for updates!
+                  <p className="text-sm text-blue-900 dark:text-blue-100 mb-2">
+                    Generating course content: {course.progress || 0}% complete
+                  </p>
+                  <Progress value={course.progress || 0} className="h-2" />
+                </div>
+              )}
+
+              {course.status === "structuring" && (
+                <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                  <p className="text-sm text-green-900 dark:text-green-100">
+                    ✓ Course structure created! Chapter content is being generated in the background.
+                  </p>
+                </div>
+              )}
+
+              {course.status === "error" && (
+                <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                  <p className="text-sm text-red-900 dark:text-red-100">
+                    ⚠️ Course generation failed. Please try again or contact support.
                   </p>
                 </div>
               )}
@@ -329,40 +412,122 @@ export function CoursesTab({ podId, podName }: CoursesTabProps) {
         <TabsContent value="chapters" className="space-y-4">
           {course.chapters && course.chapters.length > 0 ? (
             <div className="space-y-3">
-              {course.chapters.map((chapter, idx) => (
-                <Card key={chapter.id} className="hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg">
-                          Chapter {idx + 1}: {chapter.title}
-                        </CardTitle>
-                        <CardDescription>{chapter.description}</CardDescription>
+              {course.chapters.map((chapter, idx) => {
+                const isLocked = chapter.locked
+                const isGenerating = !chapter.contentGenerated
+                
+                return (
+                  <Card 
+                    key={chapter.chapterNumber || idx} 
+                    className={`transition-all ${isLocked ? 'opacity-60' : 'hover:shadow-md'}`}
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="text-lg">
+                              Chapter {chapter.chapterNumber || idx + 1}: {chapter.title}
+                            </CardTitle>
+                            {isLocked && (
+                              <Badge variant="secondary" className="ml-auto">
+                                🔒 Locked
+                              </Badge>
+                            )}
+                            {isGenerating && !isLocked && (
+                              <Badge variant="outline" className="ml-auto">
+                                ⏳ Generating...
+                              </Badge>
+                            )}
+                            {!isLocked && !isGenerating && (
+                              <Badge variant="default" className="ml-auto">
+                                ✓ Ready
+                              </Badge>
+                            )}
+                          </div>
+                          <CardDescription>{chapter.description}</CardDescription>
+                          {chapter.objectives && chapter.objectives.length > 0 && (
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              {chapter.objectives.join(", ")}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold">{chapter.estimatedMinutes || 15} min</p>
+                        </div>
                       </div>
-                      <Badge variant="outline">{chapter.duration} min</Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div>
-                      <p className="text-sm font-medium mb-2">Learning Objectives:</p>
-                      <ul className="space-y-1">
-                        {chapter.learningObjectives.map((obj, i) => (
-                          <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
-                            <span className="text-primary mt-0.5">•</span>
-                            <span>{obj}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardHeader>
+                    
+                    {!isLocked && chapter.content && (
+                      <CardContent className="space-y-4">
+                        <div>
+                          <h4 className="font-semibold mb-2">Content</h4>
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{chapter.content}</p>
+                        </div>
+                        
+                        {chapter.keyPoints && chapter.keyPoints.length > 0 && (
+                          <div>
+                            <h4 className="font-semibold mb-2">Key Points</h4>
+                            <ul className="space-y-1">
+                              {chapter.keyPoints.map((point, i) => (
+                                <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                                  <span className="text-primary mt-0.5">•</span>
+                                  <span>{point}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {chapter.resources && chapter.resources.length > 0 && (
+                          <div>
+                            <h4 className="font-semibold mb-2">Resources</h4>
+                            <ul className="space-y-1">
+                              {chapter.resources.map((resource, i) => (
+                                <li key={i} className="text-sm">
+                                  <a href={resource} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                                    {resource}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </CardContent>
+                    )}
+
+                    {isLocked && (
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground text-center py-4">
+                          📚 Complete the previous chapter to unlock this content
+                        </p>
+                      </CardContent>
+                    )}
+
+                    {isGenerating && !isLocked && (
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground text-center py-4 flex items-center justify-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Generating chapter content...
+                        </p>
+                      </CardContent>
+                    )}
+
+                    {chapter.error && (
+                      <CardContent>
+                        <div className="text-sm text-red-600 bg-red-50 dark:bg-red-950 rounded p-2">
+                          ⚠️ Error generating content: {chapter.error}
+                        </div>
+                      </CardContent>
+                    )}
+                  </Card>
+                )
+              })}
             </div>
           ) : (
             <Card>
               <CardContent className="p-8 text-center">
                 <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-muted-foreground">Chapters will appear here once course generation is complete</p>
+                <p className="text-muted-foreground">Chapters will appear here once course generation starts</p>
               </CardContent>
             </Card>
           )}

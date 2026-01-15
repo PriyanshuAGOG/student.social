@@ -31,7 +31,7 @@ export function AIAssistant() {
   const [isTyping, setIsTyping] = useState(false)
   const { toast } = useToast()
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = async (retryCount = 0) => {
     if (!inputValue.trim()) return
 
     const userMessage: Message = {
@@ -46,13 +46,17 @@ export function AIAssistant() {
     setIsTyping(true)
 
     try {
+      // Limit to last 15 messages for context
+      const recentMessages = messages.slice(-15)
+      
       const payload = {
-        messages: [...messages, userMessage].map((m) => ({
+        messages: [...recentMessages, userMessage].map((m) => ({
           role: m.type === "assistant" ? "assistant" : "user",
-          content: m.content,
+          content: m.content.substring(0, 2000), // Limit message length
         })),
         system:
-          "You are PeerSpark's study copilot. Give concise, structured help with explanations, steps, and next actions. Prefer bullet points and keep answers under 200 words unless asked.",
+          "You are PeerSpark's study copilot. Give concise, structured help with explanations, steps, and next actions. Prefer bullet points and keep answers under 300 words unless asked.",
+        maxTokens: 2048,
       }
 
       const resp = await fetch("/api/ai/chat", {
@@ -62,20 +66,50 @@ export function AIAssistant() {
       })
 
       if (!resp.ok) {
-        const errText = await resp.text()
-        throw new Error(errText || "AI response failed")
+        const data = await resp.json().catch(() => ({ error: "Unknown error" }))
+        const errorMessage = data.error || `Request failed with status ${resp.status}`
+        
+        // Retry on server errors (but not client errors)
+        if (resp.status >= 500 && retryCount < 2) {
+          console.log(`Retrying AI request (attempt ${retryCount + 1}/2)...`)
+          await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)))
+          
+          // Remove the failed assistant message and retry
+          setMessages(prev => prev.slice(0, -1))
+          return handleSendMessage(retryCount + 1)
+        }
+
+        throw new Error(errorMessage)
       }
 
       const data = await resp.json()
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: "assistant",
-        content: data.message || "I'm here to help, but I didn't get a full answer this time.",
+        content: data.message || "I'm here to help, but I didn't get a full answer this time. Please try again.",
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, assistantMessage])
     } catch (err: any) {
-      toast({ title: "AI error", description: err?.message || "Could not get a reply", variant: "destructive" })
+      // Remove the user message if there was an error
+      setMessages(prev => prev.slice(0, -1))
+      
+      const errorMsg = err?.message || "Could not get a reply from AI"
+      
+      toast({ 
+        title: "AI Assistant Error", 
+        description: errorMsg,
+        variant: "destructive" 
+      })
+
+      // Add error message to chat
+      const errorMessage: Message = {
+        id: (Date.now() + 2).toString(),
+        type: "assistant",
+        content: `Sorry, I encountered an error: ${errorMsg}. Please try again in a moment.`,
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, errorMessage])
     } finally {
       setIsTyping(false)
     }
