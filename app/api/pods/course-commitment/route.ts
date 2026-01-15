@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     // Create commitment record
     const commitmentId = `${userId}-${podCourseId}-${Date.now()}`;
     const commitment = await databases.createDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'course_commitments',
       commitmentId,
       {
@@ -102,7 +102,7 @@ export async function GET(request: Request) {
     const { databases } = createAdminClient();
 
     const commitments = await databases.listDocuments(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'course_commitments',
       [
         {
@@ -179,7 +179,7 @@ export async function PUT(request: Request) {
     const { databases } = createAdminClient();
 
     const commitment = await databases.getDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'course_commitments',
       commitmentId
     );
@@ -188,7 +188,7 @@ export async function PUT(request: Request) {
     const newStatus = newCompleted >= commitment.weeklyGoal ? 'completed' : 'active';
 
     const updated = await databases.updateDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'course_commitments',
       commitmentId,
       {

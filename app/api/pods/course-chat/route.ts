@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     // Create message document
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const message = await databases.createDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'pod_course_chat',
       messageId,
       {
@@ -94,13 +94,13 @@ export async function POST(request: Request) {
     if (parentMessageId) {
       try {
         const parentMessage = await databases.getDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
           'pod_course_chat',
           parentMessageId
         );
 
         await databases.updateDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
           'pod_course_chat',
           parentMessageId,
           {
@@ -182,7 +182,7 @@ export async function GET(request: Request) {
     }
 
     const messages = await databases.listDocuments(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'pod_course_chat',
       filters,
       limit,
@@ -237,7 +237,7 @@ export async function PUT(request: Request) {
     const { databases } = createAdminClient();
 
     const message = await databases.getDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'pod_course_chat',
       messageId
     );
@@ -251,7 +251,7 @@ export async function PUT(request: Request) {
           );
         }
         const edited = await databases.updateDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
           'pod_course_chat',
           messageId,
           {
@@ -267,7 +267,7 @@ export async function PUT(request: Request) {
 
       case 'like':
         const liked = await databases.updateDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
           'pod_course_chat',
           messageId,
           {
@@ -281,7 +281,7 @@ export async function PUT(request: Request) {
 
       case 'flag':
         const flagged = await databases.updateDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
           'pod_course_chat',
           messageId,
           {
@@ -296,7 +296,7 @@ export async function PUT(request: Request) {
 
       case 'delete':
         const deleted = await databases.updateDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
           'pod_course_chat',
           messageId,
           {

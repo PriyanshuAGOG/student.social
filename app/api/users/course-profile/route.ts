@@ -86,7 +86,7 @@ export async function GET(request: Request) {
 
     // 1. Get all user enrollments
     const enrollments = await databases.listDocuments(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'course_enrollments',
       [Query.equal('userId', userId)]
     );
@@ -108,7 +108,7 @@ export async function GET(request: Request) {
           0
         );
         const submissions = await databases.listDocuments(
-          process.env.APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
           'assignment_submissions',
           [
             Query.equal('userId', userId),
@@ -156,7 +156,7 @@ export async function GET(request: Request) {
 
     // 3. Get certificates
     const certificates = await databases.listDocuments(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'certificates',
       [Query.equal('userId', userId)]
     );
@@ -172,7 +172,7 @@ export async function GET(request: Request) {
 
     // 4. Get achievements/badges
     const achievements = await databases.listDocuments(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'user_achievements',
       [Query.equal('userId', userId)]
     );
@@ -214,7 +214,7 @@ export async function GET(request: Request) {
     let streak = 0;
     try {
       const recentActivities = await databases.listDocuments(
-        process.env.APPWRITE_DATABASE_ID!,
+        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
         'assignment_submissions',
         [Query.equal('userId', userId), Query.limit(1000)]
       );

@@ -48,7 +48,7 @@ export async function GET(request: Request) {
     }
 
     const { databases } = createAdminClient();
-    const databaseId = process.env.APPWRITE_DATABASE_ID;
+    const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db';
 
     // Get pod courses for this pod
     const podCoursesResponse = await databases.listDocuments(

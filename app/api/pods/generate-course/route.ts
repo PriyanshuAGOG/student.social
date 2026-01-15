@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from "next/server"
 import { client, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite"
-import { Client, Databases } from "node-appwrite"
+import { Client, Databases, Query } from "node-appwrite"
 
 function getDatabases() {
   const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const existingCourses = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.POD_COURSES,
-      [`equal("podId", "${podId}")`]
+      [Query.equal('podId', podId)]
     )
 
     if (existingCourses.documents.length > 0) {

@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     let podMembers: PodMember[] = [];
     try {
       const pod = await databases.getDocument(
-        process.env.APPWRITE_DATABASE_ID!,
+        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
         'pods',
         podId
       );
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     // 3. Create pod course record
     const podCourseId = `${podId}-${courseId}-${Date.now()}`;
     const podCourse = await databases.createDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'pod_courses',
       podCourseId,
       {
@@ -141,7 +141,7 @@ export async function POST(request: Request) {
 
     // 5. Update pod course with enrollment count
     await databases.updateDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'pod_courses',
       podCourseId,
       {
@@ -152,7 +152,7 @@ export async function POST(request: Request) {
     // 6. Create pod course activities collection for tracking
     try {
       await databases.createCollection(
-        process.env.APPWRITE_DATABASE_ID!,
+        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
         `pod_course_activities_${podCourseId.replace(/-/g, '_')}`,
         'Pod Course Activities',
         [
@@ -164,7 +164,7 @@ export async function POST(request: Request) {
 
       // Add attributes for tracking
       await databases.createStringAttribute(
-        process.env.APPWRITE_DATABASE_ID!,
+        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
         `pod_course_activities_${podCourseId.replace(/-/g, '_')}`,
         'userId',
         255,
@@ -172,7 +172,7 @@ export async function POST(request: Request) {
       );
 
       await databases.createStringAttribute(
-        process.env.APPWRITE_DATABASE_ID!,
+        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
         `pod_course_activities_${podCourseId.replace(/-/g, '_')}`,
         'activityType',
         50,
@@ -180,7 +180,7 @@ export async function POST(request: Request) {
       ); // chapter-completed, assignment-submitted, achievement-earned
 
       await databases.createStringAttribute(
-        process.env.APPWRITE_DATABASE_ID!,
+        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
         `pod_course_activities_${podCourseId.replace(/-/g, '_')}`,
         'chapterId',
         255,
@@ -188,14 +188,14 @@ export async function POST(request: Request) {
       );
 
       await databases.createIntegerAttribute(
-        process.env.APPWRITE_DATABASE_ID!,
+        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
         `pod_course_activities_${podCourseId.replace(/-/g, '_')}`,
         'score',
         false
       );
 
       await databases.createDatetimeAttribute(
-        process.env.APPWRITE_DATABASE_ID!,
+        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
         `pod_course_activities_${podCourseId.replace(/-/g, '_')}`,
         'completedAt',
         false
@@ -250,7 +250,7 @@ export async function GET(request: Request) {
 
     // Fetch all pod courses for this pod
     const podCourses = await databases.listDocuments(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'pod_courses',
       [
         {

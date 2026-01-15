@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     // Create session document
     const sessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const session = await databases.createDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'pod_course_study_sessions',
       sessionId,
       {
@@ -177,7 +177,7 @@ export async function GET(request: Request) {
     }
 
     const sessions = await databases.listDocuments(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'pod_course_study_sessions',
       filters,
       limit,
@@ -238,7 +238,7 @@ export async function PUT(request: Request) {
     const { databases } = createAdminClient();
 
     const session = await databases.getDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'pod_course_study_sessions',
       sessionId
     );
@@ -246,7 +246,7 @@ export async function PUT(request: Request) {
     switch (action) {
       case 'start':
         const started = await databases.updateDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
           'pod_course_study_sessions',
           sessionId,
           {
@@ -260,7 +260,7 @@ export async function PUT(request: Request) {
 
       case 'end':
         const ended = await databases.updateDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
           'pod_course_study_sessions',
           sessionId,
           {
@@ -292,7 +292,7 @@ export async function PUT(request: Request) {
         }
 
         const joined = await databases.updateDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
           'pod_course_study_sessions',
           sessionId,
           {
@@ -321,7 +321,7 @@ export async function PUT(request: Request) {
         }
 
         const left = await databases.updateDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
           'pod_course_study_sessions',
           sessionId,
           {

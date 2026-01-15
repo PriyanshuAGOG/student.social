@@ -71,7 +71,7 @@ export async function GET(request: Request) {
 
     // 1. Fetch pod course info
     const podCourse = await databases.getDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'pod_courses',
       podCourseId
     );
@@ -93,7 +93,7 @@ export async function GET(request: Request) {
 
     // 4. Fetch all enrollments for this course from pod members
     const enrollments = await databases.listDocuments(
-      process.env.APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       'course_enrollments',
       [
         {
@@ -123,7 +123,7 @@ export async function GET(request: Request) {
 
         // Get submissions to count
         const submissions = await databases.listDocuments(
-          process.env.APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
           'assignment_submissions',
           [
             {
@@ -143,7 +143,7 @@ export async function GET(request: Request) {
         let achievements: Array<{ name: string; earnedAt: string }> = [];
         try {
           const userAchievements = await databases.listDocuments(
-            process.env.APPWRITE_DATABASE_ID!,
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
             'user_achievements',
             [
               {
@@ -167,7 +167,7 @@ export async function GET(request: Request) {
         let streak = 0;
         try {
           const activities = await databases.listDocuments(
-            process.env.APPWRITE_DATABASE_ID!,
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
             `pod_course_activities_${podCourseId.replace(/-/g, '_')}`,
             [
               {
