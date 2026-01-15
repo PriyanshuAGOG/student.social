@@ -719,5 +719,35 @@ export async function getUserCertificates(
   }
 }
 
+// Export unified courseService object for API routes
+export const courseService = {
+  getCourseDatabase,
+  createCourse,
+  getCourse,
+  getAllCourses,
+  getInstructorCourses,
+  updateCourse,
+  deleteCourse,
+  createChapter,
+  getChapters,
+  updateChapter,
+  createOrUpdateContent,
+  getContent,
+  createAssignment,
+  getChapterAssignments,
+  getOrCreateProgress,
+  updateProgress,
+  submitAssignment,
+  getSubmission,
+  updateSubmission,
+  getUserSubmissions,
+  enrollInCourse,
+  getUserEnrollments,
+  getOrCreateStats,
+  updateStats,
+  createCertificate,
+  getUserCertificates,
+};
+
 // Export collection IDs for use in other files
 export { COLLECTIONS, DATABASE_ID };

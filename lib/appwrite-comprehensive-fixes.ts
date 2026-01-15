@@ -16,6 +16,23 @@ const storage = new Storage(client)
 const account = new Account(client)
 const teams = new Teams(client)
 
+// Admin client for server-side operations
+export function createAdminClient() {
+  const adminClient = new Client()
+    .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT!)
+    .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID!)
+  
+  // Note: API key authentication would be set via setKey() if using node-appwrite SDK
+  // For now, using the standard client setup
+  
+  return {
+    databases: new Databases(adminClient),
+    storage: new Storage(adminClient),
+    account: new Account(adminClient),
+    teams: new Teams(adminClient),
+  }
+}
+
 // Constants (copy from appwrite.ts)
 const DATABASE_ID = process.env.NEXT_PUBLIC_DATABASE_ID!
 const COLLECTIONS = {
