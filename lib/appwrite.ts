@@ -1065,7 +1065,7 @@ export const podService = {
         COLLECTIONS.PODS,
         [
           Query.search("members", userId),
-          Query.orderDesc("createdAt"),
+          Query.orderDesc("$createdAt"),
           Query.limit(Math.min(limit, 100)),
           Query.offset(Math.max(offset, 0)),
         ]
@@ -1084,7 +1084,7 @@ export const podService = {
   async getAllPods(limit = 50, offset = 0, filters: any = {}) {
     try {
       const queries = [
-        Query.orderDesc("createdAt"),
+        Query.orderDesc("$createdAt"),
         Query.limit(Math.min(limit, 100)),
         Query.offset(Math.max(offset, 0)),
       ]
@@ -1700,7 +1700,7 @@ export const podService = {
     try {
       const queries = [
         Query.equal("podId", podId),
-        Query.orderDesc("createdAt"),
+        Query.orderDesc("$createdAt"),
       ]
       return await databases.listDocuments(DATABASE_ID, COLLECTIONS.POD_CHECK_INS, queries)
     } catch (err: any) {
@@ -2266,7 +2266,7 @@ export const resourceService = {
   async getResources(podId?: string, limit = 50, offset = 0) {
     try {
       const queries: any[] = [
-        Query.orderDesc("createdAt"),
+        Query.orderDesc("$createdAt"),
         Query.limit(Math.min(limit, 100)),
         Query.offset(Math.max(offset, 0)),
       ]
@@ -2298,7 +2298,7 @@ export const resourceService = {
         COLLECTIONS.RESOURCES,
         [
           Query.search("bookmarkedBy", userId),
-          Query.orderDesc("createdAt"),
+          Query.orderDesc("$createdAt"),
           Query.limit(Math.min(limit, 100)),
           Query.offset(Math.max(offset, 0)),
         ]

@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from "next/server"
 import { client, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite"
-import { Databases } from "node-appwrite"
+import { Client, Databases } from "node-appwrite"
+
+function getDatabases() {
+  const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT
+  const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
+  const apiKey = process.env.APPWRITE_API_KEY
+
+  if (endpoint && project && apiKey) {
+    const adminClient = new Client()
+      .setEndpoint(endpoint)
+      .setProject(project)
+      .setKey(apiKey)
+
+    return new Databases(adminClient)
+  }
+
+  return new Databases(client)
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,7 +30,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const databases = new Databases(client)
+    const databases = getDatabases()
     const courses = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.POD_COURSES,

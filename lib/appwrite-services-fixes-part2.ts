@@ -115,7 +115,7 @@ export const podServiceFixed = {
         DATABASE_ID,
         COLLECTIONS.PODS,
         [
-          Query.orderDesc("createdAt"),
+          Query.orderDesc("$createdAt"),
           Query.limit(Math.min(limit, 100)),
           Query.offset(Math.max(offset, 0)),
         ]
@@ -142,7 +142,7 @@ export const podServiceFixed = {
         COLLECTIONS.PODS,
         [
           Query.search("members", userId),
-          Query.orderDesc("createdAt"),
+          Query.orderDesc("$createdAt"),
           Query.limit(Math.min(limit, 100)),
           Query.offset(Math.max(offset, 0)),
         ]
@@ -913,7 +913,7 @@ export const resourceServiceFixed = {
   async getResources(podId?: string, limit = 50, offset = 0) {
     try {
       const queries: any[] = [
-        Query.orderDesc("createdAt"),
+        Query.orderDesc("$createdAt"),
         Query.limit(Math.min(limit, 100)),
         Query.offset(Math.max(offset, 0)),
       ]
@@ -945,7 +945,7 @@ export const resourceServiceFixed = {
         COLLECTIONS.RESOURCES,
         [
           Query.search("bookmarkedBy", userId),
-          Query.orderDesc("createdAt"),
+          Query.orderDesc("$createdAt"),
           Query.limit(Math.min(limit, 100)),
           Query.offset(Math.max(offset, 0)),
         ]
