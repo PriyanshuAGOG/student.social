@@ -100,38 +100,29 @@ function makeRequest(method, path, body = null) {
 }
 
 async function createAttribute(collectionId, key, type, size = null, required = false, array = false) {
-  try {
-    const payload = { 
-      key, 
-      required: required || false 
-    };
-    
-    if (type === 'string') {
-      payload.size = size || 255;
-      await makeRequest(
-        'POST',
-        `/databases/${DATABASE_ID}/collections/${collectionId}/attributes/string`,
-        payload
-      );
-    } else if (type === 'integer') {
-      await makeRequest(
-        'POST',
-        `/databases/${DATABASE_ID}/collections/${collectionId}/attributes/integer`,
-        payload
-      );
-    } else if (type === 'json') {
-      await makeRequest(
-        'POST',
-        `/databases/${DATABASE_ID}/collections/${collectionId}/attributes/json`,
-        payload
-      );
-    }
-    
-    return true;
-  } catch (e) {
-    // Attribute might already exist
-    return false;
+  const payload = { 
+    key, 
+    required: required || false 
+  };
+  
+  let endpoint = '';
+  
+  if (type === 'string') {
+    payload.size = size || 255;
+    endpoint = `/databases/${DATABASE_ID}/collections/${collectionId}/attributes/string`;
+  } else if (type === 'integer') {
+    endpoint = `/databases/${DATABASE_ID}/collections/${collectionId}/attributes/integer`;
+  } else if (type === 'json') {
+    // For JSON, we need to use string with a large size
+    // Appwrite stores JSON as text internally
+    payload.size = 1000000; // 1MB max for JSON fields
+    endpoint = `/databases/${DATABASE_ID}/collections/${collectionId}/attributes/string`;
+  } else {
+    throw new Error(`Unsupported attribute type: ${type}`);
   }
+  
+  const result = await makeRequest('POST', endpoint, payload);
+  return result;
 }
 
 async function setup() {
@@ -197,9 +188,16 @@ async function setup() {
         console.log(`   ✅ ${key} (${type})`);
         attrCount++;
       } catch (e) {
-        // Attribute likely already exists
-        console.log(`   ℹ️  ${key} (exists or skipped)`);
+        // Check if attribute already exists
+        if (e.message && e.message.includes('already exists')) {
+          console.log(`   ✅ ${key} (${type}) - already exists`);
+          attrCount++;
+        } else {
+          console.error(`   ❌ Failed to create ${key}:`, e.message || e);
+        }
       }
+      // Wait a bit between attribute creations to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
 
     console.log(`\n✅ Pod courses setup complete! (${attrCount} attributes created/verified)\n`);
