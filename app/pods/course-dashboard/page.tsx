@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Users, Trophy, Target, MessageSquare, Video } from 'lucide-react';
 
-export default function PodCourseDashboard() {
+function PodCourseDashboardContent() {
   const searchParams = useSearchParams();
   const podCourseId = searchParams?.get('podCourseId');
 
@@ -290,6 +290,26 @@ export default function PodCourseDashboard() {
           </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+export default function PodCourseDashboard() {
+  return (
+    <Suspense fallback={<DashboardLoading />}>
+      <PodCourseDashboardContent />
+    </Suspense>
+  );
+}
+
+function DashboardLoading() {
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="animate-pulse space-y-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="bg-muted h-32 rounded-lg"></div>
+        ))}
+      </div>
     </div>
   );
 }
