@@ -22,7 +22,8 @@ import {
   CalendarTab, 
   ChatTab,
   PodChatTab,
-  EnhancedMembersTab
+  EnhancedMembersTab,
+  CoursesTab
 } from "@/components/pods/tabs"
 
 const FALLBACK_POD = {
@@ -744,6 +745,7 @@ export default function PodDetailPage() {
           <div className="flex space-x-1 bg-secondary/50 rounded-lg p-1 max-w-fit overflow-x-auto">
             {[
               { value: "overview", label: "Overview", icon: Home },
+              { value: "courses", label: "Courses", icon: FolderOpen },
               { value: "chat", label: "Chat", icon: MessageSquare },
               { value: "members", label: "Members", icon: Users },
               { value: "classroom", label: "Study Room", icon: Video },
@@ -801,6 +803,13 @@ export default function PodDetailPage() {
             podId={podId}
             podName={pod.name}
             members={memberProfiles}
+          />
+        )}
+
+        {activeTab === "courses" && (
+          <CoursesTab
+            podId={podId}
+            podName={pod.name}
           />
         )}
 

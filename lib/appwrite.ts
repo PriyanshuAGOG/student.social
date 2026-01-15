@@ -68,6 +68,16 @@ export const COLLECTIONS = {
   POD_WHITEBOARDS: "pod_whiteboards",
   POD_MEETING_PARTICIPANTS: "pod_meeting_participants",
   SAVED_POSTS: "saved_posts",
+  POD_COURSES: "pod_courses",
+  COURSES: "courses",
+  COURSE_CHAPTERS: "course_chapters",
+  COURSE_CONTENT: "course_content",
+  COURSE_ASSIGNMENTS: "course_assignments",
+  USER_COURSE_PROGRESS: "user_course_progress",
+  ASSIGNMENT_SUBMISSIONS: "assignment_submissions",
+  COURSE_ENROLLMENTS: "course_enrollments",
+  COURSE_STATS: "course_stats",
+  CERTIFICATES: "certificates",
 }
 
 // Storage Bucket IDs - You'll need to create these in Appwrite
