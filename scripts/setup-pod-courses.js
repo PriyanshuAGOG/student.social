@@ -74,9 +74,18 @@ function makeRequest(method, path, body = null) {
       });
       res.on('end', () => {
         try {
-          resolve(JSON.parse(data));
+          const parsed = JSON.parse(data);
+          if (res.statusCode >= 400) {
+            reject(parsed);
+          } else {
+            resolve(parsed);
+          }
         } catch {
-          resolve(data);
+          if (res.statusCode >= 400) {
+            reject({ error: data });
+          } else {
+            resolve(data);
+          }
         }
       });
     });
@@ -101,19 +110,19 @@ async function createAttribute(collectionId, key, type, size = null, required = 
       payload.size = size || 255;
       await makeRequest(
         'POST',
-        `/v1/databases/${DATABASE_ID}/collections/${collectionId}/attributes/string`,
+        `/databases/${DATABASE_ID}/collections/${collectionId}/attributes/string`,
         payload
       );
     } else if (type === 'integer') {
       await makeRequest(
         'POST',
-        `/v1/databases/${DATABASE_ID}/collections/${collectionId}/attributes/integer`,
+        `/databases/${DATABASE_ID}/collections/${collectionId}/attributes/integer`,
         payload
       );
     } else if (type === 'json') {
       await makeRequest(
         'POST',
-        `/v1/databases/${DATABASE_ID}/collections/${collectionId}/attributes/json`,
+        `/databases/${DATABASE_ID}/collections/${collectionId}/attributes/json`,
         payload
       );
     }
@@ -135,23 +144,32 @@ async function setup() {
 
     // Create pod_courses collection
     console.log('📚 Creating pod_courses collection...');
+    let collectionExists = false;
     try {
-      await makeRequest('GET', `/v1/databases/${DATABASE_ID}/collections/pod_courses`);
+      const result = await makeRequest('GET', `/databases/${DATABASE_ID}/collections/pod_courses`);
       console.log('   ✅ pod_courses collection already exists\n');
+      collectionExists = true;
     } catch (e) {
+      console.log('   ⚠️  Collection check failed:', e.message || e.code || 'Unknown error');
       console.log('   📦 Creating pod_courses...');
-      await makeRequest('POST', `/v1/databases/${DATABASE_ID}/collections`, {
-        collectionId: 'pod_courses',
-        name: 'Pod Courses',
-        permissions: [
-          'read("any")',
-          'read("users")',
-          'create("users")',
-          'update("users")',
-          'delete("users")',
-        ],
-      });
-      console.log('   ✅ pod_courses collection created\n');
+      try {
+        await makeRequest('POST', `/databases/${DATABASE_ID}/collections`, {
+          collectionId: 'pod_courses',
+          name: 'Pod Courses',
+          permissions: [
+            'read("any")',
+            'read("users")',
+            'create("users")',
+            'update("users")',
+            'delete("users")',
+          ],
+        });
+        console.log('   ✅ pod_courses collection created\n');
+        collectionExists = true;
+      } catch (createError) {
+        console.error('   ❌ Failed to create collection:', createError);
+        throw createError;
+      }
     }
 
     // Create attributes
@@ -189,7 +207,7 @@ async function setup() {
     // Now fix resources collection if needed
     console.log('🔧 Checking resources collection...');
     try {
-      await makeRequest('GET', `/v1/databases/${DATABASE_ID}/collections/resources`);
+      await makeRequest('GET', `/databases/${DATABASE_ID}/collections/resources`);
       console.log('   ✅ resources collection exists');
       
       // Add createdAt attribute if missing

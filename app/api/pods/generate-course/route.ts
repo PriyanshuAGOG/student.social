@@ -8,6 +8,14 @@ function getDatabases() {
   const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
   const apiKey = process.env.APPWRITE_API_KEY
 
+  console.log('[getDatabases]', { 
+    hasEndpoint: !!endpoint, 
+    hasProject: !!project, 
+    hasApiKey: !!apiKey,
+    endpoint,
+    project 
+  })
+
   if (endpoint && project && apiKey) {
     const adminClient = new Client()
       .setEndpoint(endpoint)
@@ -18,6 +26,7 @@ function getDatabases() {
   }
 
   // Fallback to public client (requires session auth)
+  console.warn('[getDatabases] Falling back to public client - API key not available')
   return new Databases(client)
 }
 
@@ -34,6 +43,13 @@ export async function POST(request: NextRequest) {
 
     // Check if pod already has a course
     const databases = getDatabases()
+    
+    console.log('[generate-course] Checking existing courses', { 
+      DATABASE_ID, 
+      collectionId: COLLECTIONS.POD_COURSES,
+      podId 
+    })
+    
     const existingCourses = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.POD_COURSES,

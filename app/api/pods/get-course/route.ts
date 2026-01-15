@@ -8,6 +8,12 @@ function getDatabases() {
   const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
   const apiKey = process.env.APPWRITE_API_KEY
 
+  console.log('[get-course getDatabases]', { 
+    hasEndpoint: !!endpoint, 
+    hasProject: !!project, 
+    hasApiKey: !!apiKey 
+  })
+
   if (endpoint && project && apiKey) {
     const adminClient = new Client()
       .setEndpoint(endpoint)
@@ -17,6 +23,7 @@ function getDatabases() {
     return new Databases(adminClient)
   }
 
+  console.warn('[get-course] Falling back to public client')
   return new Databases(client)
 }
 
@@ -32,6 +39,13 @@ export async function GET(request: NextRequest) {
     }
 
     const databases = getDatabases()
+    
+    console.log('[get-course] Querying pod courses', { 
+      DATABASE_ID, 
+      collectionId: COLLECTIONS.POD_COURSES,
+      podId 
+    })
+    
     const courses = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.POD_COURSES,
