@@ -109,3 +109,6 @@ async function tryAIRequest(apiKey: string, messages: ChatMessage[], model: stri
 export function buildResponse(message: string) {
   return NextResponse.json({ message })
 }
+
+// Export callLLM as an alias for backwards compatibility
+export const callLLM = runAIChat

@@ -111,7 +111,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const router = useRouter()
   const { toast } = useToast()
-  const { user, logout } = useAuth()
+  const { user, profile, logout } = useAuth()
 
   const handleLogout = async () => {
     try {
@@ -135,8 +135,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     router.push("/app/profile")
   }
 
-  const userInitials = user?.name
-    ? user.name
+  // Use profile name as primary source for consistency
+  const displayName = profile?.name || user?.name || ""
+  const userInitials = displayName
+    ? displayName
         .split(" ")
         .map((n) => n[0])
         .join("")
@@ -195,7 +197,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     <AvatarFallback className="rounded-lg">{userInitials}</AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">{user?.name || "User"}</span>
+                    <span className="truncate font-semibold">{displayName || "User"}</span>
                     <span className="truncate text-xs">{user?.email || "email@example.com"}</span>
                   </div>
                 </SidebarMenuButton>
@@ -213,7 +215,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       <AvatarFallback className="rounded-lg">{userInitials}</AvatarFallback>
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-semibold">{user?.name || "User"}</span>
+                      <span className="truncate font-semibold">{displayName || "User"}</span>
                       <span className="truncate text-xs">{user?.email || "email@example.com"}</span>
                     </div>
                   </div>

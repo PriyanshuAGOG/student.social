@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/hooks/use-toast"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { chatService } from "@/lib/appwrite"
 import { useAuth } from "@/lib/auth-context"
 
@@ -68,7 +68,20 @@ export default function ChatPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user } = useAuth()
+
+  // Select room from URL parameter if provided (for DM links)
+  useEffect(() => {
+    const roomId = searchParams.get('room')
+    if (roomId && rooms.length > 0 && !selectedRoom) {
+      const room = rooms.find(r => r.$id === roomId)
+      if (room) {
+        setSelectedRoom(room)
+        setShowMobileChatList(false)
+      }
+    }
+  }, [searchParams, rooms, selectedRoom])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })

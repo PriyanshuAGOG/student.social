@@ -151,6 +151,16 @@ export default function OnboardingPage() {
   const router = useRouter()
   const { toast } = useToast()
 
+  // Pre-fill profile name from auth user to avoid duplicate name entry
+  useEffect(() => {
+    if (user?.name && !profileData.name) {
+      setProfileData(prev => ({
+        ...prev,
+        name: user.name || "",
+      }))
+    }
+  }, [user?.name])
+
   const totalSteps = 6
   const progress = ((currentStep + 1) / totalSteps) * 100
 
