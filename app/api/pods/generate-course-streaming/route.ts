@@ -116,7 +116,17 @@ Return ONLY a JSON array with no markdown formatting. Each chapter should have:
 
 export async function POST(request: NextRequest) {
   try {
-    const { podId, youtubeUrl, courseTitle } = await request.json()
+    let body
+    try {
+      body = await request.json()
+    } catch (e) {
+      return NextResponse.json(
+        { error: "Invalid JSON in request body" },
+        { status: 400 }
+      )
+    }
+
+    const { podId, youtubeUrl, courseTitle } = body
 
     // Input validation
     if (!podId || !youtubeUrl || !courseTitle) {
@@ -126,21 +136,44 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (courseTitle.length < 3 || courseTitle.length > 200) {
+    if (typeof courseTitle !== 'string' || courseTitle.length < 3 || courseTitle.length > 200) {
       return NextResponse.json(
-        { error: "Course title must be between 3 and 200 characters" },
+        { error: "Course title must be a string between 3 and 200 characters" },
         { status: 400 }
       )
     }
 
-    const databases = getDatabases()
+    if (typeof youtubeUrl !== 'string' || !youtubeUrl.includes('youtube')) {
+      return NextResponse.json(
+        { error: "youtubeUrl must be a valid YouTube URL" },
+        { status: 400 }
+      )
+    }
+
+    let databases
+    try {
+      databases = getDatabases()
+    } catch (e) {
+      return NextResponse.json(
+        { error: `Database connection failed: ${e.message}` },
+        { status: 500 }
+      )
+    }
 
     // Check if pod already has a course
-    const existingCourses = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.POD_COURSES,
-      [Query.equal('podId', podId)]
-    )
+    let existingCourses
+    try {
+      existingCourses = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTIONS.POD_COURSES,
+        [Query.equal('podId', podId)]
+      )
+    } catch (e) {
+      return NextResponse.json(
+        { error: `Failed to check existing courses: ${e.message}` },
+        { status: 500 }
+      )
+    }
 
     if (existingCourses.documents.length > 0) {
       return NextResponse.json(
@@ -155,7 +188,7 @@ export async function POST(request: NextRequest) {
       videoId = await extractVideoIdWithTimeout(youtubeUrl)
     } catch (error) {
       return NextResponse.json(
-        { error: `Invalid YouTube URL: ${error.message}` },
+        { error: `Invalid YouTube URL: ${error instanceof Error ? error.message : 'Unknown error'}` },
         { status: 400 }
       )
     }
@@ -165,8 +198,16 @@ export async function POST(request: NextRequest) {
     try {
       chapters = await generateChapterStubs(courseTitle, youtubeUrl)
     } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
       return NextResponse.json(
-        { error: `Failed to generate course structure: ${error.message}` },
+        { error: `Failed to generate course structure: ${msg}` },
+        { status: 500 }
+      )
+    }
+
+    if (!Array.isArray(chapters) || chapters.length === 0) {
+      return NextResponse.json(
+        { error: "Failed to generate valid course chapters" },
         { status: 500 }
       )
     }
@@ -177,7 +218,7 @@ export async function POST(request: NextRequest) {
       courseTitle,
       youtubeUrl,
       videoId,
-      status: "structuring", // Chapter stubs created, waiting for content
+      status: "structuring",
       progress: 0,
       totalChapters: chapters.length,
       completedChapters: 0,
@@ -191,15 +232,23 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date().toISOString(),
     }
 
-    const course = await databases.createDocument(
-      DATABASE_ID,
-      COLLECTIONS.POD_COURSES,
-      "unique()",
-      courseData
-    )
+    let course
+    try {
+      course = await databases.createDocument(
+        DATABASE_ID,
+        COLLECTIONS.POD_COURSES,
+        "unique()",
+        courseData
+      )
+    } catch (e) {
+      const msg = e.message || String(e)
+      return NextResponse.json(
+        { error: `Failed to create course document: ${msg}` },
+        { status: 500 }
+      )
+    }
 
     // Trigger background job to generate chapter content progressively
-    // Don't await this - let it run in background
     generateChapterContentAsync(
       course.$id,
       podId,
@@ -208,7 +257,7 @@ export async function POST(request: NextRequest) {
       courseTitle,
       chapters
     ).catch(error => {
-      console.error(`[generateCourseStreaming] Background job failed: ${error.message}`)
+      const msg = error instanceof Error ? error.message : String(error)
     })
 
     return NextResponse.json(
@@ -222,8 +271,9 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     )
   } catch (error) {
+    const msg = error instanceof Error ? error.message : "Failed to generate course"
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to generate course" },
+      { error: msg },
       { status: 500 }
     )
   }

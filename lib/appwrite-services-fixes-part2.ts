@@ -77,7 +77,8 @@ export const podServiceFixed = {
         name: name.trim(),
         description: metadata.description || "",
         creatorId: creatorId,
-        members: [creatorId], // Creator is first member
+        teamId: "", // Empty by default, can be linked later
+        members: JSON.stringify([creatorId]), // Creator is first member
         memberCount: 1,
         image: imageUrl,
         category: metadata.category || "general",
