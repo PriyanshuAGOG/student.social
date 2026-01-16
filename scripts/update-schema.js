@@ -6,6 +6,8 @@ const fs = require('fs')
 const path = require('path')
 const https = require('https')
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 function loadEnv() {
   const envPath = path.join(process.cwd(), '.env.local')
   const env = {}
@@ -112,17 +114,24 @@ const collections = [
       { key: 'podId', type: 'string', size: 255 },
       { key: 'resourceId', type: 'string', size: 255 },
       { key: 'imageUrl', type: 'string', size: 500 },
+      { key: 'imageUrls', type: 'string', size: 500, array: true },
       { key: 'imageFileId', type: 'string', size: 255 },
       { key: 'timestamp', type: 'string', size: 255, required: true },
+      { key: 'updatedAt', type: 'string', size: 255 },
       { key: 'likes', type: 'integer' },
       { key: 'comments', type: 'integer' },
+      { key: 'saves', type: 'integer' },
       { key: 'shares', type: 'integer' },
       { key: 'isEdited', type: 'boolean' },
       { key: 'editedAt', type: 'string', size: 255 },
       { key: 'likedBy', type: 'string', size: 255, array: true },
+      { key: 'savedBy', type: 'string', size: 255, array: true },
       { key: 'visibility', type: 'string', size: 50 },
       { key: 'tags', type: 'string', size: 100, array: true },
       { key: 'mentions', type: 'string', size: 100, array: true },
+      { key: 'authorName', type: 'string', size: 255 },
+      { key: 'authorAvatar', type: 'string', size: 500 },
+      { key: 'authorUsername', type: 'string', size: 255 },
     ],
   },
   {
@@ -130,15 +139,46 @@ const collections = [
     name: 'Messages',
     attrs: [
       { key: 'roomId', type: 'string', size: 255, required: true },
+      { key: 'senderId', type: 'string', size: 255, required: true },
       { key: 'authorId', type: 'string', size: 255, required: true },
       { key: 'content', type: 'string', size: 5000, required: true },
       { key: 'type', type: 'string', size: 50, required: true },
       { key: 'timestamp', type: 'string', size: 255, required: true },
+      { key: 'senderName', type: 'string', size: 255 },
+      { key: 'senderAvatar', type: 'string', size: 500 },
+      { key: 'readBy', type: 'string', size: 255, array: true },
       { key: 'isEdited', type: 'boolean' },
       { key: 'replyTo', type: 'string', size: 255 },
       { key: 'fileUrl', type: 'string', size: 500 },
       { key: 'reactions', type: 'string', size: 100, array: true },
       { key: 'editedAt', type: 'string', size: 255 },
+    ],
+  },
+  {
+    id: 'comments',
+    name: 'Comments',
+    attrs: [
+      { key: 'postId', type: 'string', size: 255, required: true },
+      { key: 'authorId', type: 'string', size: 255, required: true },
+      { key: 'content', type: 'string', size: 2000, required: true },
+      { key: 'timestamp', type: 'string', size: 255, required: true },
+      { key: 'likes', type: 'integer' },
+      { key: 'likedBy', type: 'string', size: 255, array: true },
+      { key: 'authorName', type: 'string', size: 255 },
+      { key: 'authorAvatar', type: 'string', size: 500 },
+      { key: 'authorUsername', type: 'string', size: 255 },
+      { key: 'isEdited', type: 'boolean' },
+      { key: 'editedAt', type: 'string', size: 255 },
+      { key: 'updatedAt', type: 'string', size: 255 },
+    ],
+  },
+  {
+    id: 'saved_posts',
+    name: 'Saved Posts',
+    attrs: [
+      { key: 'postId', type: 'string', size: 255, required: true },
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'savedAt', type: 'string', size: 255, required: true },
     ],
   },
   {
@@ -201,6 +241,10 @@ const collections = [
       { key: 'timestamp', type: 'string', size: 255, required: true },
       { key: 'isRead', type: 'boolean' },
       { key: 'actionUrl', type: 'string', size: 500 },
+      { key: 'actorId', type: 'string', size: 255 },
+      { key: 'actorName', type: 'string', size: 255 },
+      { key: 'actorAvatar', type: 'string', size: 500 },
+      { key: 'metadata', type: 'string', size: 5000 },
     ],
   },
   {
@@ -209,11 +253,18 @@ const collections = [
     attrs: [
       { key: 'userId', type: 'string', size: 255, required: true },
       { key: 'title', type: 'string', size: 255, required: true },
+      { key: 'description', type: 'string', size: 2000 },
       { key: 'startTime', type: 'string', size: 255, required: true },
       { key: 'endTime', type: 'string', size: 255, required: true },
       { key: 'type', type: 'string', size: 50 },
       { key: 'podId', type: 'string', size: 255 },
+      { key: 'location', type: 'string', size: 500 },
+      { key: 'meetingUrl', type: 'string', size: 500 },
+      { key: 'attendees', type: 'string', size: 255, array: true },
+      { key: 'isRecurring', type: 'boolean' },
+      { key: 'reminders', type: 'integer', array: true },
       { key: 'createdAt', type: 'string', size: 255, required: true },
+      { key: 'updatedAt', type: 'string', size: 255 },
       { key: 'isCompleted', type: 'boolean' },
     ],
   },
@@ -224,6 +275,10 @@ const collections = [
       { key: 'type', type: 'string', size: 50, required: true },
       { key: 'podId', type: 'string', size: 255 },
       { key: 'name', type: 'string', size: 255 },
+      { key: 'members', type: 'string', size: 255, array: true },
+      { key: 'lastMessage', type: 'string', size: 1000 },
+      { key: 'lastMessageTime', type: 'string', size: 255 },
+      { key: 'lastMessageSenderId', type: 'string', size: 255 },
       { key: 'createdAt', type: 'string', size: 255, required: true },
       { key: 'isActive', type: 'boolean' },
     ],
@@ -317,6 +372,182 @@ const collections = [
       { key: 'updatedAt', type: 'string', size: 255 },
     ],
   },
+  {
+    id: 'courses',
+    name: 'Courses',
+    attrs: [
+      { key: 'title', type: 'string', size: 255, required: true },
+      { key: 'description', type: 'string', size: 2000, required: true },
+      { key: 'instructorId', type: 'string', size: 255, required: true },
+      { key: 'language', type: 'string', size: 50 },
+      { key: 'duration', type: 'integer' },
+      { key: 'difficulty', type: 'string', size: 50 },
+      { key: 'tags', type: 'string', size: 2000 }, // JSON stringified array
+      { key: 'prerequisites', type: 'string', size: 2000 }, // JSON stringified array
+      { key: 'coverImage', type: 'string', size: 255 },
+      { key: 'youtubeLink', type: 'string', size: 255 },
+      { key: 'status', type: 'string', size: 50, required: true },
+      { key: 'isMonetized', type: 'boolean' },
+      { key: 'price', type: 'double' },
+      { key: 'enrollmentCount', type: 'integer', defaultValue: 0 },
+      { key: 'avgRating', type: 'double' },
+      { key: 'totalReviews', type: 'integer' },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+      { key: 'updatedAt', type: 'string', size: 255 },
+    ],
+  },
+  {
+    id: 'course_chapters',
+    name: 'Course Chapters',
+    attrs: [
+      { key: 'courseId', type: 'string', size: 255, required: true },
+      { key: 'title', type: 'string', size: 255, required: true },
+      { key: 'description', type: 'string', size: 2000 },
+      { key: 'sequenceNumber', type: 'integer' },
+      { key: 'duration', type: 'integer' },
+      { key: 'videoStartTime', type: 'integer' },
+      { key: 'videoEndTime', type: 'integer' },
+      { key: 'learningObjectives', type: 'string', size: 2000 }, // JSON stringified array
+      { key: 'contentType', type: 'string', size: 50 },
+      { key: 'transcript', type: 'string', size: 5000 },
+      { key: 'transcriptCleaned', type: 'string', size: 5000 },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+    ],
+  },
+  {
+    id: 'course_content',
+    name: 'Course Content',
+    attrs: [
+      { key: 'chapterId', type: 'string', size: 255, required: true },
+      { key: 'summaries', type: 'string', size: 2000 }, // JSON stringified array
+      { key: 'keyTakeaways', type: 'string', size: 2000 }, // JSON stringified array
+      { key: 'detailedNotes', type: 'string', size: 5000 },
+      { key: 'concepts', type: 'string', size: 2000 }, // JSON stringified array
+      { key: 'formulas', type: 'string', size: 2000 }, // JSON stringified array
+      { key: 'realWorldApplications', type: 'string', size: 1500 }, // JSON stringified array
+      { key: 'generatedAt', type: 'string', size: 255, required: true },
+      { key: 'llmModel', type: 'string', size: 255 },
+      { key: 'promptHash', type: 'string', size: 255 },
+    ],
+  },
+  {
+    id: 'course_assignments',
+    name: 'Course Assignments',
+    attrs: [
+      { key: 'chapterId', type: 'string', size: 255, required: true },
+      { key: 'title', type: 'string', size: 255, required: true },
+      { key: 'description', type: 'string', size: 2000 },
+      { key: 'type', type: 'string', size: 50, required: true },
+      { key: 'difficulty', type: 'string', size: 50 },
+      { key: 'estimatedTime', type: 'integer' },
+      { key: 'questionText', type: 'string', size: 4000 },
+      { key: 'options', type: 'string', size: 1500 }, // JSON stringified array
+      { key: 'rubric', type: 'string', size: 2000 }, // JSON stringified object
+      { key: 'gradingCriteria', type: 'string', size: 1500 },
+      { key: 'sequenceNumber', type: 'integer' },
+      { key: 'variations', type: 'string', size: 1500 }, // JSON stringified array
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+    ],
+  },
+  {
+    id: 'user_course_progress',
+    name: 'User Course Progress',
+    attrs: [
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'courseId', type: 'string', size: 255, required: true },
+      { key: 'enrolledAt', type: 'string', size: 255, required: true },
+      { key: 'completionPercentage', type: 'integer' },
+      { key: 'chaptersCompleted', type: 'integer' },
+      { key: 'totalChapters', type: 'integer' },
+      { key: 'averageScore', type: 'double' },
+      { key: 'finalScore', type: 'double' },
+      { key: 'courseStatus', type: 'string', size: 50 },
+      { key: 'certificateEarned', type: 'boolean' },
+      { key: 'certificateId', type: 'string', size: 255 },
+      { key: 'timeSpent', type: 'integer' },
+      { key: 'lastAccessedAt', type: 'string', size: 255 },
+      { key: 'bookmarkedChapters', type: 'string', size: 5000 }, // JSON stringified array
+      { key: 'attemptedAssignments', type: 'integer' },
+      { key: 'completedAssignments', type: 'integer' },
+    ],
+  },
+  {
+    id: 'assignment_submissions',
+    name: 'Assignment Submissions',
+    attrs: [
+      { key: 'assignmentId', type: 'string', size: 255, required: true },
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'submissionText', type: 'string', size: 5000 },
+      { key: 'submissionFile', type: 'string', size: 500 },
+      { key: 'submittedAt', type: 'string', size: 255, required: true },
+      { key: 'score', type: 'double' },
+      { key: 'confidence', type: 'double' },
+      { key: 'aiGeneratedFeedback', type: 'string', size: 2000 },
+      { key: 'isAutoGraded', type: 'boolean' },
+      { key: 'flaggedForReview', type: 'boolean' },
+      { key: 'reviewedBy', type: 'string', size: 255 },
+      { key: 'manualScore', type: 'double' },
+      { key: 'revisionCount', type: 'integer' },
+      { key: 'status', type: 'string', size: 50 },
+    ],
+  },
+  {
+    id: 'course_enrollments',
+    name: 'Course Enrollments',
+    attrs: [
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'courseId', type: 'string', size: 255, required: true },
+      { key: 'enrolledAt', type: 'string', size: 255, required: true },
+      { key: 'enrollmentType', type: 'string', size: 50 },
+      { key: 'paymentId', type: 'string', size: 255 },
+      { key: 'cohortId', type: 'string', size: 255 },
+      { key: 'status', type: 'string', size: 50 },
+    ],
+  },
+  {
+    id: 'course_stats',
+    name: 'Course Stats',
+    attrs: [
+      { key: 'courseId', type: 'string', size: 255, required: true },
+      { key: 'enrollmentCount', type: 'integer' },
+      { key: 'completionCount', type: 'integer' },
+      { key: 'avgCompletionTime', type: 'integer' },
+      { key: 'avgScore', type: 'double' },
+      { key: 'churnRate', type: 'double' },
+      { key: 'totalRevenue', type: 'double' },
+      { key: 'instructorEarnings', type: 'double' },
+      { key: 'updatedAt', type: 'string', size: 255, required: true },
+    ],
+  },
+  {
+    id: 'course_reviews',
+    name: 'Course Reviews',
+    attrs: [
+      { key: 'courseId', type: 'string', size: 255, required: true },
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'rating', type: 'integer' },
+      { key: 'reviewText', type: 'string', size: 5000 },
+      { key: 'verifiedCompletion', type: 'boolean' },
+      { key: 'helpfulCount', type: 'integer' },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+    ],
+  },
+  {
+    id: 'certificates',
+    name: 'Certificates',
+    attrs: [
+      { key: 'courseId', type: 'string', size: 255, required: true },
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'certificateId', type: 'string', size: 255, required: true },
+      { key: 'score', type: 'double' },
+      { key: 'completionDate', type: 'string', size: 255 },
+      { key: 'instructorName', type: 'string', size: 255 },
+      { key: 'signatureUrl', type: 'string', size: 500 },
+      { key: 'qrCodeUrl', type: 'string', size: 500 },
+      { key: 'verificationUrl', type: 'string', size: 500 },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+    ],
+  },
 ]
 
 const buckets = [
@@ -386,6 +617,17 @@ async function ensureAttribute(colId, attr) {
     console.log(`  ~ replacing ${colId}.${attr.key} (schema mismatch)`)
     try {
       await makeRequest('DELETE', `/databases/${DATABASE_ID}/collections/${colId}/attributes/${attr.key}`)
+      // Wait for attribute removal to propagate to avoid attribute_limit_exceeded on re-create
+      for (let i = 0; i < 8; i++) {
+        try {
+          const check = await makeRequest('GET', `/databases/${DATABASE_ID}/collections/${colId}/attributes`)
+          const stillThere = Array.isArray(check.attributes) && check.attributes.some((a) => a.key === attr.key)
+          if (!stillThere) break
+        } catch (_) {
+          break
+        }
+        await sleep(500)
+      }
     } catch (e) {
       console.warn(`    could not delete old attribute ${colId}.${attr.key}:`, e.data || e)
     }
@@ -407,6 +649,11 @@ async function ensureAttribute(colId, attr) {
       if (attr.max !== undefined) payload.max = attr.max
       if (attr.defaultValue !== undefined) payload.default = attr.defaultValue
       await makeRequest('POST', `/databases/${DATABASE_ID}/collections/${colId}/attributes/integer`, payload)
+    } else if (attr.type === 'double' || attr.type === 'float') {
+      if (attr.min !== undefined) payload.min = attr.min
+      if (attr.max !== undefined) payload.max = attr.max
+      if (attr.defaultValue !== undefined) payload.default = attr.defaultValue
+      await makeRequest('POST', `/databases/${DATABASE_ID}/collections/${colId}/attributes/float`, payload)
     } else if (attr.type === 'boolean') {
       if (attr.defaultValue !== undefined) payload.default = attr.defaultValue
       await makeRequest('POST', `/databases/${DATABASE_ID}/collections/${colId}/attributes/boolean`, payload)

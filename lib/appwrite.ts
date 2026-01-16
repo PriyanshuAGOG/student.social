@@ -693,20 +693,21 @@ export const profileService = {
         followerCount: newFollowers.length,
       })
 
-      // Create notification
+      // Create notification (standardized fields)
       try {
-        await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
-          userId: followingId,
-          type: "follow",
-          actor: followerId,
-          actorName: followerProfile.name,
-          actorAvatar: followerProfile.avatar,
-          message: `${followerProfile.name} started following you`,
-          read: false,
-          createdAt: new Date().toISOString(),
-        })
+        await notificationService.createNotification(
+          followingId,
+          "New Follower",
+          `${followerProfile.name} started following you`,
+          "follow",
+          {
+            actorId: followerId,
+            actorName: followerProfile.name,
+            actorAvatar: followerProfile.avatar,
+          }
+        )
       } catch (e) {
-        console.error("Failed to create notification:", e)
+        console.error("Failed to create follow notification:", e)
       }
 
       return { success: true }
@@ -830,9 +831,14 @@ export const podService = {
           await databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, "unique()", {
             roomId: chatRooms.documents[0].$id,
             senderId: "system",
+            authorId: "system",
             content: `🎉 Welcome to ${name}! This is your pod's group chat.`,
+            type: "text",
+            senderName: "System",
+            senderAvatar: "",
             timestamp: new Date().toISOString(),
             readBy: [],
+            isEdited: false,
           })
         }
       } catch (e) {
@@ -2214,6 +2220,7 @@ export const resourceService = {
       title?: string
       description?: string
       podId?: string
+      visibility?: string
       tags?: string[]
     } = {}
   ) {
@@ -2255,19 +2262,21 @@ export const resourceService = {
         COLLECTIONS.RESOURCES,
         "unique()",
         {
-          uploadedBy: userId,
+          fileId: response.$id,
+          authorId: userId,
           title: metadata.title || file.name,
           description: metadata.description || "",
           fileUrl: fileUrl,
-          downloadUrl: downloadUrl,
           fileName: file.name,
           fileSize: file.size,
           fileType: file.type,
           podId: metadata.podId || null,
+          visibility: metadata.visibility || "public",
           tags: Array.isArray(metadata.tags) ? metadata.tags.slice(0, 10) : [],
-          bookmarkedBy: [],
           downloads: 0,
-          createdAt: new Date().toISOString(),
+          likes: 0,
+          views: 0,
+          uploadedAt: new Date().toISOString(),
         }
       )
 
@@ -2281,7 +2290,7 @@ export const resourceService = {
   /**
    * Get resources with filtering
    */
-  async getResources(podId?: string, limit = 50, offset = 0) {
+  async getResources(filters: string | { podId?: string; visibility?: string; authorId?: string; search?: string } = {}, limit = 50, offset = 0) {
     try {
       const queries: any[] = [
         Query.orderDesc("$createdAt"),
@@ -2289,8 +2298,17 @@ export const resourceService = {
         Query.offset(Math.max(offset, 0)),
       ]
 
-      if (podId) {
-        queries.push(Query.equal("podId", podId))
+      // Support legacy string argument or new filter object
+      if (typeof filters === "string") {
+        if (filters) queries.push(Query.equal("podId", filters))
+      } else {
+        if (filters.podId) queries.push(Query.equal("podId", filters.podId))
+        if (filters.visibility) queries.push(Query.equal("visibility", filters.visibility))
+        if (filters.authorId) queries.push(Query.equal("authorId", filters.authorId))
+        if (filters.search) {
+          queries.push(Query.search("title", filters.search))
+          queries.push(Query.search("description", filters.search))
+        }
       }
 
       const resources = await databases.listDocuments(DATABASE_ID, COLLECTIONS.RESOURCES, queries)
@@ -2378,7 +2396,7 @@ export const resourceService = {
       const resource = await databases.getDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId)
 
       // Verify ownership
-      if (resource.uploadedBy !== userId) {
+      if (resource.authorId !== userId) {
         throw new Error("Only the uploader can delete this resource")
       }
 
@@ -2517,6 +2535,36 @@ export const feedService = {
         authorAvatar: authorAvatar,
         authorUsername: authorUsername,
       })
+
+      // Notify pod members if post is in a pod
+      if (podId) {
+        try {
+          const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+          const members = Array.isArray(pod.members) ? pod.members : []
+          // Notify all pod members except author
+          for (const memberId of members.filter(m => m !== authorId)) {
+            try {
+              await notificationService.createNotification(
+                memberId,
+                "New Pod Post",
+                `${authorName} posted in ${pod.name}`,
+                "pod_post",
+                {
+                  postId: post.$id,
+                  podId: podId,
+                  actorId: authorId,
+                  actorName: authorName,
+                  actorAvatar: authorAvatar,
+                }
+              )
+            } catch (e) {
+              console.error(`Failed to notify member ${memberId}:`, e)
+            }
+          }
+        } catch (e) {
+          console.error("Failed to send pod post notifications:", e)
+        }
+      }
 
       return post
     } catch (error) {
@@ -2840,6 +2888,29 @@ export const feedService = {
           userId: userId,
           savedAt: new Date().toISOString(),
         })
+
+        // Notify post author
+        try {
+          const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
+          if (post.authorId !== userId) {
+            const saverProfile = await profileService.getProfile(userId)
+            await notificationService.createNotification(
+              post.authorId,
+              "Post Saved",
+              `${saverProfile?.name || 'Someone'} saved your post`,
+              "save",
+              {
+                postId: postId,
+                actorId: userId,
+                actorName: saverProfile?.name,
+                actorAvatar: saverProfile?.avatar,
+              }
+            )
+          }
+        } catch (e) {
+          console.error("Failed to create save notification:", e)
+        }
+
         return { saved: true }
       }
     } catch (error) {
@@ -3154,16 +3225,86 @@ export const calendarService = {
     metadata: any = {},
   ) {
     try {
-      return await databases.createDocument(DATABASE_ID, COLLECTIONS.CALENDAR_EVENTS, "unique()", {
-        userId: userId,
-        title: title,
-        startTime: startTime,
-        endTime: endTime,
-        type: metadata.type || "study", // study, meeting, deadline, exam
-        podId: metadata.podId || null,
-        createdAt: new Date().toISOString(),
-        isCompleted: false,
-      })
+      const event = await databases.createDocument(
+        DATABASE_ID,
+        COLLECTIONS.CALENDAR_EVENTS,
+        "unique()",
+        {
+          userId: userId,
+          title: title,
+          description: metadata.description || "",
+          startTime: startTime,
+          endTime: endTime,
+          type: metadata.type || "study",
+          podId: metadata.podId || null,
+          location: metadata.location || "",
+          meetingUrl: metadata.meetingUrl || "",
+          attendees: Array.isArray(metadata.attendees) ? metadata.attendees : [],
+          isRecurring: Boolean(metadata.isRecurring),
+          reminders: Array.isArray(metadata.reminders) ? metadata.reminders : [],
+          createdAt: new Date().toISOString(),
+          isCompleted: false,
+        }
+      )
+
+      // Notify pod members if event is for a pod
+      if (metadata.podId) {
+        try {
+          const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, metadata.podId)
+          const creator = await profileService.getProfile(userId)
+          const members = Array.isArray(pod.members) ? pod.members : []
+
+          for (const memberId of members.filter((m: string) => m !== userId)) {
+            try {
+              await notificationService.createNotification(
+                memberId,
+                "New Event",
+                `${creator?.name || "Someone"} scheduled: ${title}`,
+                "event",
+                {
+                  eventId: event.$id,
+                  podId: metadata.podId,
+                  startTime: startTime,
+                  actorId: userId,
+                }
+              )
+            } catch (e) {
+              console.error(`Failed to notify member ${memberId}:`, e)
+            }
+          }
+        } catch (e) {
+          console.error("Failed to send event notifications:", e)
+        }
+      }
+
+      // Notify attendees if specified
+      if (Array.isArray(metadata.attendees) && metadata.attendees.length > 0) {
+        try {
+          const creator = await profileService.getProfile(userId)
+
+          for (const attendeeId of metadata.attendees.filter((a: string) => a !== userId)) {
+            try {
+              await notificationService.createNotification(
+                attendeeId,
+                "You're Invited",
+                `${creator?.name || "Someone"} invited you to: ${title}`,
+                "event_invite",
+                {
+                  eventId: event.$id,
+                  startTime: startTime,
+                  actorId: userId,
+                }
+              )
+            } catch (e) {
+              console.error(`Failed to notify attendee ${attendeeId}:`, e)
+            }
+          }
+        } catch (e) {
+          console.error("Failed to send attendee notifications:", e)
+        }
+      }
+
+      return event
     } catch (error) {
       console.error("Create event error:", error)
       throw error
@@ -3458,7 +3599,7 @@ export const analyticsService = {
     try {
       // Get user's uploaded resources
       const resources = await databases.listDocuments(DATABASE_ID, COLLECTIONS.RESOURCES, [
-        Query.equal("uploadedBy", userId),
+        Query.equal("authorId", userId),
       ])
 
       return {

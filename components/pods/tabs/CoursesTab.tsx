@@ -28,7 +28,7 @@ interface CourseData {
   podId: string
   courseTitle: string
   youtubeUrl: string
-  status: "generating" | "completed" | "error"
+  status: "generating" | "structuring" | "completed" | "error"
   progress: number
   chapters?: Chapter[]
   notes?: string[]

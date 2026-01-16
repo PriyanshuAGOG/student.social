@@ -215,7 +215,7 @@ export function AIAssistant() {
               onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
               className="flex-1 text-base"
             />
-            <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isTyping} size="icon" className="h-10 w-10">
+            <Button onClick={() => handleSendMessage()} disabled={!inputValue.trim() || isTyping} size="icon" className="h-10 w-10">
               <Send className="w-4 h-4" />
             </Button>
           </div>

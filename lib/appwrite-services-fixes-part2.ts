@@ -844,6 +844,7 @@ export const resourceServiceFixed = {
       title?: string
       description?: string
       podId?: string
+      visibility?: string
       tags?: string[]
     } = {}
   ) {
@@ -885,19 +886,21 @@ export const resourceServiceFixed = {
         COLLECTIONS.RESOURCES,
         "unique()",
         {
-          uploadedBy: userId,
+          fileId: response.$id,
+          authorId: userId,
           title: metadata.title || file.name,
           description: metadata.description || "",
           fileUrl: fileUrl,
-          downloadUrl: downloadUrl,
           fileName: file.name,
           fileSize: file.size,
           fileType: file.type,
           podId: metadata.podId || null,
+          visibility: metadata.visibility || "public",
           tags: Array.isArray(metadata.tags) ? metadata.tags.slice(0, 10) : [],
-          bookmarkedBy: [],
           downloads: 0,
-          createdAt: new Date().toISOString(),
+          likes: 0,
+          views: 0,
+          uploadedAt: new Date().toISOString(),
         }
       )
 
@@ -911,7 +914,7 @@ export const resourceServiceFixed = {
   /**
    * Get resources with filtering
    */
-  async getResources(podId?: string, limit = 50, offset = 0) {
+  async getResources(filters: string | { podId?: string; visibility?: string; authorId?: string; search?: string } = {}, limit = 50, offset = 0) {
     try {
       const queries: any[] = [
         Query.orderDesc("$createdAt"),
@@ -919,8 +922,16 @@ export const resourceServiceFixed = {
         Query.offset(Math.max(offset, 0)),
       ]
 
-      if (podId) {
-        queries.push(Query.equal("podId", podId))
+      if (typeof filters === "string") {
+        if (filters) queries.push(Query.equal("podId", filters))
+      } else {
+        if (filters.podId) queries.push(Query.equal("podId", filters.podId))
+        if (filters.visibility) queries.push(Query.equal("visibility", filters.visibility))
+        if (filters.authorId) queries.push(Query.equal("authorId", filters.authorId))
+        if (filters.search) {
+          queries.push(Query.search("title", filters.search))
+          queries.push(Query.search("description", filters.search))
+        }
       }
 
       const resources = await databases.listDocuments(DATABASE_ID, COLLECTIONS.RESOURCES, queries)
@@ -1008,7 +1019,7 @@ export const resourceServiceFixed = {
       const resource = await databases.getDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId)
 
       // Verify ownership
-      if (resource.uploadedBy !== userId) {
+      if (resource.authorId !== userId) {
         throw new Error("Only the uploader can delete this resource")
       }
 
