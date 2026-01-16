@@ -1,42 +1,80 @@
-# PeerSpark - Collaborative Learning Platform
+# PeerSpark
 
-## ✅ **STATUS: 70% BACKEND FIXED - READY FOR PHASE 1 DEPLOYMENT**
+PeerSpark is a collaborative learning platform that blends social feeds, study pods, AI assistance, course generation, resource sharing, and realtime chat into a single web app. This README is the canonical handbook for the codebase (non-confidential) and links to the detailed subsystem docs.
 
-**Last Updated:** Current Session
+## What You Get
+- Social learning: posts, comments, likes, follows, notifications, and pod-specific feeds.
+- Pods and accountability: create/join pods, pledges, check-ins, RSVPs, live resources, whiteboards, and meetings.
+- AI-first study tools: AI chat, streaming course generation from YouTube sources, automated chapter unlocking.
+- Productivity: calendar events, study plan sync signals, analytics, achievements, and streaks.
+- PWA-ready: install prompts, offline-aware flows, mobile-first responsive design.
 
-> 🎉 **SESSION COMPLETE!** See [`START_HERE.md`](START_HERE.md) ← **START HERE FIRST!**
-> 
-> **Quick Links:**
-> - ⚡ 2-min summary: [TWO_MINUTE_SUMMARY.md](TWO_MINUTE_SUMMARY.md)
-> - 🚀 Deploy now: [QUICK_START_DEPLOYMENT.md](QUICK_START_DEPLOYMENT.md)
-> - 💻 Build features: [BACKEND_USAGE_GUIDE.md](BACKEND_USAGE_GUIDE.md)
-> - 📋 All features: [COMPLETE_APP_AUDIT.md](COMPLETE_APP_AUDIT.md)
-> - 📖 All docs: [README_DOCUMENTATION.md](README_DOCUMENTATION.md)
-> 
-> **Status: 70% backend fixed, 50+ bugs eliminated, 13 guides created**
+## Architecture (High Level)
+- Frontend: Next.js 16 App Router, React 19, TypeScript, Tailwind v4, shadcn-style components, Radix primitives, next-themes, Recharts, Lucide icons.
+- Backend: Next.js API routes backed by Appwrite (Database, Storage, Account, Functions, Messaging), Stripe for payments (where enabled), OpenAI/OpenRouter for AI chat and course generation.
+- Data access: Centralized service helpers in [lib/appwrite.ts](lib/appwrite.ts) for auth, profiles, posts, comments, chat, pods, resources, calendar, analytics, notifications, and AI helpers.
+- Docs: Frontend, backend, and testing playbooks live in [docs/frontend-architecture.md](docs/frontend-architecture.md), [docs/backend-architecture.md](docs/backend-architecture.md), and [docs/testing-operations.md](docs/testing-operations.md).
 
----
-
-## 🚀 QUICK START OPTIONS
-
-### Option 1: Deploy to Vercel (RECOMMENDED FOR TESTING)
-**5-minute deployment to live internet**
-
-See: **[DEPLOYMENT_INDEX.md](DEPLOYMENT_INDEX.md)** for complete documentation
-
-```cmd
-# 1. Push to GitHub
-git push origin main
-
-# 2. Deploy on Vercel
-# - Go to vercel.com/dashboard
-# - Click "Add New Project"
-# - Import peerspark-platform
-# - Add env vars
-# - Click "Deploy"
-
-# 3. Test at: https://peerspark.vercel.app
+## Quick Start (Local)
+1) Prerequisites: Node 18+, pnpm, Appwrite project with required collections/buckets, Stripe keys if testing payments.
+2) Install deps:
+```bash
+pnpm install
 ```
+3) Create `.env.local` and fill values (see Environment):
+```bash
+cp .env.example .env.local
+# or create .env.local manually with your Appwrite and Stripe/OpenAI keys
+```
+4) Run dev server:
+```bash
+pnpm dev
+# open http://localhost:3000
+```
+
+## Scripts
+- `pnpm dev` – start Next.js in development.
+- `pnpm build` – production build.
+- `pnpm lint` – lint via ESLint/Next.
+- `pnpm start` – serve the production build.
+
+## Environment (non-secret list)
+Appwrite: `NEXT_PUBLIC_APPWRITE_ENDPOINT`, `NEXT_PUBLIC_APPWRITE_PROJECT_ID`, `NEXT_PUBLIC_APPWRITE_DATABASE_ID`, collection IDs for profiles/posts/comments/messages/resources/notifications/pods/calendar_events/chat_rooms/pod_commitments/pod_check_ins/pod_rsvps/pod_meetings/pod_whiteboards/pod_meeting_participants/challenges, bucket IDs for avatars/resources/attachments/post_images.
+
+Integrations: `OPENAI_API_KEY` (or OpenRouter equivalent), `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
+
+See [docs/backend-architecture.md](docs/backend-architecture.md) for the full variable list and data model.
+
+## Folder Map
+- [app](app) – App Router pages and API routes (`app/api`).
+- [components](components) – feature components and reusable UI primitives under [components/ui](components/ui).
+- [lib](lib) – Appwrite client/services, auth context, utilities.
+- [hooks](hooks) – shared React hooks.
+- [utils](utils) – helpers and shared logic.
+- [public](public) – static assets.
+- [scripts](scripts) – automation/setup utilities.
+- [styles](styles) – additional style helpers.
+- [docs](docs) – architecture and testing references.
+
+## Development Notes
+- Prefer server components; mark client components only when hooks or browser APIs are required.
+- Route all backend calls through [lib/appwrite.ts](lib/appwrite.ts); avoid duplicating SDK calls in components.
+- Validate inputs with `zod` at the route boundary; return clear 4xx/5xx error payloads.
+- Keep UI reusable: extend [components/ui](components/ui) variants before adding custom styles.
+- Test on mobile and desktop; ensure ARIA labels and focus management for dialogs, drawers, and menus.
+
+## Testing
+Follow the exhaustive operations checklist in [docs/testing-operations.md](docs/testing-operations.md) for smoke, regression, and edge-case coverage (auth, pods, posts, chat, AI, resources, calendar, analytics, payments, PWA, accessibility).
+
+## Deployment
+- Target: Vercel or any Node-compatible host. Ensure env vars are set at build/deploy time.
+- Appwrite: project/collection/bucket IDs must match the values in `.env.local`; enable realtime channels for chat/posts/pods/resources.
+- Stripe: expose a public webhook endpoint with `STRIPE_WEBHOOK_SECRET` configured when payments are enabled.
+
+## Further Reading
+- Frontend architecture: [docs/frontend-architecture.md](docs/frontend-architecture.md)
+- Backend architecture: [docs/backend-architecture.md](docs/backend-architecture.md)
+- Testing catalog: [docs/testing-operations.md](docs/testing-operations.md)
 
 **Documentation:**
 - 📚 [Complete Documentation](docs/README.md) - Full documentation index

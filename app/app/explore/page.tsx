@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use client"
 
 /* eslint-disable @next/next/no-img-element */
@@ -207,8 +206,7 @@ export default function ExplorePage() {
     if (!podId) return
 
     try {
-      const result = await podService.generateInviteLink(podId, user?.$id)
-      const inviteLink = typeof result === "string" ? result : result?.inviteLink || ""
+      const inviteLink = podService.generateInviteLink(podId)
       if (!inviteLink) {
         throw new Error("Invite link not available")
       }

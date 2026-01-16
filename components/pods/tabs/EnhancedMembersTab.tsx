@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use client"
 
 /**
@@ -84,8 +83,7 @@ export function EnhancedMembersTab({
     let cancelled = false
     const loadInviteLink = async () => {
       try {
-        const result = await podService.generateInviteLink(podId, user?.$id)
-        const link = typeof result === "string" ? result : result?.inviteLink
+        const link = podService.generateInviteLink(podId)
         if (!cancelled && link) {
           setInviteLink(link)
         }

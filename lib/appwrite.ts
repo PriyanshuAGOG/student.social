@@ -1,6 +1,13 @@
 import { Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query } from "appwrite"
 import { rankPodsForUser } from "./pod-matching"
 
+// Debug function to log initialization
+const debugLog = (message: string, data?: any) => {
+  if (typeof window !== "undefined") {
+    console.log(`[Appwrite] ${message}`, data || "")
+  }
+}
+
 // Initialize Appwrite Client with your credentials
 const endpoint = typeof window !== "undefined" 
   ? process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT 
@@ -8,6 +15,9 @@ const endpoint = typeof window !== "undefined"
 const projectId = typeof window !== "undefined"
   ? process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
   : process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
+
+debugLog("Initializing with endpoint:", endpoint)
+debugLog("Initializing with project:", projectId)
 
 const client = new Client()
 export { client }
@@ -23,6 +33,8 @@ client
   .setEndpoint(endpoint || "https://fra.cloud.appwrite.io/v1")
   .setProject(projectId || "68921a0d00146e65d29b")
 
+debugLog("Client initialized successfully")
+
 // Initialize Appwrite services with proper client
 export const account = new Account(client)
 export const databases = new Databases(client)
@@ -35,6 +47,7 @@ const matchCache = new Map<string, { timestamp: number; data: any[] }>()
 const MATCH_CACHE_TTL = 1000 * 60 * 5 // 5 minutes
 
 // Verify Account service has methods
+debugLog("Account service methods:", Object.keys(account).slice(0, 5))
 
 // Database and Collection IDs - You'll need to create these in Appwrite
 export const DATABASE_ID = "peerspark-main-db"
@@ -54,17 +67,7 @@ export const COLLECTIONS = {
   POD_MEETINGS: "pod_meetings",
   POD_WHITEBOARDS: "pod_whiteboards",
   POD_MEETING_PARTICIPANTS: "pod_meeting_participants",
-  SAVED_POSTS: "saved_posts",
-  POD_COURSES: "pod_courses",
-  COURSES: "courses",
-  COURSE_CHAPTERS: "course_chapters",
-  COURSE_CONTENT: "course_content",
-  COURSE_ASSIGNMENTS: "course_assignments",
-  USER_COURSE_PROGRESS: "user_course_progress",
-  ASSIGNMENT_SUBMISSIONS: "assignment_submissions",
-  COURSE_ENROLLMENTS: "course_enrollments",
-  COURSE_STATS: "course_stats",
-  CERTIFICATES: "certificates",
+  CHALLENGES: "challenges",
 }
 
 // Storage Bucket IDs - You'll need to create these in Appwrite
@@ -73,7 +76,6 @@ export const BUCKETS = {
   RESOURCES: "resources",
   ATTACHMENTS: "attachments",
   POST_IMAGES: "post_images",
-  POD_IMAGES: "pod_images",
 }
 
 // Authentication Functions
@@ -158,7 +160,7 @@ export const authService = {
 
       // Create user profile in database
       try {
-  
+        console.log(`[register] Creating profile for user: ${user.$id}, name: ${name}, email: ${email}`)
         const profile = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
           userId: user.$id,
           name: name,
@@ -178,7 +180,7 @@ export const authService = {
           availability: [],
           currentFocusAreas: [],
         })
-
+        console.log(`[register] Profile created successfully:`, { id: profile.$id, name: profile.name })
       } catch (profileError: any) {
         // Profile creation might fail due to permissions - this is OK for now
         // The profile will be created on first login instead
@@ -271,11 +273,11 @@ export const authService = {
             isOnline: true,
             lastSeen: new Date().toISOString(),
           })
-
+          console.log(`[login] Updated profile status for user: ${user.$id}`)
         } catch (profileError: any) {
           // Profile might not exist - try to create it
           if (profileError?.code === 404 || profileError?.message?.includes('not be found')) {
-
+            console.log(`[login] Profile not found for user ${user.$id}, creating new profile`)
             try {
               const newProfile = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
                 userId: user.$id,
@@ -296,7 +298,7 @@ export const authService = {
                 availability: [],
                 currentFocusAreas: [],
               })
-
+              console.log(`[login] Profile created successfully:`, { id: newProfile.$id, name: newProfile.name })
             } catch (createError) {
               console.error("[login] Failed to create profile:", createError)
             }
@@ -494,7 +496,13 @@ export const profileService = {
   // Get user profile
   async getProfile(userId: string) {
     try {
+      console.log(`[getProfile] Attempting to fetch profile for user: ${userId}`)
       const profile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId)
+      console.log(`[getProfile] Successfully fetched profile:`, { 
+        userId: profile.$id, 
+        name: profile.name,
+        email: profile.email 
+      })
       return profile
     } catch (error: any) {
       // Profile not found is expected for new users
@@ -772,8 +780,8 @@ export const podService = {
       let imageUrl = ""
       if (metadata.image) {
         try {
-          const response = await storage.createFile(BUCKETS.POD_IMAGES, "unique()", metadata.image)
-          imageUrl = storage.getFileView(BUCKETS.POD_IMAGES, response.$id).toString()
+          const response = await storage.createFile(BUCKETS.POST_IMAGES, "unique()", metadata.image)
+          imageUrl = storage.getFileView(BUCKETS.POST_IMAGES, response.$id).toString()
         } catch (e) {
           console.error("Failed to upload pod image:", e)
         }
@@ -784,8 +792,7 @@ export const podService = {
         name: name.trim(),
         description: description || "",
         creatorId: userId,
-        teamId: "", // Empty by default, can be linked later
-        members: JSON.stringify([userId]), // Creator is first member
+        members: [userId], // Creator is first member
         memberCount: 1,
         image: imageUrl,
         category: metadata.category || metadata.subject || "general",
@@ -798,14 +805,13 @@ export const podService = {
         updatedAt: new Date().toISOString(),
       })
 
-      // Create a chat room for the pod with predictable ID
+      // Create a chat room for the pod
       try {
-        await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, `${pod.$id}_general`, {
+        await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", {
           podId: pod.$id,
-          name: name.trim(), // Use pod name directly
+          name: `${name} Chat`,
           type: "pod",
           members: [userId],
-          participants: [userId],
           createdAt: new Date().toISOString(),
           isActive: true,
         })
@@ -855,6 +861,7 @@ export const podService = {
       if (members.includes(userId)) {
         return {
           success: true,
+          alreadyMember: true,
           message: "Already a member",
           memberCount: members.length,
           members: members,
@@ -882,9 +889,12 @@ export const podService = {
           Query.equal("podId", podId),
         ])
 
+        let chatRoomId = ""
+
         if (chatRooms.documents.length > 0) {
           const chatRoom = chatRooms.documents[0]
           const chatMembers = Array.isArray(chatRoom.members) ? chatRoom.members : []
+          chatRoomId = chatRoom.$id
 
           if (!chatMembers.includes(userId)) {
             await databases.updateDocument(
@@ -895,6 +905,25 @@ export const podService = {
                 members: [...chatMembers, userId],
               }
             )
+          }
+
+          // Drop a lightweight system message into the pod chat
+          try {
+            const joinerProfile = await profileService.getProfile(userId)
+            const joinerName = joinerProfile?.name || "New member"
+            await databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, "unique()", {
+              roomId: chatRoomId,
+              senderId: "system",
+              authorId: "system",
+              senderName: "System",
+              senderAvatar: "",
+              content: `${joinerName} joined the pod`,
+              timestamp: new Date().toISOString(),
+              readBy: [],
+              isEdited: false,
+            })
+          } catch (messageErr) {
+            console.error("Failed to record join message:", messageErr)
           }
         }
       } catch (e) {
@@ -931,8 +960,8 @@ export const podService = {
     }
   },
 
-  // Generate shareable invite link for a pod (simple version)
-  generateSimpleInviteLink(podId: string) {
+  // Generate shareable invite link for a pod
+  generateInviteLink(podId: string) {
     if (typeof window === 'undefined') return ''
     const baseUrl = window.location.origin
     const inviteCode = btoa(`pod:${podId}:${Date.now()}`).replace(/=/g, '')
@@ -1046,8 +1075,8 @@ export const podService = {
         DATABASE_ID,
         COLLECTIONS.PODS,
         [
-          Query.search("members", userId),
-          Query.orderDesc("$createdAt"),
+          Query.contains("members", userId),
+          Query.orderDesc("createdAt"),
           Query.limit(Math.min(limit, 100)),
           Query.offset(Math.max(offset, 0)),
         ]
@@ -1066,7 +1095,7 @@ export const podService = {
   async getAllPods(limit = 50, offset = 0, filters: any = {}) {
     try {
       const queries = [
-        Query.orderDesc("$createdAt"),
+        Query.orderDesc("createdAt"),
         Query.limit(Math.min(limit, 100)),
         Query.offset(Math.max(offset, 0)),
       ]
@@ -1133,8 +1162,8 @@ export const podService = {
       }
 
       if (updates.image) {
-        const response = await storage.createFile(BUCKETS.POD_IMAGES, "unique()", updates.image)
-        updateData.image = storage.getFileView(BUCKETS.POD_IMAGES, response.$id).toString()
+        const response = await storage.createFile(BUCKETS.POST_IMAGES, "unique()", updates.image)
+        updateData.image = storage.getFileView(BUCKETS.POST_IMAGES, response.$id).toString()
       }
 
       const updated = await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, updateData)
@@ -1166,7 +1195,7 @@ export const podService = {
         try {
           const fileId = pod.image.split("/").pop()?.split("?")[0]
           if (fileId) {
-            await storage.deleteFile(BUCKETS.POD_IMAGES, fileId)
+            await storage.deleteFile(BUCKETS.POST_IMAGES, fileId)
           }
         } catch (e) {
           console.error("Failed to delete pod image:", e)
@@ -1253,46 +1282,7 @@ export const podService = {
     }
   },
 
-  /**
-   * Generate invite link for pod (with expiry and user validation)
-   */
-  async createInviteLink(podId: string, userId: string, expiryDays = 7) {
-    try {
-      if (!podId || !userId) {
-        throw new Error("Pod ID and User ID are required")
-      }
-
-      const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
-
-      // Verify user is creator or admin
-      const admins = Array.isArray(pod.admins) ? pod.admins : []
-      if (pod.creatorId !== userId && !admins.includes(userId)) {
-        throw new Error("Only pod creator or admins can generate invite links")
-      }
-
-      // Generate invite code
-      const inviteCode = `${podId.slice(0, 8)}-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`
-      const expiry = new Date()
-      expiry.setDate(expiry.getDate() + expiryDays)
-
-      // Update pod with invite code
-      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PODS, podId, {
-        inviteCode,
-        inviteExpiry: expiry.toISOString(),
-      })
-
-      return {
-        inviteCode,
-        inviteLink: typeof window !== 'undefined' 
-          ? `${window.location.origin}/app/pods/join?code=${inviteCode}` 
-          : `https://peerspark.com/app/pods/join?code=${inviteCode}`,
-        expiresAt: expiry.toISOString(),
-      }
-    } catch (error) {
-      console.error("Generate invite link error:", error)
-      throw error
-    }
-  },
+  // Pod operations handled via API routes
 
   /**
    * Join pod with invite code
@@ -1323,7 +1313,8 @@ export const podService = {
       }
 
       // Join the pod
-      return await this.joinPod(pod.$id, userId)
+      const joinResult = await this.joinPod(pod.$id, userId)
+      return { ...joinResult, pod }
     } catch (error) {
       console.error("Join with invite code error:", error)
       throw error
@@ -1682,7 +1673,7 @@ export const podService = {
     try {
       const queries = [
         Query.equal("podId", podId),
-        Query.orderDesc("$createdAt"),
+        Query.orderDesc("createdAt"),
       ]
       return await databases.listDocuments(DATABASE_ID, COLLECTIONS.POD_CHECK_INS, queries)
     } catch (err: any) {
@@ -1787,8 +1778,7 @@ export const podService = {
     }
   },
 
-  // NOTE: updatePod and deletePod are defined earlier in this file (lines 1122, 1159)
-  // Removed duplicate definitions to avoid compilation errors
+  // Pod operations handled via API routes
 }
 
 // Study plan service
@@ -1831,6 +1821,41 @@ export const studyPlanService = {
 
 // Chat/Messaging Functions
 export const chatService = {
+  /**
+   * Get or create a direct message room between two users
+   */
+  async getOrCreateDirectRoom(userA: string, userB: string) {
+    if (!userA || !userB) throw new Error("Both user IDs are required")
+
+    const members = [userA, userB].sort()
+
+    // Try to find an existing DM room
+    try {
+      const existing = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
+        Query.equal("type", "dm"),
+        Query.contains("members", members[0]),
+        Query.contains("members", members[1]),
+      ])
+
+      if (existing.documents?.length) {
+        return existing.documents[0]
+      }
+    } catch (err) {
+      console.warn("DM lookup failed, will attempt to create", err)
+    }
+
+    // Create the room with auto-generated ID (stays under 36 chars Appwrite limit)
+    const room = await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", {
+      name: "Direct Messages",
+      type: "dm",
+      members,
+      createdAt: new Date().toISOString(),
+      lastMessageTime: new Date().toISOString(),
+    })
+
+    return room
+  },
+
   /**
    * Send a message with proper validation
    */
@@ -1876,6 +1901,7 @@ export const chatService = {
         {
           roomId: roomId,
           senderId: senderId,
+          authorId: senderId,
           content: content.trim(),
           senderName: senderName,
           senderAvatar: senderAvatar,
@@ -1978,110 +2004,47 @@ export const chatService = {
     }
   },
 
-  // Create or get direct message room
-  async getOrCreateDirectRoom(userId1: string, userId2: string) {
-    try {
-      // Create consistent room ID
-      const roomId = [userId1, userId2].sort().join("_dm_")
-
-      try {
-        // Try to get existing room
-        return await databases.getDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, roomId)
-      } catch (e) {
-        // Get user profiles for display names
-        const [profile1, profile2] = await Promise.all([
-          profileService.getProfile(userId1).catch(() => null),
-          profileService.getProfile(userId2).catch(() => null),
-        ])
-        
-        // Create new room with proper names
-        return await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, roomId, {
-          type: "direct",
-          name: `${profile1?.name || "User"} & ${profile2?.name || "User"}`,
-          members: [userId1, userId2],
-          participants: [userId1, userId2],
-          createdAt: new Date().toISOString(),
-          isActive: true,
-        })
-      }
-    } catch (error) {
-      console.error("Get or create direct room error:", error)
-      throw error
-    }
-  },
+  // Direct message operations handled via API routes
 
   // Get user's chat rooms
   async getUserChatRooms(userId: string) {
     try {
-      // Get pod rooms - fetch user's pods first then get their chat rooms
+      // Get pod rooms
       const userPods = await podService.getUserPods(userId)
       const podRooms = await Promise.all(
         userPods.documents.map(async (pod: any) => {
-          const podId = pod.$id || pod.teamId
           try {
-            // Try the predictable ID format first
-            return await databases.getDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, `${podId}_general`)
+            return await databases.getDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, `${pod.teamId}_general`)
           } catch (e) {
-            // Fallback: query by podId
-            try {
-              const rooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
-                Query.equal("podId", podId),
-                Query.equal("type", "pod"),
-              ])
-              if (rooms.documents.length > 0) {
-                // Return with pod name as the chat name
-                return {
-                  ...rooms.documents[0],
-                  name: pod.name || rooms.documents[0].name,
-                }
-              }
-            } catch (e2) {
-              console.warn("Failed to find pod room:", e2)
-            }
             return null
           }
         }),
       )
 
-      // Get direct message rooms - check for rooms where user is in members or participants
+      // Get direct message rooms - query by type only since participants may not be indexed
+      // Then filter client-side for rooms that include this user
       let directRooms: any[] = []
       try {
         const allDirectRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
           Query.equal("type", "direct"),
-          Query.limit(100),
         ])
-        
-        // Filter rooms where user is a member or participant
-        const userRooms = (allDirectRooms.documents || []).filter((room: any) => {
-          const members = room.members || room.participants || []
-          const memberArray = Array.isArray(members) ? members : 
-            (typeof members === 'string' ? (() => { try { return JSON.parse(members) } catch { return [] } })() : [])
-          return memberArray.includes(userId)
-        })
-        
-        // Enhance direct rooms with other user's name
-        directRooms = await Promise.all(userRooms.map(async (room: any) => {
-          const members = room.members || room.participants || []
-          const memberArray = Array.isArray(members) ? members : 
-            (typeof members === 'string' ? JSON.parse(members) : [])
-          const otherUserId = memberArray.find((id: string) => id !== userId)
-          
-          if (otherUserId) {
+        // Filter rooms where user is a participant (handle both array and string formats)
+        directRooms = (allDirectRooms.documents || []).filter((room: any) => {
+          const participants = room.participants || []
+          if (Array.isArray(participants)) {
+            return participants.includes(userId)
+          }
+          // Handle JSON string format
+          if (typeof participants === 'string') {
             try {
-              const otherProfile = await profileService.getProfile(otherUserId)
-              return {
-                ...room,
-                displayName: otherProfile?.name || "User",
-                name: otherProfile?.name || room.name || "Direct Message",
-                avatar: otherProfile?.avatar || "",
-                isOnline: otherProfile?.isOnline || false,
-              }
-            } catch (e) {
-              return room
+              const parsed = JSON.parse(participants)
+              return Array.isArray(parsed) && parsed.includes(userId)
+            } catch {
+              return false
             }
           }
-          return room
-        }))
+          return false
+        })
       } catch (e) {
         console.warn("Failed to fetch direct rooms:", e)
       }
@@ -2131,37 +2094,108 @@ export const chatService = {
         throw new Error("Both user IDs are required")
       }
 
-      // Create consistent room ID for deterministic lookup
-      const roomId = [userId1, userId2].sort().join("_dm_")
-
-      // Try to get existing room first
-      try {
-        const existing = await databases.getDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, roomId)
-        return existing
-      } catch (e) {
-        // Room doesn't exist, create it
-      }
-
-      // Get user profiles for display names
-      const [profile1, profile2] = await Promise.all([
-        profileService.getProfile(userId1).catch(() => null),
-        profileService.getProfile(userId2).catch(() => null),
+      // Check if chat already exists
+      const existing = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
+        Query.equal("type", "direct"),
       ])
 
-      // Create new direct chat with proper fields
-      const chatRoom = await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, roomId, {
+      const existingChat = existing.documents.find(
+        (room: any) =>
+          room.members &&
+          room.members.length === 2 &&
+          room.members.includes(userId1) &&
+          room.members.includes(userId2)
+      )
+
+      if (existingChat) {
+        return existingChat
+      }
+
+      // Create new direct chat
+      const chatRoom = await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", {
         type: "direct",
-        name: `${profile1?.name || "User"} & ${profile2?.name || "User"}`,
         members: [userId1, userId2],
-        participants: [userId1, userId2],
         createdAt: new Date().toISOString(),
-        isActive: true,
       })
 
       return chatRoom
     } catch (error) {
       console.error("Create direct chat error:", error)
       throw error
+    }
+  },
+}
+
+// Challenge Functions
+export const challengeService = {
+  async listChallenges(userId: string) {
+    try {
+      const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHALLENGES, [
+        Query.contains("participants", userId),
+      ])
+      return res.documents || []
+    } catch (err: any) {
+      // Graceful fallback if collection does not exist
+      if (typeof window !== "undefined") {
+        const cached = window.localStorage.getItem(`challenges-${userId}`)
+        if (cached) return JSON.parse(cached)
+      }
+      console.warn("listChallenges fallback", err)
+      return []
+    }
+  },
+
+  async createChallenge(ownerId: string, data: { title: string; description?: string; difficulty?: string; points?: number; dueDate?: string }) {
+    if (!ownerId) throw new Error("Owner is required")
+    const payload = {
+      title: data.title,
+      description: data.description || "",
+      difficulty: data.difficulty || "Medium",
+      points: data.points ?? 50,
+      status: "active",
+      ownerId,
+      participants: [ownerId],
+      createdAt: new Date().toISOString(),
+      dueDate: data.dueDate || null,
+    }
+
+    try {
+      const doc = await databases.createDocument(DATABASE_ID, COLLECTIONS.CHALLENGES, "unique()", payload)
+      return doc
+    } catch (err: any) {
+      if (typeof window !== "undefined") {
+        const key = `challenges-${ownerId}`
+        const existing = window.localStorage.getItem(key)
+        const parsed = existing ? JSON.parse(existing) : []
+        const localDoc = { ...payload, $id: `local-${Date.now()}` }
+        window.localStorage.setItem(key, JSON.stringify([localDoc, ...parsed]))
+        return localDoc
+      }
+      throw err
+    }
+  },
+
+  async completeChallenge(challengeId: string, userId: string) {
+    if (!challengeId || !userId) throw new Error("Challenge ID and user ID are required")
+    try {
+      const updated = await databases.updateDocument(DATABASE_ID, COLLECTIONS.CHALLENGES, challengeId, {
+        status: "completed",
+        completedBy: userId,
+        completedAt: new Date().toISOString(),
+      })
+      return updated
+    } catch (err: any) {
+      if (typeof window !== "undefined") {
+        const key = `challenges-${userId}`
+        const existing = window.localStorage.getItem(key)
+        if (existing) {
+          const parsed = JSON.parse(existing)
+          const next = parsed.map((c: any) => (c.$id === challengeId ? { ...c, status: "completed", completedBy: userId, completedAt: new Date().toISOString() } : c))
+          window.localStorage.setItem(key, JSON.stringify(next))
+          return next.find((c: any) => c.$id === challengeId)
+        }
+      }
+      throw err
     }
   },
 }
@@ -2280,7 +2314,7 @@ export const resourceService = {
         COLLECTIONS.RESOURCES,
         [
           Query.search("bookmarkedBy", userId),
-          Query.orderDesc("$createdAt"),
+          Query.orderDesc("createdAt"),
           Query.limit(Math.min(limit, 100)),
           Query.offset(Math.max(offset, 0)),
         ]
@@ -2396,6 +2430,11 @@ export const feedService = {
         throw new Error("Post content exceeds 5000 character limit")
       }
 
+      const normalizeUsername = (name?: string) =>
+        name && name.trim().length > 0
+          ? `@${name.trim().toLowerCase().replace(/\s+/g, "_")}`
+          : ""
+
       // Get author profile info
       let authorName = metadata.authorName || ""
       let authorAvatar = metadata.authorAvatar || ""
@@ -2407,7 +2446,8 @@ export const feedService = {
           if (profile) {
             authorName = profile.name || ""
             authorAvatar = profile.avatar || ""
-            authorUsername = profile.username || `@user_${authorId.slice(0, 6)}`
+            const profileUsername = profile.username || normalizeUsername(profile.name)
+            authorUsername = profileUsername || `@user_${authorId.slice(0, 6)}`
           } else {
             // Profile doesn't exist - try to get user account info as fallback
             console.warn(`[createPost] Profile not found for ${authorId}, attempting to get account info`)
@@ -2435,7 +2475,7 @@ export const feedService = {
 
       // Fallback username if not found
       if (!authorUsername) {
-        authorUsername = `@user_${authorId.slice(0, 6)}`
+        authorUsername = normalizeUsername(authorName) || `@user_${authorId.slice(0, 6)}`
       }
 
       // Handle image uploads if provided
@@ -2461,16 +2501,16 @@ export const feedService = {
         content: content,
         type: metadata.type || "text",
         podId: podId,
-        imageUrls: JSON.stringify(imageUrls),
+        imageUrls: imageUrls,
         timestamp: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         likes: 0,
         comments: 0,
         saves: 0,
-        likedBy: JSON.stringify([]),
-        savedBy: JSON.stringify([]),
+        likedBy: [],
+        savedBy: [],
         visibility: visibility,
-        tags: JSON.stringify(Array.isArray(metadata.tags) ? metadata.tags.slice(0, 10) : []),
+        tags: Array.isArray(metadata.tags) ? metadata.tags.slice(0, 10) : [],
         authorName: authorName,
         authorAvatar: authorAvatar,
         authorUsername: authorUsername,
@@ -2526,7 +2566,7 @@ export const feedService = {
         try {
           // Get user's pod IDs
           const userPodsResponse = await databases.listDocuments(DATABASE_ID, COLLECTIONS.PODS, [
-            Query.search("members", userId),
+            Query.contains("members", userId),
           ])
 
           const podIds = userPodsResponse.documents.map((pod: any) => pod.$id)
@@ -2573,7 +2613,7 @@ export const feedService = {
         throw new Error("User ID is required")
       }
 
-      const savedPosts = await databases.listDocuments(DATABASE_ID, COLLECTIONS.SAVED_POSTS, [
+      const savedPosts = await databases.listDocuments(DATABASE_ID, "saved_posts", [
         Query.equal("userId", userId),
         Query.orderDesc("savedAt"),
         Query.limit(Math.min(limit, 100)),
@@ -2682,13 +2722,13 @@ export const feedService = {
       }
 
       // Delete saved post entries
-      const savedEntries = await databases.listDocuments(DATABASE_ID, COLLECTIONS.SAVED_POSTS, [
+      const savedEntries = await databases.listDocuments(DATABASE_ID, "saved_posts", [
         Query.equal("postId", postId),
       ])
 
       for (const entry of savedEntries.documents) {
         try {
-          await databases.deleteDocument(DATABASE_ID, COLLECTIONS.SAVED_POSTS, entry.$id)
+          await databases.deleteDocument(DATABASE_ID, "saved_posts", entry.$id)
         } catch (e) {
           console.error("Failed to delete saved entry:", e)
         }
@@ -2782,18 +2822,18 @@ export const feedService = {
       }
 
       // Check if post is already saved
-      const existing = await databases.listDocuments(DATABASE_ID, COLLECTIONS.SAVED_POSTS, [
+      const existing = await databases.listDocuments(DATABASE_ID, "saved_posts", [
         Query.equal("postId", postId),
         Query.equal("userId", userId),
       ])
 
       if (existing.documents.length > 0) {
         // Already saved, remove it
-        await databases.deleteDocument(DATABASE_ID, COLLECTIONS.SAVED_POSTS, existing.documents[0].$id)
+        await databases.deleteDocument(DATABASE_ID, "saved_posts", existing.documents[0].$id)
         return { saved: false }
       } else {
         // Not saved, create new save
-        await databases.createDocument(DATABASE_ID, COLLECTIONS.SAVED_POSTS, "unique()", {
+        await databases.createDocument(DATABASE_ID, "saved_posts", "unique()", {
           postId: postId,
           userId: userId,
           savedAt: new Date().toISOString(),
@@ -2811,7 +2851,7 @@ export const feedService = {
    */
   async isPostSaved(postId: string, userId: string): Promise<boolean> {
     try {
-      const result = await databases.listDocuments(DATABASE_ID, COLLECTIONS.SAVED_POSTS, [
+      const result = await databases.listDocuments(DATABASE_ID, "saved_posts", [
         Query.equal("postId", postId),
         Query.equal("userId", userId),
       ])
@@ -3188,9 +3228,11 @@ export const notificationService = {
   // Create notification
   async createNotification(userId: string, title: string, message: string, type = "info", metadata: any = {}) {
     try {
+      // Ensure title is always set (Appwrite schema requires it)
+      const notificationTitle = title && title.trim() ? title : type.charAt(0).toUpperCase() + type.slice(1)
       return await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
         userId: userId,
-        title: title,
+        title: notificationTitle,
         message: message,
         type: type, // info, success, warning, error, pod_join, message, resource, event
         isRead: false,

@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use client"
 
 import { useState, useEffect } from "react"
@@ -140,7 +139,7 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
 
       const created = await feedService.createPost(authUser.$id, content.trim(), {
         type: "text",
-        podId,
+        podId: podId ?? undefined,
         visibility,
         tags,
         authorName: displayName,
