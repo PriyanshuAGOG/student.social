@@ -67,6 +67,7 @@ export const COLLECTIONS = {
   POD_MEETINGS: "pod_meetings",
   POD_WHITEBOARDS: "pod_whiteboards",
   POD_MEETING_PARTICIPANTS: "pod_meeting_participants",
+  POD_COURSES: "pod_courses",
   CHALLENGES: "challenges",
 }
 
@@ -1903,6 +1904,7 @@ export const chatService = {
           senderId: senderId,
           authorId: senderId,
           content: content.trim(),
+          type: "text",
           senderName: senderName,
           senderAvatar: senderAvatar,
           timestamp: new Date().toISOString(),

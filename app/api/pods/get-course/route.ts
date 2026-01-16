@@ -33,6 +33,12 @@ export async function GET(request: NextRequest) {
 
     const databases = getDatabases()
     
+    // Check if POD_COURSES collection exists in COLLECTIONS
+    if (!COLLECTIONS.POD_COURSES) {
+      console.warn("POD_COURSES collection not configured, returning null")
+      return NextResponse.json({ course: null }, { status: 200 })
+    }
+    
     const courses = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.POD_COURSES,
@@ -45,9 +51,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ course }, { status: 200 })
   } catch (error) {
     console.error("Error fetching pod course:", error)
+    // Return null course instead of error for graceful degradation
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch course" },
-      { status: 500 }
+      { course: null, error: error instanceof Error ? error.message : "Failed to fetch course" },
+      { status: 200 }
     )
   }
 }
