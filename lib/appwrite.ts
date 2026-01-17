@@ -1,16 +1,36 @@
-import { Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query } from "appwrite"
+import { Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query, Models } from "appwrite"
 import { rankPodsForUser } from "./pod-matching"
+import { User, Profile, Post, Notification, Pod, CalendarEvent } from "@/types"
 
-// Debug function to log initialization
+// Appwrite SDK 14.x/15.x compatibility helper
+type ExtendedAccount = Account & {
+  createEmailPasswordSession(email: string, password: string): Promise<Models.Session>;
+  createEmailSession(email: string, password: string): Promise<Models.Session>;
+  createVerification(url: string): Promise<Models.Token>;
+  deleteSession(sessionId: string): Promise<any>;
+};
+
+// Debug function to log initialization (opt-in for dev only)
 const debugLog = (message: string, data?: any) => {
-  if (typeof window !== "undefined") {
-    console.log(`[Appwrite] ${message}`, data || "")
+  if (
+    typeof window !== "undefined" &&
+    process.env.NODE_ENV === "development" &&
+    process.env.NEXT_PUBLIC_ENABLE_APPWRITE_DEBUG === "true"
+  ) {
+    console.debug(`[Appwrite] ${message}`, data || "")
+  }
+}
+
+// Internal helper to avoid noisy/sensitive logs in production
+const devLog = (message: string, data?: any) => {
+  if (process.env.NODE_ENV === "development") {
+    console.debug(message, data ?? "")
   }
 }
 
 // Initialize Appwrite Client with your credentials
-const endpoint = typeof window !== "undefined" 
-  ? process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT 
+const endpoint = typeof window !== "undefined"
+  ? process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT
   : process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT
 const projectId = typeof window !== "undefined"
   ? process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
@@ -85,8 +105,8 @@ export const authService = {
   async register(email: string, password: string, name: string) {
     try {
       // Create user account (use SDK when available, otherwise fallback to REST)
-      let user: any = null
-      if (account && typeof (account as any).create === 'function') {
+      let user: Models.User<Models.Preferences> | any = null
+      if (account && typeof (account as unknown as ExtendedAccount).create === 'function') {
         user = await account.create("unique()", email, password, name)
       } else {
         const resp = await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account', {
@@ -106,11 +126,11 @@ export const authService = {
       // Try to create a session to send verification email
       let sessionCreated = false
       try {
-        if (account && typeof (account as any).createEmailPasswordSession === 'function') {
-          await (account as any).createEmailPasswordSession(email, password)
+        if (account && typeof (account as unknown as ExtendedAccount).createEmailPasswordSession === 'function') {
+          await (account as unknown as ExtendedAccount).createEmailPasswordSession(email, password)
           sessionCreated = true
-        } else if (account && typeof (account as any).createEmailSession === 'function') {
-          await (account as any).createEmailSession(email, password)
+        } else if (account && typeof (account as unknown as ExtendedAccount).createEmailSession === 'function') {
+          await (account as unknown as ExtendedAccount).createEmailSession(email, password)
           sessionCreated = true
         } else {
           // REST fallback to create session cookie
@@ -129,8 +149,8 @@ export const authService = {
       // Request verification email if session was created
       if (sessionCreated) {
         try {
-          if (account && typeof (account as any).createVerification === 'function') {
-            await (account as any).createVerification(typeof window !== 'undefined' ? window.location.origin + '/verify-email' : '/')
+          if (account && typeof (account as unknown as ExtendedAccount).createVerification === 'function') {
+            await (account as unknown as ExtendedAccount).createVerification(typeof window !== 'undefined' ? window.location.origin + '/verify-email' : '/')
           } else {
             await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/verification', {
               method: 'POST',
@@ -145,8 +165,8 @@ export const authService = {
 
         // Delete temporary session so user isn't auto-logged-in
         try {
-          if (account && typeof (account as any).deleteSession === 'function') {
-            await (account as any).deleteSession('current')
+          if (account && typeof (account as unknown as ExtendedAccount).deleteSession === 'function') {
+            await (account as unknown as ExtendedAccount).deleteSession('current')
           } else {
             await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/sessions/current', {
               method: 'DELETE',
@@ -161,7 +181,7 @@ export const authService = {
 
       // Create user profile in database
       try {
-        console.log(`[register] Creating profile for user: ${user.$id}, name: ${name}, email: ${email}`)
+        devLog(`[register] Creating profile for user: ${user.$id}`)
         const profile = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
           userId: user.$id,
           name: name,
@@ -181,7 +201,7 @@ export const authService = {
           availability: [],
           currentFocusAreas: [],
         })
-        console.log(`[register] Profile created successfully:`, { id: profile.$id, name: profile.name })
+        devLog(`[register] Profile created successfully`, { id: profile.$id, name: profile.name })
       } catch (profileError: any) {
         // Profile creation might fail due to permissions - this is OK for now
         // The profile will be created on first login instead
@@ -208,7 +228,7 @@ export const authService = {
         const currentUser = await account.get()
         if (currentUser) {
           // Already logged in, return existing session info
-          console.log("User already has an active session")
+          devLog("User already has an active session")
           return { userId: currentUser.$id, $id: 'existing-session' }
         }
       } catch (e) {
@@ -217,11 +237,11 @@ export const authService = {
 
       // Create new session (use SDK when available, otherwise fallback to REST)
       // Note: Don't delete existing session first - it causes 401 errors if no session exists
-      let session: any = null
-      if (account && typeof (account as any).createEmailPasswordSession === 'function') {
-        session = await (account as any).createEmailPasswordSession(email, password)
-      } else if (account && typeof (account as any).createEmailSession === 'function') {
-        session = await (account as any).createEmailSession(email, password)
+      let session: Models.Session | any = null
+      if (account && typeof (account as unknown as ExtendedAccount).createEmailPasswordSession === 'function') {
+        session = await (account as unknown as ExtendedAccount).createEmailPasswordSession(email, password)
+      } else if (account && typeof (account as unknown as ExtendedAccount).createEmailSession === 'function') {
+        session = await (account as unknown as ExtendedAccount).createEmailSession(email, password)
       } else {
         const resp = await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/sessions/email', {
           method: 'POST',
@@ -261,7 +281,7 @@ export const authService = {
           || user?.status === 'verified'
           || user?.status === true
           || user?.status === 1
-        
+
         // Uncomment below to enforce email verification
         // if (!verified) {
         //   try { await account.deleteSession('current') } catch (e) {}
@@ -274,11 +294,11 @@ export const authService = {
             isOnline: true,
             lastSeen: new Date().toISOString(),
           })
-          console.log(`[login] Updated profile status for user: ${user.$id}`)
+          devLog(`[login] Updated profile status for user: ${user.$id}`)
         } catch (profileError: any) {
           // Profile might not exist - try to create it
           if (profileError?.code === 404 || profileError?.message?.includes('not be found')) {
-            console.log(`[login] Profile not found for user ${user.$id}, creating new profile`)
+            devLog(`[login] Profile not found for user ${user.$id}, creating new profile`)
             try {
               const newProfile = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
                 userId: user.$id,
@@ -299,7 +319,7 @@ export const authService = {
                 availability: [],
                 currentFocusAreas: [],
               })
-              console.log(`[login] Profile created successfully:`, { id: newProfile.$id, name: newProfile.name })
+              devLog(`[login] Profile created successfully`, { id: newProfile.$id, name: newProfile.name })
             } catch (createError) {
               console.error("[login] Failed to create profile:", createError)
             }
@@ -497,12 +517,11 @@ export const profileService = {
   // Get user profile
   async getProfile(userId: string) {
     try {
-      console.log(`[getProfile] Attempting to fetch profile for user: ${userId}`)
+      devLog(`[getProfile] Attempting to fetch profile for user: ${userId}`)
       const profile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId)
-      console.log(`[getProfile] Successfully fetched profile:`, { 
-        userId: profile.$id, 
+      devLog(`[getProfile] Successfully fetched profile`, {
+        userId: profile.$id,
         name: profile.name,
-        email: profile.email 
       })
       return profile
     } catch (error: any) {
@@ -521,7 +540,7 @@ export const profileService = {
     try {
       // Convert username format (john_doe) to name format (john doe) for search
       const searchName = username.replace(/_/g, " ")
-      
+
       // Search for profile by name - fetch ALL profiles to ensure we find the user
       const result = await databases.listDocuments(
         DATABASE_ID,
@@ -530,16 +549,16 @@ export const profileService = {
           Query.limit(5000) // Increased limit to search through all profiles
         ]
       )
-      
+
       // Filter results to find matching name (case-insensitive)
       const matchingProfile = result.documents.find((profile: any) => {
         const profileName = (profile.name || "").toLowerCase()
         const profileUsername = profileName.replace(/\s+/g, "_")
-        return profileUsername === username.toLowerCase() || 
-               profileName === searchName.toLowerCase() ||
-               profile.email?.split("@")[0]?.toLowerCase() === username.toLowerCase()
+        return profileUsername === username.toLowerCase() ||
+          profileName === searchName.toLowerCase() ||
+          profile.email?.split("@")[0]?.toLowerCase() === username.toLowerCase()
       })
-      
+
       return matchingProfile || null
     } catch (error) {
       console.error("Get profile by username error:", error)
@@ -560,7 +579,7 @@ export const profileService = {
       'availability',
       'currentFocusAreas',
     ]
-    
+
     const filterData = (d: any, includeOptional: boolean) => {
       const attrs = includeOptional ? [...safeAttributes, ...optionalAttributes] : safeAttributes
       const result: any = {}
@@ -998,7 +1017,7 @@ export const podService = {
           Query.limit(1)
         ]
       )
-      
+
       if (!profiles.documents || profiles.documents.length === 0) {
         throw new Error("No user found with this email address")
       }
@@ -1581,11 +1600,11 @@ export const podService = {
     try {
       const res = await databases.listDocuments(DATABASE_ID, "pod_reactions", [Query.equal("podId", podId)])
       const counts: Record<string, number> = {}
-      ;(res.documents || []).forEach((doc: any) => {
-        const key = doc.itemId
-        const val = typeof doc.count === "number" ? doc.count : 0
-        counts[key] = (counts[key] || 0) + val
-      })
+        ; (res.documents || []).forEach((doc: any) => {
+          const key = doc.itemId
+          const val = typeof doc.count === "number" ? doc.count : 0
+          counts[key] = (counts[key] || 0) + val
+        })
       return counts
     } catch (err) {
       console.warn("getReactions failed", err)
@@ -1711,13 +1730,13 @@ export const podService = {
       // Handle authorization errors - return mock for local fallback
       if (err?.code === 401 || err?.message?.includes('not authorized')) {
         console.warn("addCheckIn: Not authorized - using local fallback")
-        return { 
-          $id: `local-${Date.now()}`, 
-          podId, 
-          userId, 
-          note, 
+        return {
+          $id: `local-${Date.now()}`,
+          podId,
+          userId,
+          note,
           userName: userName || "Member",
-          createdAt: new Date().toISOString() 
+          createdAt: new Date().toISOString()
         }
       }
       console.error("addCheckIn failed", err)
@@ -2385,6 +2404,40 @@ export const resourceService = {
   },
 
   /**
+   * Download a resource and increment download count
+   */
+  async downloadResource(resourceId: string) {
+    try {
+      if (!resourceId) {
+        throw new Error("Resource ID is required")
+      }
+
+      const resource = await databases.getDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId)
+      const fileId = resource.fileId || resource.fileUrl?.split("/").pop()?.split("?")[0]
+
+      if (!fileId) {
+        throw new Error("Resource file not found")
+      }
+
+      const downloadUrl = storage.getFileDownload(BUCKETS.RESOURCES, fileId).toString()
+
+      // Best-effort download counter increment
+      try {
+        await databases.updateDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId, {
+          downloads: (resource.downloads || 0) + 1,
+        })
+      } catch (updateError) {
+        console.warn("Failed to increment download count:", updateError)
+      }
+
+      return { url: downloadUrl }
+    } catch (error) {
+      console.error("Download resource error:", error)
+      throw error
+    }
+  },
+
+  /**
    * Delete a resource
    */
   async deleteResource(resourceId: string, userId: string) {
@@ -2430,16 +2483,16 @@ export const feedService = {
     authorId: string,
     content: string,
     metadata: {
-      type?: string
+      type?: 'text' | 'image' | 'video' | 'link' | 'poll'
       imageFiles?: File[]
-      visibility?: string
+      visibility?: 'public' | 'pod' | 'private'
       podId?: string
       tags?: string[]
       authorName?: string
       authorAvatar?: string
       authorUsername?: string
     } = {}
-  ) {
+  ): Promise<Post> {
     try {
       // Validate content
       if (!content || !content.trim()) {
@@ -2476,7 +2529,7 @@ export const feedService = {
               if (user && user.$id === authorId) {
                 authorName = user.name || ""
                 authorUsername = `@${(user.name || "user").toLowerCase().replace(/\\s+/g, '_')}`
-                console.log(`[createPost] Using account info: ${authorName}`)
+                devLog(`[createPost] Using account info: ${authorName}`)
               }
             } catch (accountErr) {
               console.error("[createPost] Failed to get account info:", accountErr)
@@ -2542,7 +2595,7 @@ export const feedService = {
           const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
           const members = Array.isArray(pod.members) ? pod.members : []
           // Notify all pod members except author
-          for (const memberId of members.filter(m => m !== authorId)) {
+          for (const memberId of members.filter((m: string) => m !== authorId)) {
             try {
               await notificationService.createNotification(
                 memberId,
@@ -2552,6 +2605,7 @@ export const feedService = {
                 {
                   postId: post.$id,
                   podId: podId,
+                  actor: authorId,
                   actorId: authorId,
                   actorName: authorName,
                   actorAvatar: authorAvatar,
@@ -2566,7 +2620,7 @@ export const feedService = {
         }
       }
 
-      return post
+      return post as unknown as Post
     } catch (error) {
       console.error("Create post error:", error)
       throw error
@@ -2576,7 +2630,7 @@ export const feedService = {
   /**
    * Get posts by user with proper pagination
    */
-  async getUserPosts(userId: string, limit = 50, offset = 0) {
+  async getUserPosts(userId: string, limit = 50, offset = 0): Promise<{ documents: Post[]; total: number }> {
     try {
       if (!userId) {
         throw new Error("User ID is required")
@@ -2589,7 +2643,10 @@ export const feedService = {
         Query.offset(Math.max(offset, 0)),
       ])
 
-      return posts
+      return {
+        documents: posts.documents as unknown as Post[],
+        total: posts.total
+      }
     } catch (error) {
       console.error("Get user posts error:", error)
       return { documents: [], total: 0 }
@@ -2599,7 +2656,7 @@ export const feedService = {
   /**
    * Get feed posts (public + user's pods) with proper pagination
    */
-  async getFeedPosts(userId?: string, limit = 20, offset = 0) {
+  async getFeedPosts(userId?: string, limit = 20, offset = 0): Promise<{ documents: Post[]; total: number }> {
     try {
       // Fetch public posts
       const publicPosts = await databases.listDocuments(DATABASE_ID, COLLECTIONS.POSTS, [
@@ -2645,7 +2702,7 @@ export const feedService = {
 
       // Return only the limit number of posts
       return {
-        documents: allPosts.slice(0, limit),
+        documents: allPosts.slice(0, limit) as unknown as Post[],
         total: allPosts.length,
       }
     } catch (error) {
@@ -2657,7 +2714,7 @@ export const feedService = {
   /**
    * Get saved posts with proper pagination
    */
-  async getSavedPosts(userId: string, limit = 50, offset = 0) {
+  async getSavedPosts(userId: string, limit = 50, offset = 0): Promise<{ documents: Post[]; total: number }> {
     try {
       if (!userId) {
         throw new Error("User ID is required")
@@ -2687,7 +2744,7 @@ export const feedService = {
       const validPosts = posts.filter((p) => p !== null)
 
       return {
-        documents: validPosts,
+        documents: validPosts as unknown as Post[],
         total: validPosts.length,
       }
     } catch (error) {
@@ -2817,15 +2874,17 @@ export const feedService = {
       // Create notification for post author if liking (not self-like)
       if (!isLiked && post.authorId !== userId) {
         try {
-          await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
-            userId: post.authorId,
-            type: "like",
-            actor: userId,
-            postId: postId,
-            message: `Someone liked your post`,
-            read: false,
-            createdAt: new Date().toISOString(),
-          })
+          await notificationService.createNotification(
+            post.authorId,
+            "Post Liked",
+            "Someone liked your post",
+            "like",
+            {
+              postId: postId,
+              actorId: userId,
+              actor: userId, // Keep distinct for potential backward compatibility
+            }
+          )
         } catch (e) {
           console.error("Failed to create like notification:", e)
         }
@@ -2901,6 +2960,7 @@ export const feedService = {
               "save",
               {
                 postId: postId,
+                actor: userId, // Added for schema consistency
                 actorId: userId,
                 actorName: saverProfile?.name,
                 actorAvatar: saverProfile?.avatar,
@@ -2951,7 +3011,7 @@ export const commentService = {
       authorAvatar?: string
       authorUsername?: string
     } = {}
-  ) {
+  ): Promise<Comment> {
     try {
       // Validate inputs
       if (!postId || !authorId || !content) {
@@ -2999,6 +3059,7 @@ export const commentService = {
         {
           postId: postId,
           authorId: authorId,
+          userId: authorId,
           content: content,
           timestamp: new Date().toISOString(),
           likes: 0,
@@ -3017,24 +3078,26 @@ export const commentService = {
       // Create notification for post author (if not self-commenting)
       if (post.authorId !== authorId) {
         try {
-          await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
-            userId: post.authorId,
-            type: "comment",
-            actor: authorId,
-            actorName: authorName,
-            actorAvatar: authorAvatar,
-            postId: postId,
-            commentId: comment.$id,
-            message: `${authorName} commented on your post`,
-            read: false,
-            createdAt: new Date().toISOString(),
-          })
+          await notificationService.createNotification(
+            post.authorId,
+            "New Comment",
+            `${authorName} commented on your post`,
+            "comment",
+            {
+              postId: postId,
+              commentId: comment.$id,
+              actor: authorId,
+              actorId: authorId,
+              actorName: authorName,
+              actorAvatar: authorAvatar,
+            }
+          )
         } catch (e) {
           console.error("Failed to create notification:", e)
         }
       }
 
-      return comment
+      return comment as unknown as Comment
     } catch (error) {
       console.error("Create comment error:", error)
       throw error
@@ -3044,7 +3107,7 @@ export const commentService = {
   /**
    * Get comments for a post with proper pagination and ordering
    */
-  async getComments(postId: string, limit = 50, offset = 0) {
+  async getComments(postId: string, limit = 50, offset = 0): Promise<{ documents: Comment[]; total: number }> {
     try {
       if (!postId) {
         throw new Error("Post ID is required")
@@ -3061,7 +3124,10 @@ export const commentService = {
         ]
       )
 
-      return comments
+      return {
+        documents: comments.documents as unknown as Comment[],
+        total: comments.total
+      }
     } catch (error) {
       console.error("Get comments error:", error)
       return { documents: [], total: 0 }
@@ -3071,7 +3137,7 @@ export const commentService = {
   /**
    * Get replies to a comment
    */
-  async getReplies(commentId: string, limit = 20) {
+  async getReplies(commentId: string, limit = 20): Promise<{ documents: Comment[]; total: number }> {
     try {
       if (!commentId) {
         throw new Error("Comment ID is required")
@@ -3083,7 +3149,10 @@ export const commentService = {
         Query.limit(Math.min(limit, 100)),
       ])
 
-      return replies
+      return {
+        documents: replies.documents as unknown as Comment[],
+        total: replies.total
+      }
     } catch (error) {
       console.error("Get replies error:", error)
       return { documents: [] }
@@ -3093,7 +3162,7 @@ export const commentService = {
   /**
    * Toggle like on comment with proper validation
    */
-  async toggleLike(commentId: string, userId: string) {
+  async toggleLike(commentId: string, userId: string): Promise<{ likes: number; isLiked: boolean; comment: Comment }> {
     try {
       if (!commentId || !userId) {
         throw new Error("Comment ID and User ID are required")
@@ -3119,7 +3188,7 @@ export const commentService = {
       return {
         likes: newLikedBy.length,
         isLiked: !isLiked,
-        comment: updated,
+        comment: updated as unknown as Comment,
       }
     } catch (error) {
       console.error("Toggle like comment error:", error)
@@ -3265,6 +3334,7 @@ export const calendarService = {
                   eventId: event.$id,
                   podId: metadata.podId,
                   startTime: startTime,
+                  actor: userId,
                   actorId: userId,
                 }
               )
@@ -3304,7 +3374,7 @@ export const calendarService = {
         }
       }
 
-      return event
+      return event as unknown as CalendarEvent
     } catch (error) {
       console.error("Create event error:", error)
       throw error
@@ -3327,13 +3397,17 @@ export const calendarService = {
   },
 
   // Get pod events
-  async getPodEvents(podId: string, limit = 50, offset = 0) {
+  async getPodEvents(podId: string, limit = 50, offset = 0): Promise<{ documents: CalendarEvent[]; total: number }> {
     try {
       const queries = [Query.equal('podId', podId)]
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.CALENDAR_EVENTS, queries)
+      const result = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CALENDAR_EVENTS, queries)
+      return {
+        documents: result.documents as unknown as CalendarEvent[],
+        total: result.total
+      }
     } catch (error) {
       console.error("Get pod events error:", error)
-      return { documents: [] }
+      return { documents: [], total: 0 }
     }
   },
 
@@ -3373,7 +3447,7 @@ export const notificationService = {
     try {
       // Ensure title is always set (Appwrite schema requires it)
       const notificationTitle = title && title.trim() ? title : type.charAt(0).toUpperCase() + type.slice(1)
-      return await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
+      const notification = await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
         userId: userId,
         title: notificationTitle,
         message: message,
@@ -3385,6 +3459,7 @@ export const notificationService = {
         imageUrl: metadata.imageUrl || null,
         ...metadata,
       })
+      return notification as unknown as Notification
     } catch (error) {
       console.error("Create notification error:", error)
       throw error
@@ -3392,9 +3467,9 @@ export const notificationService = {
   },
 
   // Get user notifications
-  async getUserNotifications(userId: string, limit = 50, offset = 0) {
+  async getUserNotifications(userId: string, limit = 50, offset = 0): Promise<{ documents: Notification[]; total: number }> {
     try {
-      return await databases.listDocuments(
+      const result = await databases.listDocuments(
         DATABASE_ID,
         COLLECTIONS.NOTIFICATIONS,
         [
@@ -3404,9 +3479,13 @@ export const notificationService = {
           Query.orderDesc("timestamp"),
         ],
       )
+      return {
+        documents: result.documents as unknown as Notification[],
+        total: result.total
+      }
     } catch (error) {
       console.error("Get notifications error:", error)
-      return { documents: [] }
+      return { documents: [], total: 0 }
     }
   },
 
@@ -3429,7 +3508,7 @@ export const notificationService = {
       const notifications = await this.getUserNotifications(userId, 100)
 
       await Promise.all(
-        notifications.documents.filter((notif: any) => !notif.isRead).map((notif: any) => this.markAsRead(notif.$id)),
+        notifications.documents.filter((notif: Notification) => !notif.isRead).map((notif: Notification) => this.markAsRead(notif.$id)),
       )
 
       return true
@@ -3440,7 +3519,7 @@ export const notificationService = {
   },
 
   // Subscribe to real-time notifications
-  subscribeToNotifications(userId: string, callback: (notification: any) => void) {
+  subscribeToNotifications(userId: string, callback: (notification: Notification) => void) {
     // For now, we'll use polling instead of real-time subscriptions
     const pollNotifications = async () => {
       try {
@@ -3466,8 +3545,8 @@ export const analyticsService = {
   async trackStudyTime(userId: string, podId: string, duration: number, subject?: string) {
     try {
       // For now, store in user profile or create an analytics collection
-      const profile = await profileService.getProfile(userId)
-      
+      await profileService.getProfile(userId)
+
       // Create activity log entry
       await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
         userId,
@@ -3487,7 +3566,7 @@ export const analyticsService = {
   /**
    * Track user activity
    */
-  async trackActivity(userId: string, action: string, metadata: any = {}) {
+  async trackActivity(userId: string, action: string, metadata: Record<string, unknown> = {}) {
     try {
       await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
         userId,
@@ -3511,15 +3590,15 @@ export const analyticsService = {
     try {
       // Get user's pods
       const pods = await podService.getUserPods(userId, 100, 0)
-      
+
       // Get calendar events (study sessions)
       const events = await calendarService.getUserEvents(userId, startDate, endDate)
-      
+
       // Calculate stats
       const totalPods = pods.documents.length
-      const totalStudySessions = events.documents.filter((e: any) => e.type === "study").length
-      const completedSessions = events.documents.filter((e: any) => e.isCompleted).length
-      
+      const totalStudySessions = events.documents.filter((e: CalendarEvent) => e.type === "study").length
+      const completedSessions = events.documents.filter((e: CalendarEvent) => e.isCompleted).length
+
       return {
         totalPods,
         totalStudySessions,
@@ -3546,7 +3625,10 @@ export const analyticsService = {
         Query.offset(offset),
       ])
 
-      return activities
+      return {
+        documents: activities.documents as unknown as Notification[],
+        total: activities.total
+      }
     } catch (error) {
       console.error("Get activity log error:", error)
       return { documents: [], total: 0 }
@@ -3561,14 +3643,14 @@ export const analyticsService = {
       const pod = await podService.getPodDetails(podId)
       const members = await podService.getPodMembers(podId, 100)
       const events = await calendarService.getPodEvents(podId, 100, 0)
-      
+
       // Get messages count
       let messagesCount = 0
       try {
         const chatRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
           Query.equal("podId", podId),
         ])
-        
+
         if (chatRooms.documents.length > 0) {
           const messages = await databases.listDocuments(DATABASE_ID, COLLECTIONS.MESSAGES, [
             Query.equal("roomId", chatRooms.documents[0].$id),
@@ -3618,7 +3700,7 @@ export const analyticsService = {
   async getAchievementProgress(userId: string) {
     try {
       const profile = await profileService.getProfile(userId)
-      
+
       return {
         level: profile?.level || 1,
         totalPoints: profile?.totalPoints || 0,
@@ -3661,7 +3743,7 @@ export const analyticsService = {
   async exportAnalytics(userId: string, format: "pdf" | "csv" = "csv") {
     try {
       const report = await this.generateReport(userId, "", "")
-      
+
       // For CSV format, convert to CSV string
       if (format === "csv") {
         const csv = `User Analytics Report
@@ -3793,7 +3875,7 @@ export const jitsiService = {
     try {
       const pod = await podService.getPodDetails(podId)
       const user = await profileService.getProfile(userId)
-      
+
       if (!user) {
         throw new Error("User profile not found")
       }
@@ -3830,6 +3912,8 @@ export const jitsiService = {
               {
                 actionUrl: meeting.url,
                 podId: podId,
+                actor: userId,
+                actorId: userId,
               }
             ),
           ),
@@ -3847,7 +3931,7 @@ export const jitsiService = {
     try {
       const user1 = await profileService.getProfile(userId1)
       const user2 = await profileService.getProfile(userId2)
-      
+
       if (!user1 || !user2) {
         throw new Error("One or both users not found")
       }
@@ -3859,6 +3943,8 @@ export const jitsiService = {
       await notificationService.createNotification(userId2, "Video Call", `${user1.name} is calling you`, "call", {
         actionUrl: meeting.url,
         callerId: userId1,
+        actor: userId1,
+        actorId: userId1,
       })
 
       return meeting

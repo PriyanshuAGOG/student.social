@@ -30,8 +30,8 @@ export interface ErrorDetails {
   userMessage: string;
   severity: ErrorSeverity;
   category: ErrorCategory;
-  originalError?: any;
-  context?: Record<string, any>;
+  originalError?: unknown;
+  context?: Record<string, unknown>;
   timestamp: string;
   retry: boolean;
   maxRetries: number;
@@ -42,7 +42,7 @@ export class AppError extends Error {
   public readonly userMessage: string;
   public readonly severity: ErrorSeverity;
   public readonly category: ErrorCategory;
-  public readonly context?: Record<string, any>;
+  public readonly context?: Record<string, unknown>;
   public readonly timestamp: string;
   public readonly retry: boolean;
   public readonly maxRetries: number;
@@ -64,13 +64,13 @@ export class AppError extends Error {
 /**
  * Parse Appwrite errors into structured format
  */
-export function parseAppwriteError(error: any): ErrorDetails {
+export function parseAppwriteError(error: unknown): ErrorDetails {
   const timestamp = new Date().toISOString();
 
   // Handle Appwrite-specific errors
-  if (error instanceof AppwriteException || error?.code) {
-    const code = error.code || error.type || 'APPWRITE_ERROR';
-    const message = error.message || 'An error occurred with the database';
+  if (error instanceof AppwriteException || (error as any)?.code) {
+    const code = (error as any).code || (error as any).type || 'APPWRITE_ERROR';
+    const message = (error as any).message || 'An error occurred with the database';
 
     // Authentication errors
     if (code === 401 || message.includes('Unauthorized') || message.includes('Invalid credentials')) {
@@ -229,27 +229,27 @@ export async function retryOperation<T>(
   backoffMultiplier: number = 2
 ): Promise<T> {
   let lastError: any;
-  
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await operation();
     } catch (error) {
       lastError = error;
       const errorDetails = parseAppwriteError(error);
-      
+
       // Don't retry if error is not retryable
       if (!errorDetails.retry || attempt === maxRetries) {
         throw error;
       }
-      
+
       // Calculate delay with exponential backoff
       const delay = delayMs * Math.pow(backoffMultiplier, attempt);
       console.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms...`);
-      
+
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
-  
+
   throw lastError;
 }
 
@@ -299,16 +299,16 @@ export async function withErrorHandling<T>(
     const result = options?.retry
       ? await retryOperation(operation, options.maxRetries)
       : await operation();
-    
+
     return { data: result };
   } catch (error) {
     const errorDetails = parseAppwriteError(error);
     logError(errorDetails, context);
-    
+
     if (options?.onError) {
       options.onError(errorDetails);
     }
-    
+
     return { error: errorDetails };
   }
 }
@@ -404,11 +404,11 @@ export function createSafeOperation<T extends any[], R>(
     } catch (error) {
       const errorDetails = parseAppwriteError(error);
       logError(errorDetails, { operation: operation.name, args });
-      
+
       if (errorCallback) {
         errorCallback(errorDetails);
       }
-      
+
       return null;
     }
   };

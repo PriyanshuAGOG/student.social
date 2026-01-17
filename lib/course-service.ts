@@ -5,7 +5,7 @@
  * progress tracking, and submissions.
  */
 
-import { Client, Databases, Query } from 'appwrite';
+import { Client, Databases, Query, Models } from 'appwrite';
 import {
   Course,
   CourseChapter,
@@ -15,13 +15,9 @@ import {
   AssignmentSubmission,
   CourseEnrollment,
   CourseStats,
-  CourseReview,
   Certificate,
-  CourseDifficulty,
   CourseStatus,
-  AssignmentType,
   CourseProgressStatus,
-  SubmissionStatus,
   EnrollmentStatus,
 } from '@/lib/types/courses';
 
@@ -40,6 +36,8 @@ const COLLECTIONS = {
   CERTIFICATES: 'certificates',
 };
 
+type StoredDocument = Models.Document & Record<string, unknown>;
+
 // Utility: remove undefined keys to satisfy Appwrite update requirements and TS index safety
 const removeUndefined = (data: Record<string, unknown>) => {
   Object.entries(data).forEach(([key, value]) => {
@@ -49,7 +47,7 @@ const removeUndefined = (data: Record<string, unknown>) => {
 };
 
 // Utility parsers to coerce stored JSON strings into typed arrays safely
-const parseArray = (value: any) => {
+const parseArray = (value: string | null | undefined) => {
   try {
     return JSON.parse(value ?? '[]');
   } catch {
@@ -63,7 +61,7 @@ export const getCourseDatabase = (): Databases | null => {
     const client = new Client()
       .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || 'http://localhost/v1')
       .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || 'peerspark');
-    
+
     return new Databases(client);
   } catch (error) {
     console.error('Failed to initialize Appwrite client:', error);
@@ -132,7 +130,7 @@ export async function getAllCourses(
   dbOrLimit?: Databases | number,
   limit = 20,
   offset = 0,
-  filters?: any[]
+  filters?: string[]
 ): Promise<{ courses: Course[]; total: number }> {
   try {
     const db = (dbOrLimit as Databases)?.listDocuments ? (dbOrLimit as Databases) : getCourseDatabase();
@@ -149,10 +147,10 @@ export async function getAllCourses(
 
     const result = await db.listDocuments(DATABASE_ID, COLLECTIONS.COURSES, queries);
 
-    const courses = result.documents.map((doc: any) => ({
+    const courses = result.documents.map((doc: Models.Document) => ({
       ...doc,
-      tags: parseArray(doc.tags),
-      prerequisites: parseArray(doc.prerequisites),
+      tags: parseArray((doc as StoredDocument).tags),
+      prerequisites: parseArray((doc as StoredDocument).prerequisites),
     }));
 
     return { courses: courses as unknown as Course[], total: result.total };
@@ -173,10 +171,10 @@ export async function getInstructorCourses(
       [Query.equal('instructorId', instructorId)]
     );
 
-    return result.documents.map((doc: any) => ({
+    return result.documents.map((doc: Models.Document) => ({
       ...doc,
-      tags: parseArray(doc.tags),
-      prerequisites: parseArray(doc.prerequisites),
+      tags: parseArray((doc as StoredDocument).tags),
+      prerequisites: parseArray((doc as StoredDocument).prerequisites),
     })) as unknown as Course[];
   } catch (error) {
     console.error('Error fetching instructor courses:', error);
@@ -272,9 +270,9 @@ export async function getChapters(
       [Query.equal('courseId', courseId), Query.orderAsc('sequenceNumber')]
     );
 
-    return result.documents.map((doc: any) => ({
+    return result.documents.map((doc: Models.Document) => ({
       ...doc,
-      learningObjectives: parseArray(doc.learningObjectives),
+      learningObjectives: parseArray((doc as StoredDocument).learningObjectives),
     })) as unknown as CourseChapter[];
   } catch (error) {
     console.error('Error fetching chapters:', error);
@@ -290,7 +288,7 @@ export async function updateChapter(
   try {
     const updateData = {
       ...updates,
-      learningObjectives: updates.learningObjectives 
+      learningObjectives: updates.learningObjectives
         ? JSON.stringify(updates.learningObjectives)
         : undefined,
     };
@@ -380,7 +378,7 @@ export async function getContent(
   }
 }
 
-function parseContent(doc: any): CourseContent {
+function parseContent(doc: StoredDocument): CourseContent {
   return {
     ...doc,
     summaries: JSON.parse(doc.summaries || '[]'),
@@ -428,14 +426,14 @@ export async function getChapterAssignments(
       [Query.equal('chapterId', chapterId), Query.orderAsc('sequenceNumber')]
     );
 
-    return result.documents.map((doc: any) => parseAssignment(doc)) as CourseAssignment[];
+    return result.documents.map((doc: Models.Document) => parseAssignment(doc as StoredDocument)) as CourseAssignment[];
   } catch (error) {
     console.error('Error fetching assignments:', error);
     throw error;
   }
 }
 
-function parseAssignment(doc: any): CourseAssignment {
+function parseAssignment(doc: StoredDocument): CourseAssignment {
   return {
     ...doc,
     options: doc.options ? JSON.parse(doc.options) : undefined,
@@ -512,7 +510,7 @@ export async function updateProgress(
   try {
     const updateData = {
       ...updates,
-      bookmarkedChapters: updates.bookmarkedChapters 
+      bookmarkedChapters: updates.bookmarkedChapters
         ? JSON.stringify(updates.bookmarkedChapters)
         : undefined,
     };

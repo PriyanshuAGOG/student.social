@@ -176,6 +176,9 @@ importers:
       workbox-window:
         specifier: ^7.4.0
         version: 7.4.0
+      youtube-transcript:
+        specifier: ^1.2.1
+        version: 1.2.1
       youtube-transcript-api:
         specifier: ^3.0.6
         version: 3.0.6
@@ -183,6 +186,9 @@ importers:
         specifier: 3.25.67
         version: 3.25.67
     devDependencies:
+      '@next/eslint-plugin-next':
+        specifier: 16.1.1
+        version: 16.1.1
       '@tailwindcss/postcss':
         specifier: ^4.1.9
         version: 4.1.18
@@ -195,6 +201,12 @@ importers:
       '@types/react-dom':
         specifier: ^19
         version: 19.2.3(@types/react@19.2.7)
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.51.0
+        version: 8.51.0(@typescript-eslint/parser@8.51.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3))(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/parser':
+        specifier: ^8.51.0
+        version: 8.51.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
       eslint:
         specifier: ^9.0.0
         version: 9.39.2(jiti@2.6.1)
@@ -4478,6 +4490,10 @@ packages:
 
   youtube-transcript-api@3.0.6:
     resolution: {integrity: sha512-hKFohFI+695Pnr8tyDgo+ghEGZdUh151FDy+BSMgMH0RNFo7n/p66F3RX6ZmqKfANRsT3/RFFWqWJpOuBzHblw==}
+
+  youtube-transcript@1.2.1:
+    resolution: {integrity: sha512-TvEGkBaajKw+B6y91ziLuBLsa5cawgowou+Bk0ciGpjELDfAzSzTGXaZmeSSkUeknCPpEr/WGApOHDwV7V+Y9Q==}
+    engines: {node: '>=18.0.0'}
 
   zod-validation-error@4.0.2:
     resolution: {integrity: sha512-Q6/nZLe6jxuU80qb/4uJ4t5v2VEZ44lzQjPDhYJNztRQ4wyWc6VF3D3Kb/fAuPetZQnhS3hnajCf9CsWesghLQ==}
@@ -9279,6 +9295,8 @@ snapshots:
       cheerio: 1.1.2
     transitivePeerDependencies:
       - debug
+
+  youtube-transcript@1.2.1: {}
 
   zod-validation-error@4.0.2(zod@3.25.67):
     dependencies:

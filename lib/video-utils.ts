@@ -8,6 +8,8 @@
  * - Intelligent chunking of transcripts
  */
 
+import { YoutubeTranscript } from 'youtube-transcript';
+
 /**
  * Extract YouTube video ID from various URL formats
  */
@@ -29,50 +31,27 @@ export function getYouTubeVideoId(url: string): string | null {
 }
 
 /**
- * Fetch transcript from YouTube video using youtube-transcript-api
- * 
- * In production, this would use the youtube-transcript-api package
- * For now, we'll provide a fallback that accepts manual transcripts
+ * Fetch transcript from YouTube video using youtube-transcript
  */
 export async function getTranscript(videoId: string): Promise<string | null> {
   try {
-    // Option 1: Use youtube-transcript-api (requires npm install youtube-transcript-api)
-    // This is a simplified version - real implementation would use the actual package
-    
-    const response = await fetch(
-      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        },
-      }
-    );
+    const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
 
-    if (!response.ok) {
-      console.warn(`Could not fetch transcript for video ${videoId}`);
+    if (!transcriptItems || transcriptItems.length === 0) {
+      console.warn(`No transcript found for video ${videoId}`);
       return null;
     }
 
-    const text = await response.text();
-    
-    // Parse captions XML (simplified)
-    const captions = text.match(/<text[^>]*>(.+?)<\/text>/g);
-    if (!captions) return null;
-
-    const transcript = captions
-      .map((caption) => {
-        const match = caption.match(/>(.+?)<\/text>/);
-        if (match) {
-          // Decode HTML entities
-          return decodeHtmlEntities(match[1]);
-        }
-        return '';
-      })
+    // Combine all text items
+    const transcript = transcriptItems
+      .map(item => decodeHtmlEntities(item.text))
       .join(' ');
 
-    return transcript;
+    // Clean up
+    return cleanTranscript(transcript);
   } catch (error) {
-    console.error('Error fetching transcript:', error);
+    console.warn('Error fetching transcript:', error);
+    // Fallback or just return null
     return null;
   }
 }
@@ -106,7 +85,7 @@ function decodeHtmlEntities(text: string): string {
  */
 export function cleanTranscript(transcript: string): string {
   let cleaned = transcript
-    // Remove timestamps (MM:SS format)
+    // Remove timestamps (MM:SS format) if any remain
     .replace(/\d{1,2}:\d{2}(?::\d{2})?\s*/g, '')
     // Remove extra whitespace
     .replace(/\s+/g, ' ')
@@ -115,21 +94,7 @@ export function cleanTranscript(transcript: string): string {
     // Trim
     .trim();
 
-  // Split into sentences and clean
-  const sentences = cleaned
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-
-  // Remove duplicates while preserving order
-  const seen = new Set<string>();
-  const unique = sentences.filter((s) => {
-    if (seen.has(s)) return false;
-    seen.add(s);
-    return true;
-  });
-
-  return unique.join(' ');
+  return cleaned;
 }
 
 /**
@@ -154,9 +119,11 @@ export function chunkTranscript(
     maxTokens?: number;
   } = {}
 ): Array<{ content: string; tokenCount: number; startIndex: number; endIndex: number }> {
-  const { targetTokens = 500, minTokens = 300, maxTokens = 800 } = options;
+  const { maxTokens = 800 } = options;
 
-  const sentences = transcript.split(/(?<=[.!?])\s+/).filter((s) => s.trim());
+  // Split by sentence endings, keeping the punctuation
+  const sentences = transcript.match(/[^.!?]+[.!?]+(?:\s|$)/g) || [transcript];
+
   const chunks: Array<{
     content: string;
     tokenCount: number;
@@ -169,18 +136,19 @@ export function chunkTranscript(
   let startIndex = 0;
 
   for (let i = 0; i < sentences.length; i++) {
-    const sentence = sentences[i];
+    const sentence = sentences[i].trim();
+    if (!sentence) continue;
+
     const sentenceTokens = estimateTokens(sentence);
-    const potentialChunk = currentChunk ? currentChunk + ' ' + sentence : sentence;
-    const potentialTokens = estimateTokens(potentialChunk);
+    const potentialTokens = chunkTokens + sentenceTokens; // Simplified calculation
 
     if (potentialTokens <= maxTokens) {
       // Add sentence to current chunk
-      currentChunk = potentialChunk;
+      currentChunk += (currentChunk ? ' ' : '') + sentence;
       chunkTokens = potentialTokens;
     } else {
-      // Current chunk is full, save it if it meets minimum
-      if (chunkTokens >= minTokens) {
+      // Current chunk is full, save it if it meets minimum or if it's forced
+      if (chunkTokens > 0) {
         chunks.push({
           content: currentChunk,
           tokenCount: chunkTokens,
@@ -197,18 +165,13 @@ export function chunkTranscript(
   }
 
   // Add final chunk
-  if (currentChunk && chunkTokens >= minTokens) {
+  if (currentChunk) {
     chunks.push({
       content: currentChunk,
       tokenCount: chunkTokens,
       startIndex,
       endIndex: sentences.length - 1,
     });
-  } else if (currentChunk && chunks.length > 0) {
-    // Merge with last chunk if too small
-    chunks[chunks.length - 1].content += ' ' + currentChunk;
-    chunks[chunks.length - 1].tokenCount += chunkTokens;
-    chunks[chunks.length - 1].endIndex = sentences.length - 1;
   }
 
   return chunks;
@@ -223,6 +186,7 @@ export function calculateTimestamp(
   totalChunks: number,
   videoDuration: number // in seconds
 ): number {
+  if (totalChunks <= 0) return 0;
   return Math.floor((chunkIndex / totalChunks) * videoDuration);
 }
 
@@ -233,23 +197,14 @@ export function calculateTimestamp(
 export function detectLanguage(text: string): string {
   // Simple heuristic - check for common words
   const englishWords = [
-    'the',
-    'be',
-    'to',
-    'of',
-    'and',
-    'a',
-    'in',
-    'that',
-    'have',
-    'i',
+    'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i',
   ];
   const lowerText = text.toLowerCase();
   const englishMatches = englishWords.filter((word) =>
     new RegExp(`\\b${word}\\b`).test(lowerText)
   ).length;
 
-  return englishMatches > 5 ? 'en' : 'unknown';
+  return englishMatches > 3 ? 'en' : 'unknown';
 }
 
 /**
@@ -258,38 +213,23 @@ export function detectLanguage(text: string): string {
 export function extractKeyPhrases(transcript: string, count = 10): string[] {
   // Split into words and filter out common words
   const commonWords = new Set([
-    'the',
-    'a',
-    'an',
-    'and',
-    'or',
-    'but',
-    'in',
-    'on',
-    'at',
-    'to',
-    'for',
-    'of',
-    'with',
-    'by',
-    'from',
-    'is',
-    'be',
-    'are',
-    'was',
-    'were',
-    'been',
-    'this',
-    'that',
-    'these',
-    'those',
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'is', 'be', 'are', 'was', 'were', 'been', 'this', 'that', 'these', 'those', 'have', 'has', 'had', 'what', 'when', 'where', 'who', 'why', 'how', 'which', 'will', 'would', 'could', 'should', 'can', 'may', 'might', 'must', 'just', 'like', 'than', 'into', 'very', 'really', 'about', 'some', 'other', 'time', 'more', 'only', 'your', 'they', 'them', 'their'
   ]);
 
   const words = transcript
     .toLowerCase()
+    .replace(/[^\w\s]/g, '')
     .split(/\s+/)
-    .filter((w) => w.length > 3 && !commonWords.has(w))
-    .slice(0, count);
+    .filter((w) => w.length > 3 && !commonWords.has(w));
 
-  return words;
+  // Simple frequency count
+  const frequency: Record<string, number> = {};
+  words.forEach(word => {
+    frequency[word] = (frequency[word] || 0) + 1;
+  });
+
+  return Object.entries(frequency)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, count)
+    .map(([word]) => word);
 }

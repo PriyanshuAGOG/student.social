@@ -7,7 +7,7 @@
     "update-schema": "node scripts/update-schema.js",
     "build": "next build",
     "dev": "next dev",
-    "lint": "next lint",
+    "lint": "eslint . --ext .ts,.tsx",
     "start": "next start"
   },
   "dependencies": {
@@ -67,14 +67,18 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.0.0",
     "workbox-window": "^7.4.0",
+    "youtube-transcript": "^1.2.1",
     "youtube-transcript-api": "^3.0.6",
     "zod": "3.25.67"
   },
   "devDependencies": {
+    "@next/eslint-plugin-next": "16.1.1",
     "@tailwindcss/postcss": "^4.1.9",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@typescript-eslint/eslint-plugin": "^8.51.0",
+    "@typescript-eslint/parser": "^8.51.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "16.1.1",
     "postcss": "^8.5",

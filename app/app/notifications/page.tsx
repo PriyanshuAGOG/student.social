@@ -15,7 +15,6 @@ import {
   Trophy,
   Heart,
   UserPlus,
-  Settings,
   MoreHorizontal,
   Clock,
   Zap,
@@ -296,9 +295,6 @@ export default function NotificationsPage() {
               <Check className="mr-2 h-4 w-4" />
               Mark All
             </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8 bg-transparent">
-              <Settings className="h-4 w-4" />
-            </Button>
           </div>
         </div>
       </div>
@@ -330,10 +326,6 @@ export default function NotificationsPage() {
               <Button variant="outline" onClick={handleMarkAllAsRead} disabled={unreadCount === 0}>
                 <Check className="mr-2 h-4 w-4" />
                 Mark All Read
-              </Button>
-              <Button variant="outline">
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
               </Button>
             </div>
           </div>

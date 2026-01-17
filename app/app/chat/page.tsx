@@ -341,9 +341,9 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="bg-background flex flex-col md:flex-row min-h-screen md:h-[calc(100dvh-64px)] overflow-hidden">
       {/* Desktop Sidebar */}
-      <div className="hidden md:flex w-80 border-r bg-card flex-col">
+      <div className="hidden md:flex w-80 border-r bg-card flex-col shrink-0">
         <div className="p-4 border-b">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold">Messages</h1>
@@ -525,11 +525,13 @@ export default function ChatPage() {
       </div>
 
       {/* Mobile Chat List */}
-      <div className={`md:hidden fixed inset-0 z-50 bg-background flex flex-col transform transition-transform ${showMobileChatList ? 'translate-x-0' : '-translate-x-full'}`}>
+      <div
+        className={`md:hidden ${showMobileChatList ? "flex" : "hidden"} w-full min-h-screen bg-background flex-col transition-all overflow-hidden`}
+      >
         <div className="p-4 border-b flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold">Messages</h1>
-            <Button variant="ghost" size="sm" onClick={() => router.back()}>
+            <Button variant="ghost" size="sm" onClick={() => setShowMobileChatList(false)}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </div>
@@ -675,7 +677,7 @@ export default function ChatPage() {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className={`flex-1 flex flex-col ${showMobileChatList ? "hidden md:flex" : "flex"}`}>
         {selectedRoom ? (
           <>
             {/* Mobile Header */}
@@ -840,7 +842,7 @@ export default function ChatPage() {
                             </Button>
                           )}
 
-                          <div className={`max-w-[85%] md:max-w-[80%] ${bubbleClass} p-3`}>
+                          <div className={`max-w-[90%] sm:max-w-[80%] md:max-w-[72%] ${bubbleClass} p-3`}>
                             {!isCurrent && (
                               <p className="text-xs font-medium mb-1 opacity-70">
                                 {message.authorName || "Unknown"}
@@ -1031,6 +1033,11 @@ export default function ChatPage() {
                   </div>
                   <h3 className="text-lg font-semibold mb-2">Select a conversation</h3>
                   <p className="text-muted-foreground">Choose a chat from the sidebar to start messaging</p>
+                  <div className="mt-4 md:hidden">
+                    <Button variant="outline" onClick={() => setShowMobileChatList(true)}>
+                      Open chat list
+                    </Button>
+                  </div>
                 </>
               )}
             </div>

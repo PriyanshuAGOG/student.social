@@ -1,15 +1,14 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { Models } from 'appwrite'
+import { Models, AppwriteException } from 'appwrite'
 import { account, authService, profileService } from './appwrite'
 
-interface UserProfile {
-  name?: string
-  avatar?: string
-  bio?: string
+import { Profile } from '@/types'
+
+type UserProfile = Profile & {
   identity?: string
-  [key: string]: any
+  [key: string]: unknown
 }
 
 interface AuthContextType {
@@ -56,12 +55,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       sessionCheckPromise = account.get().catch(() => null)
       const currentUser = await sessionCheckPromise
       sessionCheckPromise = null
-      
+
       if (currentUser) {
         setUser(currentUser)
         setHasActiveSession(true)
         setError(null)
-        
+
         // Load user profile
         try {
           const userProfile = await profileService.getProfile(currentUser.$id)
@@ -71,13 +70,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (profileErr) {
           console.warn('Failed to load profile:', profileErr)
         }
-        
+
         return true
       }
-      
+
       setHasActiveSession(false)
       return false
-    } catch (err) {
+    } catch {
       setHasActiveSession(false)
       sessionCheckPromise = null
       return false
@@ -92,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setLoading(true)
         const hasSession = await checkSession()
-        
+
         if (!hasSession) {
           setUser(null)
           setProfile(null)
@@ -115,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(currentUser)
       setHasActiveSession(true)
       setError(null)
-      
+
       // Also refresh profile
       if (currentUser?.$id) {
         try {
@@ -127,10 +126,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.warn('Failed to refresh profile:', profileErr)
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Check if error is due to no session (expected when not logged in)
-      const isNoSession = err?.code === 401 || err?.message?.includes('missing scope') || err?.message?.includes('unauthorized')
-      
+      const isNoSession = (err as AppwriteException)?.code === 401 || (err as AppwriteException)?.message?.includes('missing scope') || (err as AppwriteException)?.message?.includes('unauthorized')
+
       if (isNoSession) {
         setUser(null)
         setProfile(null)
@@ -148,17 +147,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(null)
       setHasActiveSession(false)
       setError(null)
-      
+
       // Clear any cached session check
       sessionCheckPromise = null
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Even if logout fails on server, clear local state
       setUser(null)
       setProfile(null)
       setHasActiveSession(false)
-      
+
       // Only set error if it's not a "no session" error
-      const isNoSession = err?.code === 401 || err?.message?.includes('missing scope')
+      const isNoSession = (err as AppwriteException)?.code === 401 || (err as AppwriteException)?.message?.includes('missing scope')
       if (!isNoSession) {
         setError(err instanceof Error ? err.message : 'Logout failed')
         throw err

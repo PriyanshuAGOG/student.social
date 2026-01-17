@@ -11,24 +11,25 @@ import { NextRequest, NextResponse } from "next/server"
 import { client, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite"
 import { Client, Databases, Query } from "node-appwrite"
 import { runAIChat } from "@/lib/ai"
+import { getTranscript } from "@/lib/video-utils"
 
 const REQUEST_TIMEOUT = 30000; // 30 second timeout
 
 function getDatabases() {
-  const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT
-  const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
+  const endpoint = process.env.APPWRITE_ENDPOINT || process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT
+  const project = process.env.APPWRITE_PROJECT_ID || process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
   const apiKey = process.env.APPWRITE_API_KEY
 
-  if (endpoint && project && apiKey) {
-    const adminClient = new Client()
-      .setEndpoint(endpoint)
-      .setProject(project)
-      .setKey(apiKey)
-
-    return new Databases(adminClient)
+  if (!endpoint || !project || !apiKey) {
+    throw new Error("Missing Appwrite server credentials")
   }
 
-  return new Databases(client)
+  const adminClient = new Client()
+    .setEndpoint(endpoint)
+    .setProject(project)
+    .setKey(apiKey)
+
+  return new Databases(adminClient)
 }
 
 // Extract video ID with timeout
@@ -55,18 +56,27 @@ async function extractVideoIdWithTimeout(url: string): Promise<string> {
   })
 }
 
-// Generate chapter stubs quickly
+// Generate chapter stubs (with optional transcript)
 async function generateChapterStubs(
   courseTitle: string,
-  youtubeUrl: string
+  youtubeUrl: string,
+  transcript?: string | null
 ): Promise<any[]> {
   try {
+    const systemPrompt = transcript
+      ? `You are a course curriculum expert. Given a course title and the video transcript below, generate a structured list of 4-8 chapters that logically divide the content.
+        The chapters should follow the flow of the real content provided in the transcript.`
+      : `You are a course curriculum expert. Given a course title and YouTube URL, generate a structured list of 4-6 chapters that would logically divide the course content.`;
+
+    const userPrompt = transcript
+      ? `Course Title: "${courseTitle}"\n\nTRANSCRIPT START:\n${transcript.slice(0, 15000)}...\nTRANSCRIPT END\n\nGenerate chapter structure for this course based on the transcript above.`
+      : `Course Title: "${courseTitle}"\nYouTube URL: ${youtubeUrl}\n\nGenerate chapter structure for this course.`;
+
     const response = await Promise.race([
       runAIChat([
         {
           role: "system",
-          content: `You are a course curriculum expert. Given a course title and YouTube URL, 
-generate a structured list of 4-6 chapters that would logically divide the course content.
+          content: `${systemPrompt}
 Return ONLY a JSON array with no markdown formatting. Each chapter should have: 
 {
   "chapterNumber": 1,
@@ -80,11 +90,11 @@ Return ONLY a JSON array with no markdown formatting. Each chapter should have:
         },
         {
           role: "user",
-          content: `Course Title: "${courseTitle}"\nYouTube URL: ${youtubeUrl}\n\nGenerate chapter structure for this course.`,
+          content: userPrompt,
         },
       ]),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Chapter generation timeout")), 15000)
+        setTimeout(() => reject(new Error("Chapter generation timeout")), 25000)
       ),
     ])
 
@@ -93,7 +103,7 @@ Return ONLY a JSON array with no markdown formatting. Each chapter should have:
       const jsonMatch = response.match(/\[[\s\S]*\]/);
       const jsonStr = jsonMatch ? jsonMatch[0] : response;
       const chapters = JSON.parse(jsonStr)
-      
+
       // Validate structure
       if (!Array.isArray(chapters) || chapters.length === 0) {
         throw new Error("Invalid chapter structure")
@@ -143,7 +153,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (typeof youtubeUrl !== 'string' || !youtubeUrl.includes('youtube')) {
+    if (typeof youtubeUrl !== 'string' || !youtubeUrl.includes('youtube') && !youtubeUrl.includes('youtu.be')) {
       return NextResponse.json(
         { error: "youtubeUrl must be a valid YouTube URL" },
         { status: 400 }
@@ -155,7 +165,7 @@ export async function POST(request: NextRequest) {
       databases = getDatabases()
     } catch (e) {
       return NextResponse.json(
-        { error: `Database connection failed: ${e.message}` },
+        { error: `Database connection failed: ${e instanceof Error ? e.message : 'Unknown error'}` },
         { status: 500 }
       )
     }
@@ -176,6 +186,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (existingCourses.documents.length > 0) {
+      // For development, we might want to allow replacing, but for now strict 1:1
       return NextResponse.json(
         { error: "This pod already has a course. Each pod can only have one course." },
         { status: 400 }
@@ -193,10 +204,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Fetch transcript (best effort)
+    let transcript: string | null = null
+    try {
+      transcript = await getTranscript(videoId)
+      if (transcript) {
+        console.log(`[generate-course] Transcript fetched, length: ${transcript.length}`)
+      } else {
+        console.log(`[generate-course] No transcript available for ${videoId}`)
+      }
+    } catch (e) {
+      console.warn(`[generate-course] Failed to fetch transcript: ${e}`)
+    }
+
     // Generate chapter stubs (quick, AI-based)
     let chapters: any[]
     try {
-      chapters = await generateChapterStubs(courseTitle, youtubeUrl)
+      chapters = await generateChapterStubs(courseTitle, youtubeUrl, transcript)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       return NextResponse.json(
@@ -255,9 +279,10 @@ export async function POST(request: NextRequest) {
       youtubeUrl,
       videoId,
       courseTitle,
-      chapters
+      chapters,
+      transcript
     ).catch(error => {
-      const msg = error instanceof Error ? error.message : String(error)
+      console.error(`[generateChapterContentAsync] Background job failed: ${error.message}`)
     })
 
     return NextResponse.json(
@@ -286,7 +311,8 @@ async function generateChapterContentAsync(
   youtubeUrl: string,
   videoId: string,
   courseTitle: string,
-  chapters: any[]
+  chapters: any[],
+  transcript?: string | null
 ) {
   try {
     const databases = getDatabases()
@@ -297,9 +323,9 @@ async function generateChapterContentAsync(
       try {
         // Generate content for this specific chapter (with timeout)
         const chapterContent = await Promise.race([
-          generateChapterContent(courseTitle, chapters[i], i),
+          generateChapterContent(courseTitle, chapters[i], i, transcript),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Chapter content generation timeout")), 20000)
+            setTimeout(() => reject(new Error("Chapter content generation timeout")), 45000) // Increased timeout for content
           ),
         ] as const)
 
@@ -330,14 +356,14 @@ async function generateChapterContentAsync(
           }
         )
       } catch (chapterError) {
-        console.warn(`[generateChapterContent] Failed to generate chapter ${i + 1}: ${chapterError.message}`)
-        // Continue to next chapter on error
+        console.warn(`[generateChapterContent] Failed to generate chapter ${i + 1}: ${chapterError instanceof Error ? chapterError.message : String(chapterError)}`)
+        // Continue to next chapter on error, but mark as error
         chapters[i].contentGenerated = false
-        chapters[i].error = chapterError.message
+        chapters[i].error = chapterError instanceof Error ? chapterError.message : "Unknown error"
       }
     }
 
-    // Mark course as completed
+    // Mark course as completed (even if some chapters failed, we finish the process)
     await databases.updateDocument(DATABASE_ID, COLLECTIONS.POD_COURSES, courseId, {
       status: "completed",
       progress: 100,
@@ -347,16 +373,16 @@ async function generateChapterContentAsync(
       updatedAt: new Date().toISOString(),
     })
   } catch (error) {
-    console.error(`[generateChapterContentAsync] Fatal error: ${error.message}`)
+    console.error(`[generateChapterContentAsync] Fatal error: ${error instanceof Error ? error.message : String(error)}`)
     try {
       const databases = getDatabases()
       await databases.updateDocument(DATABASE_ID, COLLECTIONS.POD_COURSES, courseId, {
         status: "error",
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         updatedAt: new Date().toISOString(),
       })
     } catch (updateError) {
-      console.error(`[generateChapterContentAsync] Failed to update error status: ${updateError.message}`)
+      console.error(`[generateChapterContentAsync] Failed to update error status: ${updateError instanceof Error ? updateError.message : String(updateError)}`)
     }
   }
 }
@@ -365,13 +391,23 @@ async function generateChapterContentAsync(
 async function generateChapterContent(
   courseTitle: string,
   chapter: any,
-  chapterIndex: number
+  chapterIndex: number,
+  transcript?: string | null
 ): Promise<any> {
   try {
+    const systemPrompt = transcript
+      ? `You are an expert course content creator. Generate detailed educational content for a chapter based on the provided video transcript.
+        Make sure the content (key points, assignments) relies on the actual information from the transcript as much as possible.`
+      : `You are an expert course content creator. Generate detailed educational content for a chapter.`;
+
+    const userPrompt = transcript
+      ? `Course: "${courseTitle}"\nChapter ${chapterIndex + 1}: ${chapter.title}\nDescription: ${chapter.description}\nObjectives: ${chapter.objectives.join(", ")}\n\nFULL TRANSCRIPT:\n${transcript}\n\nUsing the transcript, create detailed content for this chapter covering the objectives.`
+      : `Course: "${courseTitle}"\nChapter ${chapterIndex + 1}: ${chapter.title}\nDescription: ${chapter.description}\nObjectives: ${chapter.objectives.join(", ")}\n\nCreate detailed chapter content.`;
+
     const response = await runAIChat([
       {
         role: "system",
-        content: `You are an expert course content creator. Generate detailed educational content for a chapter.
+        content: `${systemPrompt}
 Return ONLY a JSON object with no markdown formatting. Structure:
 {
   "content": "detailed chapter content (2-3 paragraphs)",
@@ -390,9 +426,13 @@ Return ONLY a JSON object with no markdown formatting. Structure:
       },
       {
         role: "user",
-        content: `Course: "${courseTitle}"\nChapter ${chapterIndex + 1}: ${chapter.title}\nDescription: ${chapter.description}\nObjectives: ${chapter.objectives.join(", ")}\n\nCreate detailed chapter content.`,
+        content: userPrompt,
       },
-    ])
+    ], {
+      // Use efficient model that handles large context if transcript is present
+      // or fallback models from lib/ai.ts will handle it
+      maxTokens: 2000
+    })
 
     // Extract and validate JSON
     const jsonMatch = response.match(/\{[\s\S]*\}/)
@@ -401,20 +441,26 @@ Return ONLY a JSON object with no markdown formatting. Structure:
     }
 
     const content = JSON.parse(jsonMatch[0])
-    
+
     // Validate structure
     if (!content.content || !Array.isArray(content.keyPoints)) {
       throw new Error("Invalid content structure")
     }
 
+    // Ensure IDs are unique-ish
+    const assignments = (content.assignments || []).map((a: any, idx: number) => ({
+      ...a,
+      id: a.id || `assign-${chapter.chapterNumber}-${idx}-${Date.now()}`
+    }))
+
     return {
       content: content.content,
       keyPoints: content.keyPoints,
-      assignments: content.assignments || [],
+      assignments: assignments,
       notes: content.notes || [],
       resources: content.resources || [],
     }
   } catch (error) {
-    throw new Error(`Chapter content generation failed: ${error.message}`)
+    throw new Error(`Chapter content generation failed: ${error instanceof Error ? error.message : String(error)}`)
   }
 }

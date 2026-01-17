@@ -177,7 +177,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
   const onlineCount = members.filter(m => m.isOnline).length
 
   return (
-    <div className="h-[600px] flex flex-col">
+    <div className="flex flex-col min-h-[420px] md:h-[600px]">
       <Card className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
         <CardHeader className="py-3 px-4 border-b flex-shrink-0">
@@ -246,7 +246,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                         </Avatar>
                       )}
                       
-                      <div className={`max-w-[75%] ${isCurrent ? "items-end" : "items-start"}`}>
+                      <div className={`max-w-[90%] sm:max-w-[78%] ${isCurrent ? "items-end" : "items-start"}`}>
                         {/* Reply preview */}
                         {message.replyToMessage && (
                           <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1 pl-2 border-l-2 border-muted">

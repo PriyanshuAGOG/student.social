@@ -9,7 +9,7 @@
  */
 
 import { client, databases, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite"
-import type { Models } from "appwrite"
+import { Models, AppwriteException, RealtimeResponseEvent } from "appwrite"
 
 /**
  * Create or update a pod meeting session
@@ -144,8 +144,8 @@ export async function saveWhiteboardState({
           exportUrl,
         }
       )
-    } catch (e: any) {
-      if (e.code === 404) {
+    } catch (e: unknown) {
+      if ((e as AppwriteException).code === 404) {
         return await databases.createDocument(
           DATABASE_ID,
           COLLECTIONS.POD_WHITEBOARDS || "pod_whiteboards",
@@ -198,7 +198,7 @@ export async function trackParticipant({
 
     // Check if exists
     try {
-      const existing = await databases.getDocument(
+      await databases.getDocument(
         DATABASE_ID,
         COLLECTIONS.POD_MEETING_PARTICIPANTS || "pod_meeting_participants",
         docId
@@ -214,8 +214,8 @@ export async function trackParticipant({
           lastActiveAt: now,
         }
       )
-    } catch (e: any) {
-      if (e.code === 404) {
+    } catch (e: unknown) {
+      if ((e as AppwriteException).code === 404) {
         return await databases.createDocument(
           DATABASE_ID,
           COLLECTIONS.POD_MEETING_PARTICIPANTS || "pod_meeting_participants",
@@ -279,12 +279,12 @@ export async function getMeetingAnalytics(meetingId: string) {
  */
 export function subscribeToMeetingUpdates(
   meetingId: string,
-  onUpdate: (meeting: any) => void
+  onUpdate: (meeting: Models.Document) => void
 ) {
   try {
     const unsubscribe = client.subscribe(
       `databases.${DATABASE_ID}.collections.${COLLECTIONS.POD_MEETINGS || "pod_meetings"}.documents.meeting-${meetingId}`,
-      (message: any) => {
+      (message: RealtimeResponseEvent<Models.Document>) => {
         onUpdate(message.payload)
       }
     )
@@ -292,7 +292,7 @@ export function subscribeToMeetingUpdates(
     return unsubscribe
   } catch (error) {
     console.error("Failed to subscribe to meeting updates:", error)
-    return () => {} // Return no-op unsubscribe
+    return () => { } // Return no-op unsubscribe
   }
 }
 
@@ -302,12 +302,12 @@ export function subscribeToMeetingUpdates(
 export function subscribeToWhiteboardUpdates(
   podId: string,
   meetingId: string,
-  onUpdate: (whiteboard: any) => void
+  onUpdate: (whiteboard: Models.Document) => void
 ) {
   try {
     const unsubscribe = client.subscribe(
       `databases.${DATABASE_ID}.collections.${COLLECTIONS.POD_WHITEBOARDS || "pod_whiteboards"}.documents.whiteboard-${podId}-${meetingId}`,
-      (message: any) => {
+      (message: RealtimeResponseEvent<Models.Document>) => {
         onUpdate(message.payload)
       }
     )
@@ -315,7 +315,7 @@ export function subscribeToWhiteboardUpdates(
     return unsubscribe
   } catch (error) {
     console.error("Failed to subscribe to whiteboard updates:", error)
-    return () => {} // Return no-op unsubscribe
+    return () => { } // Return no-op unsubscribe
   }
 }
 
