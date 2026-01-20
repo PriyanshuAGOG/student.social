@@ -61,14 +61,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setHasActiveSession(true)
         setError(null)
 
-        // Load user profile
+        // Load user profile - ensure it exists
         try {
-          const userProfile = await profileService.getProfile(currentUser.$id)
+          const userProfile = await profileService.ensureProfileExists(currentUser.$id, {
+            name: currentUser.name,
+            email: currentUser.email,
+          })
           if (userProfile) {
             setProfile(userProfile as UserProfile)
           }
         } catch (profileErr) {
-          console.warn('Failed to load profile:', profileErr)
+          console.warn('Failed to load/create profile:', profileErr)
         }
 
         return true
@@ -115,15 +118,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setHasActiveSession(true)
       setError(null)
 
-      // Also refresh profile
+      // Also refresh profile - ensure it exists
       if (currentUser?.$id) {
         try {
-          const userProfile = await profileService.getProfile(currentUser.$id)
+          const userProfile = await profileService.ensureProfileExists(currentUser.$id, {
+            name: currentUser.name,
+            email: currentUser.email,
+          })
           if (userProfile) {
             setProfile(userProfile as UserProfile)
           }
         } catch (profileErr) {
-          console.warn('Failed to refresh profile:', profileErr)
+          console.warn('Failed to refresh/create profile:', profileErr)
         }
       }
     } catch (err: unknown) {

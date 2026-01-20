@@ -1,9 +1,8 @@
-// @ts-nocheck
 "use client"
 
 import type React from "react"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -11,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, Search, Phone, Video, MoreVertical, Users, Hash, Plus, Smile, Paperclip, ImageIcon, Calendar, Settings, MessageSquare, X, Menu, ArrowLeft, AtSign, Mic, Loader2, Reply, CornerUpLeft } from 'lucide-react'
+import { Send, Search, Phone, Video, MoreVertical, Users, Hash, Plus, Smile, Paperclip, ImageIcon, Calendar, Settings, MessageSquare, X, Menu, ArrowLeft, AtSign, Mic, Loader2, Reply, CornerUpLeft, WifiOff, RefreshCw } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +23,7 @@ import { toast } from "@/hooks/use-toast"
 import { useRouter, useSearchParams } from "next/navigation"
 import { chatService } from "@/lib/appwrite"
 import { useAuth } from "@/lib/auth-context"
+import { announceToScreenReader } from "@/lib/accessibility-utils"
 
 interface ChatRoom {
   $id: string
@@ -65,9 +65,11 @@ export default function ChatPage() {
   const [showMobileChatList, setShowMobileChatList] = useState(true)
   const [isListening, setIsListening] = useState(false)
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'reconnecting' | 'error'>('connected')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const messageListRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user } = useAuth()
@@ -788,6 +790,35 @@ export default function ChatPage() {
                 </div>
               </div>
             </div>
+
+            {/* Connection Status Banner */}
+            {connectionStatus !== 'connected' && (
+              <div className={`px-4 py-2 text-sm flex items-center justify-center gap-2 ${
+                connectionStatus === 'reconnecting' 
+                  ? 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200'
+                  : 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-200'
+              }`}>
+                {connectionStatus === 'reconnecting' ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>Reconnecting to chat...</span>
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="h-4 w-4" />
+                    <span>Connection lost. Messages may be delayed.</span>
+                    <Button 
+                      variant="link" 
+                      size="sm" 
+                      className="h-auto p-0 text-current underline"
+                      onClick={() => window.location.reload()}
+                    >
+                      Retry
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Messages */}
             <div className="flex-1 overflow-hidden relative">

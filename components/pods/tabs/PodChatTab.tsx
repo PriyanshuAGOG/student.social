@@ -117,7 +117,9 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
           authorName = profile.name || authorName
           authorAvatar = profile.avatar || authorAvatar
         }
-      } catch {}
+      } catch (profileError) {
+        console.debug('[PodChatTab] Profile fetch failed, using defaults:', profileError)
+      }
 
       const msg = await chatService.sendMessage(chatRoomId, user.$id, inputValue.trim(), {
         senderName: authorName,

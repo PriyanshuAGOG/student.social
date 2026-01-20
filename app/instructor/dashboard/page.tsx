@@ -5,18 +5,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { BookOpen, Users, DollarSign, Star, TrendingUp, AlertCircle } from 'lucide-react';
+import { BookOpen, Users, DollarSign, Star, TrendingUp, AlertCircle, Loader2 } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
 
 export default function InstructorDashboardPage() {
   const [dashboard, setDashboard] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const instructorId = 'instructor-123'; // TODO: Get from auth
+  const { user, isLoading: authLoading } = useAuth();
+  const instructorId = user?.$id || '';
 
   useEffect(() => {
-    fetchDashboard();
-  }, []);
+    if (instructorId) {
+      fetchDashboard();
+    } else if (!authLoading) {
+      setLoading(false);
+    }
+  }, [instructorId, authLoading]);
 
   const fetchDashboard = async () => {
+    if (!instructorId) return;
     try {
       setLoading(true);
       const response = await fetch(`/api/instructor/dashboard?instructorId=${instructorId}`);

@@ -11,6 +11,7 @@ import { useParams, useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { podService, resourceService, calendarService, profileService, client, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite"
+import { initializeWebSocketManager, getWebSocketManager } from "@/lib/websocket-manager"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import { 
@@ -149,6 +150,10 @@ export default function PodDetailPage() {
 
   useEffect(() => {
     if (!client?.subscribe || !podId) return
+    
+    // Initialize WebSocket manager
+    const wsManager = initializeWebSocketManager()
+    
     const channels = [
       `databases.${DATABASE_ID}.collections.${COLLECTIONS.RESOURCES}.documents`,
       `databases.${DATABASE_ID}.collections.${COLLECTIONS.CALENDAR_EVENTS}.documents`,
@@ -187,13 +192,13 @@ export default function PodDetailPage() {
         })
       }
     })
+    
+    // Register with WebSocket manager for proper lifecycle management
+    wsManager.addSubscription(`pod-${podId}-realtime`, unsubscribe, channels.join(','))
 
     return () => {
-      try {
-        if (typeof unsubscribe === "function") unsubscribe()
-      } catch (err) {
-        console.warn("realtime cleanup failed", err)
-      }
+      // Use WebSocket manager for safe cleanup
+      wsManager.removeSubscription(`pod-${podId}-realtime`)
     }
   }, [podId])
 
@@ -484,18 +489,17 @@ export default function PodDetailPage() {
     loadReactions()
 
     if (client?.subscribe) {
+      const wsManager = getWebSocketManager()
       const unsubscribe = client.subscribe(
         [`databases.${DATABASE_ID}.collections.pod_reactions.documents`],
         () => loadReactions()
       )
+      
+      wsManager.addSubscription(`pod-${podId}-reactions`, unsubscribe, 'pod_reactions')
 
       return () => {
         cancelled = true
-        try {
-          if (typeof unsubscribe === "function") unsubscribe()
-        } catch (err) {
-          console.warn("reactions unsubscribe failed", err)
-        }
+        wsManager.removeSubscription(`pod-${podId}-reactions`)
       }
     }
 
@@ -557,6 +561,7 @@ export default function PodDetailPage() {
     )
     if (memberSet.size === 0) return
 
+    const wsManager = getWebSocketManager()
     const unsubscribe = client.subscribe(
       [`databases.${DATABASE_ID}.collections.${COLLECTIONS.PROFILES}.documents`],
       (event: any) => {
@@ -577,15 +582,13 @@ export default function PodDetailPage() {
         })
       }
     )
+    
+    wsManager.addSubscription(`pod-${podId}-presence`, unsubscribe, 'profiles')
 
     return () => {
-      try {
-        if (typeof unsubscribe === "function") unsubscribe()
-      } catch (err) {
-        console.warn("presence unsubscribe failed", err)
-      }
+      wsManager.removeSubscription(`pod-${podId}-presence`)
     }
-  }, [pod.members])
+  }, [pod.members, podId])
 
   const leaderboard = useMemo(() => {
     return [...memberProfiles]

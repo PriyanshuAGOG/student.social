@@ -8,7 +8,7 @@
  * Each pod can only have 1 course generation.
  */
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -17,6 +17,17 @@ import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BookOpen, Loader2, AlertCircle, FileText, CheckSquare, Calendar } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+
+// Safe JSON parser to handle malformed strings
+function safeParseJSON(value: unknown, fallback: unknown = []) {
+  if (typeof value !== 'string') return value ?? fallback
+  try {
+    return JSON.parse(value)
+  } catch {
+    console.warn('[CoursesTab] Failed to parse JSON value, using fallback')
+    return fallback
+  }
+}
 
 interface CoursesTabProps {
   podId: string
@@ -84,6 +95,20 @@ export function CoursesTab({ podId, podName }: CoursesTabProps) {
   const [youtubeUrl, setYoutubeUrl] = useState("")
   const [courseTitle, setCourseTitle] = useState("")
   const [activeTab, setActiveTab] = useState("overview")
+  // Ref for cleanup on unmount
+  const isMountedRef = useRef(true)
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Cleanup on unmount
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current)
+      }
+    }
+  }, [])
 
   // Load existing course for this pod
   useEffect(() => {
@@ -91,27 +116,37 @@ export function CoursesTab({ podId, podName }: CoursesTabProps) {
       try {
         setIsLoading(true)
         const response = await fetch(`/api/pods/get-course?podId=${podId}`)
+        if (!isMountedRef.current) return
         if (response.ok) {
           const data = await response.json()
           if (data.course) {
-            // Parse JSON fields from strings
+            // Parse JSON fields from strings safely
             const parsedCourse = {
               ...data.course,
-              chapters: typeof data.course.chapters === 'string' ? JSON.parse(data.course.chapters || '[]') : data.course.chapters,
-              assignments: typeof data.course.assignments === 'string' ? JSON.parse(data.course.assignments || '[]') : data.course.assignments,
-              dailyTasks: typeof data.course.dailyTasks === 'string' ? JSON.parse(data.course.dailyTasks || '[]') : data.course.dailyTasks,
-              notes: typeof data.course.notes === 'string' ? JSON.parse(data.course.notes || '[]') : data.course.notes,
+              chapters: safeParseJSON(data.course.chapters, []),
+              assignments: safeParseJSON(data.course.assignments, []),
+              dailyTasks: safeParseJSON(data.course.dailyTasks, []),
+              notes: safeParseJSON(data.course.notes, []),
             }
-            setCourse(parsedCourse)
+            if (isMountedRef.current) setCourse(parsedCourse)
           }
         }
+      } catch (error) {
+        console.error('[CoursesTab] Failed to load course:', error)
+        if (isMountedRef.current) {
+          toast({
+            title: "Failed to Load Course",
+            description: "Could not load course data. Please try refreshing.",
+            variant: "destructive",
+          })
+        }
       } finally {
-        setIsLoading(false)
+        if (isMountedRef.current) setIsLoading(false)
       }
     }
 
     loadPodCourse()
-  }, [podId])
+  }, [podId, toast])
 
   const handleGenerateCourse = async () => {
     if (!youtubeUrl.trim() || !courseTitle.trim()) {
@@ -175,22 +210,25 @@ export function CoursesTab({ podId, podName }: CoursesTabProps) {
     }
   }
 
-  // Poll for course updates
-  const pollCourseProgress = async (courseId: string) => {
+  // Poll for course updates with proper cleanup
+  const pollCourseProgress = (courseId: string) => {
     const maxAttempts = 60 // 5 minutes
     let attempts = 0
 
     const poll = async () => {
-      if (attempts >= maxAttempts) return
+      // Check if component is still mounted
+      if (!isMountedRef.current || attempts >= maxAttempts) return
 
       try {
         const response = await fetch(`/api/pods/get-course?podId=${podId}`)
+        if (!isMountedRef.current) return
+        
         if (response.ok) {
           const data = await response.json()
-          if (data.course) {
+          if (data.course && isMountedRef.current) {
             const parsedCourse = {
               ...data.course,
-              chapters: typeof data.course.chapters === 'string' ? JSON.parse(data.course.chapters || '[]') : data.course.chapters,
+              chapters: safeParseJSON(data.course.chapters, []),
             }
             setCourse(parsedCourse)
 
@@ -205,7 +243,7 @@ export function CoursesTab({ podId, podName }: CoursesTabProps) {
 
             if (parsedCourse.status !== 'completed') {
               attempts++
-              setTimeout(poll, 5000) // Poll every 5 seconds
+              pollTimeoutRef.current = setTimeout(poll, 5000) // Poll every 5 seconds
             } else {
               toast({
                 title: "Course Ready!",
@@ -215,9 +253,11 @@ export function CoursesTab({ podId, podName }: CoursesTabProps) {
           }
         }
       } catch (error) {
-        console.error("Poll error:", error)
-        attempts++
-        setTimeout(poll, 5000)
+        console.error("[CoursesTab] Poll error:", error)
+        if (isMountedRef.current) {
+          attempts++
+          pollTimeoutRef.current = setTimeout(poll, 5000)
+        }
       }
     }
 

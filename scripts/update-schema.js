@@ -157,11 +157,19 @@ const collections = [
   {
     id: 'comments',
     name: 'Comments',
+    permissions: {
+      read: ['role:users'],
+      write: ['role:users'],
+      update: ['role:users'],
+      delete: ['role:users'],
+    },
     attrs: [
       { key: 'postId', type: 'string', size: 255, required: true },
       { key: 'authorId', type: 'string', size: 255, required: true },
+      { key: 'userId', type: 'string', size: 255 },
       { key: 'content', type: 'string', size: 2000, required: true },
       { key: 'timestamp', type: 'string', size: 255, required: true },
+      { key: 'createdAt', type: 'string', size: 255 },
       { key: 'likes', type: 'integer' },
       { key: 'likedBy', type: 'string', size: 255, array: true },
       { key: 'authorName', type: 'string', size: 255 },
@@ -170,6 +178,7 @@ const collections = [
       { key: 'isEdited', type: 'boolean' },
       { key: 'editedAt', type: 'string', size: 255 },
       { key: 'updatedAt', type: 'string', size: 255 },
+      { key: 'replyTo', type: 'string', size: 255 },
     ],
   },
   {
@@ -184,10 +193,16 @@ const collections = [
   {
     id: 'pods',
     name: 'Study Pods',
+    permissions: {
+      read: ['role:users'],
+      write: ['role:users'],
+      update: ['role:users'],
+      delete: ['role:users'],
+    },
     attrs: [
-      { key: 'teamId', type: 'string', size: 255, required: true },
+      { key: 'teamId', type: 'string', size: 255 }, // Auto-generated, not required
       { key: 'name', type: 'string', size: 255, required: true },
-      { key: 'description', type: 'string', size: 2000, required: true },
+      { key: 'description', type: 'string', size: 2000 }, // Optional - empty descriptions allowed
       { key: 'creatorId', type: 'string', size: 255, required: true },
       { key: 'members', type: 'string', size: 255, array: true },
       { key: 'subject', type: 'string', size: 100 },
@@ -370,6 +385,37 @@ const collections = [
       { key: 'isGoing', type: 'boolean' },
       { key: 'createdAt', type: 'string', size: 255, required: true },
       { key: 'updatedAt', type: 'string', size: 255 },
+    ],
+  },
+  {
+    id: 'pod_courses',
+    name: 'Pod Courses',
+    permissions: {
+      read: ['role:users'],
+      write: ['role:users'],
+      update: ['role:users'],
+      delete: ['role:users'],
+    },
+    attrs: [
+      { key: 'podId', type: 'string', size: 255, required: true },
+      { key: 'courseTitle', type: 'string', size: 255, required: true },
+      { key: 'youtubeUrl', type: 'string', size: 500 },
+      { key: 'videoId', type: 'string', size: 100 },
+      { key: 'status', type: 'string', size: 50 }, // structuring, generating, completed, error
+      { key: 'progress', type: 'integer' },
+      { key: 'totalChapters', type: 'integer' },
+      { key: 'completedChapters', type: 'integer' },
+      { key: 'chapters', type: 'string', size: 50000 }, // JSON stringified array
+      { key: 'assignments', type: 'string', size: 50000 }, // JSON stringified array
+      { key: 'notes', type: 'string', size: 50000 }, // JSON stringified array
+      { key: 'dailyTasks', type: 'string', size: 50000 }, // JSON stringified array
+      { key: 'generationStartedAt', type: 'string', size: 255 },
+      { key: 'generationCompletedAt', type: 'string', size: 255 },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+      { key: 'createdBy', type: 'string', size: 255 },
+      { key: 'updatedAt', type: 'string', size: 255 },
+      { key: 'correlationId', type: 'string', size: 100 },
+      { key: 'errorMessage', type: 'string', size: 1000 },
     ],
   },
   {
@@ -571,9 +617,11 @@ async function ensureDatabase() {
 }
 
 async function ensureCollection(col) {
+  let exists = false
   try {
     await makeRequest('GET', `/databases/${DATABASE_ID}/collections/${col.id}`)
     console.log(`Collection exists: ${col.id}`)
+    exists = true
   } catch (e) {
     console.log(`Creating collection: ${col.id}`)
     await makeRequest('POST', `/databases/${DATABASE_ID}/collections`, {
@@ -581,19 +629,27 @@ async function ensureCollection(col) {
       name: col.name,
       documentSecurity: true,
     })
-    if (col.permissions) {
-      try {
-        await makeRequest('PATCH', `/databases/${DATABASE_ID}/collections/${col.id}`, {
-          permissions: {
-            read: col.permissions.read,
-            write: col.permissions.write,
-            update: col.permissions.update,
-            delete: col.permissions.delete,
-          },
-        })
-      } catch (permErr) {
-        console.warn(`Could not set permissions for ${col.id}:`, permErr.data || permErr)
-      }
+  }
+  
+  // Always update permissions if defined (for both new and existing collections)
+  if (col.permissions) {
+    try {
+      // Appwrite expects flat arrays for permissions
+      const perms = []
+      if (col.permissions.read) perms.push(...col.permissions.read.map(r => `read("${r.replace('role:', '')}")`))
+      if (col.permissions.write) perms.push(...col.permissions.write.map(r => `create("${r.replace('role:', '')}")`))
+      if (col.permissions.update) perms.push(...col.permissions.update.map(r => `update("${r.replace('role:', '')}")`))
+      if (col.permissions.delete) perms.push(...col.permissions.delete.map(r => `delete("${r.replace('role:', '')}")`))
+      
+      await makeRequest('PUT', `/databases/${DATABASE_ID}/collections/${col.id}`, {
+        name: col.name,
+        permissions: perms,
+        documentSecurity: false, // Use collection-level permissions
+        enabled: true,
+      })
+      console.log(`  Permissions updated for ${col.id}`)
+    } catch (permErr) {
+      console.warn(`Could not set permissions for ${col.id}:`, permErr.data || permErr)
     }
   }
 }

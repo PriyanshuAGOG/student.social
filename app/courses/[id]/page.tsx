@@ -1,4 +1,3 @@
-// @ts-nocheck
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -7,12 +6,15 @@ import { CoursePlayer } from '@/components/courses/CoursePlayer';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { BookOpen, Clock, Users, Star, Share2 } from 'lucide-react';
+import { BookOpen, Clock, Users, Star, Share2, Loader2 } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
+import { toast } from '@/hooks/use-toast';
 
 export default function CoursePage() {
   const params = useParams();
   const router = useRouter();
   const courseId = params.id as string;
+  const { user, isLoading: authLoading } = useAuth();
 
   const [course, setCourse] = useState<any>(null);
   const [chapters, setChapters] = useState<any[]>([]);
@@ -24,7 +26,7 @@ export default function CoursePage() {
     if (courseId) {
       fetchCourseData();
     }
-  }, [courseId]);
+  }, [courseId, user?.$id]);
 
   const fetchCourseData = async () => {
     try {
@@ -47,8 +49,11 @@ export default function CoursePage() {
         }
       }
 
-      // Check enrollment status (TODO: implement based on user auth)
-      setEnrolled(false);
+      // Check enrollment status based on user auth
+      if (user?.$id) {
+        // TODO: Fetch actual enrollment status from API
+        setEnrolled(false);
+      }
     } catch (error) {
       console.error('Error fetching course:', error);
     } finally {
@@ -57,15 +62,18 @@ export default function CoursePage() {
   };
 
   const handleEnroll = async () => {
+    if (!user?.$id) {
+      toast({ title: 'Please log in', description: 'You need to be logged in to enroll in a course.', variant: 'destructive' });
+      router.push('/login');
+      return;
+    }
+    
     try {
-      // TODO: Get userId from auth context
-      const userId = 'user-123';
-      
       const response = await fetch('/api/courses/enroll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId,
+          userId: user.$id,
           courseId,
           enrollmentType: 'individual',
         }),
@@ -73,11 +81,14 @@ export default function CoursePage() {
 
       if (response.ok) {
         setEnrolled(true);
-        alert('Successfully enrolled in course!');
+        toast({ title: 'Enrolled!', description: 'Successfully enrolled in course!' });
+      } else {
+        const data = await response.json();
+        toast({ title: 'Enrollment failed', description: data.error || 'Failed to enroll', variant: 'destructive' });
       }
     } catch (error) {
       console.error('Error enrolling:', error);
-      alert('Failed to enroll in course');
+      toast({ title: 'Error', description: 'Failed to enroll in course. Please try again.', variant: 'destructive' });
     }
   };
 

@@ -86,14 +86,18 @@ export async function POST(request: NextRequest) {
       imageUrl = metadata.image;
     }
 
+    // Generate a unique teamId (required by schema, but we're not using Appwrite Teams)
+    const generatedTeamId = `pod_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
     // Create pod document
     const pod = await databases.createDocument(
       DATABASE_ID,
       PODS_COLLECTION_ID,
       'unique()',
       {
+        teamId: generatedTeamId,
         name: name.trim(),
-        description: description?.trim() || '',
+        description: description?.trim() || 'Study group',
         creatorId: userId,
         members: [userId],
         memberCount: 1,

@@ -81,7 +81,9 @@ export async function POST(request: NextRequest) {
       );
       senderName = profile.name || senderName;
       senderAvatar = profile.avatar || '';
-    } catch {}
+    } catch (profileError) {
+      console.debug('[messages/send] Profile fetch failed for sender, using defaults:', senderId);
+    }
 
     // Create message
     const message = await databases.createDocument(
