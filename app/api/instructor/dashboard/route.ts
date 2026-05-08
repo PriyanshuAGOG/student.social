@@ -94,7 +94,7 @@ export async function GET(request: Request) {
     for (const course of instructorCourses) {
       try {
         const enrollments = await databases.listDocuments(
-          process.env.APPWRITE_DATABASE_ID!,
+          (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
           'course_enrollments',
           [
             {
@@ -155,7 +155,7 @@ export async function GET(request: Request) {
 
     // 3. Get all students across courses
     const allEnrollments = await databases.listDocuments(
-      process.env.APPWRITE_DATABASE_ID!,
+      (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
       'course_enrollments',
       [
         {
@@ -172,7 +172,7 @@ export async function GET(request: Request) {
 
     // 4. Get recent activity
     const submissions = await databases.listDocuments(
-      process.env.APPWRITE_DATABASE_ID!,
+      (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
       'assignment_submissions',
       [],
       20
@@ -193,7 +193,7 @@ export async function GET(request: Request) {
     const topPerformers: any[] = [];
     for (const studentId of Array.from(uniqueStudents).slice(0, 5)) {
       const enrollments = await databases.listDocuments(
-        process.env.APPWRITE_DATABASE_ID!,
+        (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
         'course_enrollments',
         [
           {

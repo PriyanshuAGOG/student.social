@@ -86,11 +86,22 @@ export default function RegisterPage() {
     }
   }
 
-  const handleOAuthRegister = (provider: string) => {
-    toast({
-      title: `${provider} Registration`,
-      description: `Redirecting to ${provider} authentication...`,
-    })
+  const handleOAuthRegister = async (provider: string) => {
+    setIsLoading(true)
+    try {
+      toast({
+        title: `${provider} Registration`,
+        description: `Redirecting to ${provider} authentication...`,
+      })
+      await authService.loginWithOAuth(provider)
+    } catch (error: any) {
+      toast({
+        title: `${provider} Registration Failed`,
+        description: error?.message || `Unable to start ${provider} registration. Please try again.`,
+        variant: "destructive",
+      })
+      setIsLoading(false)
+    }
   }
 
   return (
