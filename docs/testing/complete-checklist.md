@@ -4,7 +4,7 @@
 - [ ] `.env.local` created with all required variables
 - [ ] `APPWRITE_API_KEY` obtained from Appwrite console
 - [ ] `NEXT_PUBLIC_APPWRITE_ENDPOINT` is `https://fra.cloud.appwrite.io/v1`
-- [ ] `NEXT_PUBLIC_APPWRITE_PROJECT_ID` is `68921a0d00146e65d29b`
+- [ ] `NEXT_PUBLIC_APPWRITE_PROJECT_ID` is `694ed12f003c942317f4`
 - [ ] `NEXT_PUBLIC_APPWRITE_DATABASE_ID` is `peerspark-main-db`
 
 ## Phase 2: Appwrite Configuration

@@ -181,7 +181,7 @@ export default function ChatPage() {
               }
               // Fetch the message if not in the current batch
               const fetchedReply = await chatService.getMessage(msg.replyTo)
-              return { ...msg, replyToMessage: fetchedReply }
+              return { ...msg, replyToMessage: fetchedReply as unknown as unknown as Message }
             }
             return msg
           })
@@ -202,7 +202,7 @@ export default function ChatPage() {
     const original = inputValue
     const replyToId = replyingTo?.$id || null
     try {
-      const msg = await chatService.sendMessage(selectedRoom.$id, user.$id, original, "text", { replyTo: replyToId })
+      const msg = await chatService.sendMessage(selectedRoom.$id, user.$id, original, "text", { replyTo: replyToId }) as unknown as Message
       // Attach reply info to the new message for display
       const newMessage: Message = {
         ...msg,
@@ -233,8 +233,9 @@ export default function ChatPage() {
               selectedRoom.$id,
               "ai",
               data.message || "Here's a quick answer.",
-              "text"
-            )
+              "text",
+              { senderName: "AI Assistant" }
+            ) as unknown as Message
             aiMsg.authorName = "AI Assistant"
             aiMsg.authorId = "ai"
             setMessages((prev) => [...prev, aiMsg])
@@ -271,7 +272,7 @@ export default function ChatPage() {
         fileName: attachment.fileName,
         fileSize: attachment.fileSize,
       })
-      setMessages((prev) => [...prev, msg])
+      setMessages((prev) => [...prev, msg as unknown as Message])
       toast({ title: "Uploaded", description: `${attachment.fileName} sent` })
     } catch (error: any) {
       console.error(error)
@@ -409,7 +410,7 @@ export default function ChatPage() {
                           <Avatar className="h-10 w-10">
                             <AvatarImage src={room.avatar || "/placeholder.svg"} />
                             <AvatarFallback>
-                              {room.type === "pod" ? <Hash className="h-4 w-4" /> : room.name.slice(0, 2)}
+                              {room.type === "pod" ? <Hash className="h-4 w-4" /> : (room.name || "??").slice(0, 2)}
                             </AvatarFallback>
                           </Avatar>
                           {room.type === "direct" && room.isOnline && (
@@ -499,7 +500,7 @@ export default function ChatPage() {
                           <div className="relative">
                             <Avatar className="h-10 w-10">
                               <AvatarImage src={room.avatar || "/placeholder.svg"} />
-                              <AvatarFallback>{room.name.slice(0, 2)}</AvatarFallback>
+                              <AvatarFallback>{(room.name || "??").slice(0, 2)}</AvatarFallback>
                             </Avatar>
                             {room.isOnline && (
                               <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-green-500 rounded-full border-2 border-background" />
@@ -693,7 +694,7 @@ export default function ChatPage() {
                     <Avatar className="h-8 w-8">
                       <AvatarImage src={selectedRoom.avatar || "/placeholder.svg"} />
                       <AvatarFallback>
-                        {selectedRoom.type === "pod" ? <Hash className="h-3 w-3" /> : selectedRoom.name.slice(0, 2)}
+                        {selectedRoom.type === "pod" ? <Hash className="h-3 w-3" /> : (selectedRoom.name || "??").slice(0, 2)}
                       </AvatarFallback>
                     </Avatar>
                     {selectedRoom.type === "direct" && selectedRoom.isOnline && (
@@ -735,7 +736,7 @@ export default function ChatPage() {
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={selectedRoom.avatar || "/placeholder.svg"} />
                       <AvatarFallback>
-                        {selectedRoom.type === "pod" ? <Hash className="h-4 w-4" /> : selectedRoom.name.slice(0, 2)}
+                        {selectedRoom.type === "pod" ? <Hash className="h-4 w-4" /> : (selectedRoom.name || "??").slice(0, 2)}
                       </AvatarFallback>
                     </Avatar>
                     {selectedRoom.type === "direct" && selectedRoom.isOnline && (

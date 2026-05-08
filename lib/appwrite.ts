@@ -33,16 +33,16 @@ debugLog("Initializing with project:", projectId)
 const client = new Client()
 export { client }
 
-if (!endpoint) {
-  console.error("[Appwrite] ERROR: NEXT_PUBLIC_APPWRITE_ENDPOINT not set in environment")
+if (process.env.NODE_ENV === "development" && !endpoint) {
+  console.warn("[Appwrite] NEXT_PUBLIC_APPWRITE_ENDPOINT not set; using default endpoint")
 }
-if (!projectId) {
-  console.error("[Appwrite] ERROR: NEXT_PUBLIC_APPWRITE_PROJECT_ID not set in environment")
+if (process.env.NODE_ENV === "development" && !projectId) {
+  console.warn("[Appwrite] NEXT_PUBLIC_APPWRITE_PROJECT_ID not set; using default project")
 }
 
 client
   .setEndpoint(endpoint || "https://fra.cloud.appwrite.io/v1")
-  .setProject(projectId || "68921a0d00146e65d29b")
+  .setProject(projectId || "694ed12f003c942317f4")
 
 debugLog("Client initialized successfully")
 
@@ -61,7 +61,7 @@ const MATCH_CACHE_TTL = 1000 * 60 * 5 // 5 minutes
 debugLog("Account service methods:", Object.keys(account).slice(0, 5))
 
 // Database and Collection IDs - You'll need to create these in Appwrite
-export const DATABASE_ID = "peerspark-main-db"
+export const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || "peerspark-main-db"
 export const COLLECTIONS = {
   PROFILES: "profiles",
   POSTS: "posts",
@@ -1934,9 +1934,29 @@ export const chatService = {
     roomId: string,
     senderId: string,
     content: string,
-    metadata: { senderName?: string; senderAvatar?: string } = {}
+    messageTypeOrMetadata: "text" | "image" | "file" | "system" | {
+      senderName?: string
+      senderAvatar?: string
+      replyTo?: string | null
+      fileUrl?: string
+      fileName?: string
+      fileSize?: number
+    } = "text",
+    metadata: {
+      senderName?: string
+      senderAvatar?: string
+      replyTo?: string | null
+      fileUrl?: string
+      fileName?: string
+      fileSize?: number
+    } = {}
   ) {
     try {
+      const type = typeof messageTypeOrMetadata === "string" ? messageTypeOrMetadata : "text"
+      if (typeof messageTypeOrMetadata === "object") {
+        metadata = messageTypeOrMetadata
+      }
+
       // Validate inputs
       if (!roomId || !senderId || !content) {
         throw new Error("Room ID, Sender ID, and content are required")
@@ -1974,12 +1994,16 @@ export const chatService = {
           senderId: senderId,
           authorId: senderId,
           content: content.trim(),
-          type: "text",
+          type,
           senderName: senderName,
           senderAvatar: senderAvatar,
           timestamp: new Date().toISOString(),
           readBy: [senderId],
           isEdited: false,
+          replyTo: metadata.replyTo || null,
+          fileUrl: metadata.fileUrl || null,
+          fileName: metadata.fileName || null,
+          fileSize: metadata.fileSize || null,
         }
       )
 

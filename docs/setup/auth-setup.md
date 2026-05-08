@@ -163,7 +163,7 @@ App Layout (Root)
 All should be in `.env.local`:
 ```env
 NEXT_PUBLIC_APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
-NEXT_PUBLIC_APPWRITE_PROJECT_ID=68921a0d00146e65d29b
+NEXT_PUBLIC_APPWRITE_PROJECT_ID=694ed12f003c942317f4
 NEXT_PUBLIC_APPWRITE_DATABASE_ID=peerspark-main-db
 APPWRITE_API_KEY=your-api-key-here
 ```

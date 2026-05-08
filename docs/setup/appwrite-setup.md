@@ -59,7 +59,7 @@ It's like having a super-smart assistant that:
 
 ### Step 2: Get Your Project Details
 After creating the project, you'll see:
-- **Project ID**: This should be `68921a0d00146e65d29b` (yours)
+- **Project ID**: This should be `694ed12f003c942317f4` (yours)
 - **Endpoint**: This should be `https://fra.cloud.appwrite.io/v1`
 
 ✅ **Important**: Write these down! You already have them in your credentials.
@@ -387,7 +387,7 @@ In your project root, create a `.env.local` file:
 \`\`\`bash
 # Appwrite Configuration
 NEXT_PUBLIC_APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
-NEXT_PUBLIC_APPWRITE_PROJECT_ID=68921a0d00146e65d29b
+NEXT_PUBLIC_APPWRITE_PROJECT_ID=694ed12f003c942317f4
 NEXT_PUBLIC_APPWRITE_DATABASE_ID=peerspark-main-db
 
 # Optional: Add these if you plan to use server-side functions
