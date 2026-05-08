@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Search, MessageCircle, User, LogOut, BarChart3, UserIcon } from "lucide-react"
+import { Search, MessageCircle, User, LogOut, Users, UserIcon } from "lucide-react"
 import { useRouter, usePathname } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
@@ -109,9 +109,9 @@ export function MobileHeader({
               <User className="mr-2 h-4 w-4" />
               Profile & Settings
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/app/dashboard")}>
-              <BarChart3 className="mr-2 h-4 w-4" />
-              Dashboard
+            <DropdownMenuItem onClick={() => router.push("/app/pods")}>
+              <Users className="mr-2 h-4 w-4" />
+              Study Pods
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>

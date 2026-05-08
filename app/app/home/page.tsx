@@ -641,10 +641,10 @@ export default function Dashboard() {
               <Button
                 variant="outline"
                 className="w-full justify-start bg-transparent"
-                onClick={() => router.push("/app/explore")}
+                onClick={() => router.push("/app/pods")}
               >
                 <Users className="w-4 h-4 mr-2" />
-                Explore Pods
+                Study Pods
               </Button>
               <Button
                 variant="outline"

@@ -442,7 +442,7 @@ export default function LandingPage() {
                   href="/app"
                   className="block text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Dashboard
+                  Feed
                 </Link>
                 <Link
                   href="/app/pods"

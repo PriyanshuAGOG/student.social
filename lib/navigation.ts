@@ -1,17 +1,14 @@
 import type { LucideIcon } from "lucide-react"
 import {
-  BarChart3,
   Bell,
   Bot,
   BookOpen,
   CalendarDays,
-  CircleHelp,
   Compass,
   Home,
   LogOut,
   MessageSquareText,
   Plus,
-  Search,
   Settings,
   Sparkles,
   Trophy,
@@ -30,6 +27,7 @@ export type DockNavItem = {
 
 export type DockMenuItem = DockNavItem & {
   action?: "logout"
+  description?: string
 }
 
 export type DockQuickAction = {
@@ -37,6 +35,7 @@ export type DockQuickAction = {
   description: string
   href: string
   icon: LucideIcon
+  tone?: "violet" | "mint" | "amber" | "rose"
 }
 
 export const primaryDockItems: DockNavItem[] = [
@@ -47,25 +46,15 @@ export const primaryDockItems: DockNavItem[] = [
     mobilePrimary: true,
   },
   {
-    label: "Dashboard",
-    href: "/app/dashboard",
-    icon: BarChart3,
-  },
-  {
-    label: "My Pods",
+    label: "Study Pods",
     href: "/app/pods",
     icon: UsersRound,
     mobilePrimary: true,
   },
   {
-    label: "Explore Pods",
-    href: "/app/explore",
-    icon: Search,
-  },
-  {
-    label: "AI Assistant",
-    href: "/app/ai",
-    icon: Bot,
+    label: "Resource Vault",
+    href: "/app/vault",
+    icon: BookOpen,
     mobilePrimary: true,
   },
   {
@@ -74,59 +63,33 @@ export const primaryDockItems: DockNavItem[] = [
     icon: MessageSquareText,
     mobilePrimary: true,
   },
-  {
-    label: "Leaderboard",
-    href: "/app/leaderboard",
-    icon: Trophy,
-  },
 ]
 
 export const secondaryMenuItems: DockMenuItem[] = [
   {
-    label: "Resource Vault",
-    href: "/app/vault",
-    icon: BookOpen,
-  },
-  {
-    label: "Calendar",
-    href: "/app/calendar",
-    icon: CalendarDays,
-  },
-  {
-    label: "Analytics",
-    href: "/app/analytics",
-    icon: BarChart3,
-  },
-  {
-    label: "Saved",
-    href: "/app/saved",
-    icon: Compass,
-  },
-  {
-    label: "Notifications",
-    href: "/app/notifications",
-    icon: Bell,
-  },
-  {
     label: "Profile",
     href: "/app/profile",
     icon: UserRound,
+    description: "Identity, badges, and learning presence",
+  },
+  {
+    label: "Leaderboard",
+    href: "/app/leaderboard",
+    icon: Trophy,
+    description: "Rankings, streaks, and pod momentum",
   },
   {
     label: "Settings",
     href: "/app/settings",
     icon: Settings,
+    description: "Preferences, privacy, and account controls",
   },
   {
-    label: "Help",
-    href: "/help",
-    icon: CircleHelp,
-  },
-  {
-    label: "Log out",
+    label: "Sign out",
     href: "/login",
     icon: LogOut,
     action: "logout",
+    description: "Securely leave this PeerSpark session",
   },
 ]
 
@@ -136,42 +99,49 @@ export const quickActions: DockQuickAction[] = [
     description: "Ask AI to shape your next learning sprint.",
     href: "/app/ai",
     icon: Sparkles,
+    tone: "violet",
   },
   {
     label: "Join Study Pod",
     description: "Use an invite or find your next group.",
     href: "/app/pods/join",
     icon: UsersRound,
+    tone: "mint",
   },
   {
     label: "Start Focus Session",
     description: "Block time for deep work on your calendar.",
     href: "/app/calendar?mode=create",
     icon: Zap,
+    tone: "amber",
   },
   {
     label: "Ask AI",
-    description: "Get unstuck with a tutor-style assistant.",
+    description: "Open the study assistant without adding it to the dock.",
     href: "/app/ai",
     icon: Bot,
+    tone: "violet",
   },
   {
     label: "Upload Resource",
     description: "Save notes, links, and files to your vault.",
     href: "/app/vault",
     icon: UploadCloud,
+    tone: "rose",
   },
   {
-    label: "Explore Pods",
-    description: "Discover active communities and classmates.",
-    href: "/app/explore",
+    label: "Discover Pods",
+    description: "Browse all communities from the unified pods page.",
+    href: "/app/pods",
     icon: Compass,
+    tone: "mint",
   },
   {
     label: "Schedule Session",
     description: "Coordinate the next study meetup.",
     href: "/app/calendar?mode=schedule",
     icon: CalendarDays,
+    tone: "amber",
   },
 ]
 
@@ -180,14 +150,14 @@ export const utilityDockItems = {
     label: "Quick Actions",
     icon: Plus,
   },
+  calendar: {
+    label: "Calendar",
+    href: "/app/calendar",
+    icon: CalendarDays,
+  },
   notifications: {
-    label: "Notifications",
+    label: "Unread notifications",
     href: "/app/notifications",
     icon: Bell,
-  },
-  profile: {
-    label: "Profile",
-    href: "/app/profile",
-    icon: UserRound,
   },
 }
