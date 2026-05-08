@@ -52,7 +52,7 @@ export async function GET(request: Request) {
         try {
           // Count enrollments in timeframe
           const enrollments = await databases.listDocuments(
-            process.env.APPWRITE_DATABASE_ID!,
+            (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
             'course_enrollments',
             [
               {
@@ -77,7 +77,7 @@ export async function GET(request: Request) {
 
           // Count feed posts in timeframe
           const posts = await databases.listDocuments(
-            process.env.APPWRITE_DATABASE_ID!,
+            (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
             'feed_posts',
             [
               {

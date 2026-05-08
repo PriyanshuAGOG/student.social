@@ -35,7 +35,7 @@ const PUBLIC_ROUTES = [
 export function ProtectRoute({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { isAuthenticated, loading, hasActiveSession, sessionChecked, checkSession } = useAuth()
+  const { isAuthenticated, loading, hasActiveSession, isEmailVerified, sessionChecked, checkSession } = useAuth()
   const [isChecking, setIsChecking] = useState(true)
 
   // Determine if current route is public
@@ -43,6 +43,7 @@ export function ProtectRoute({ children }: { children: React.ReactNode }) {
     pathname === route || pathname?.startsWith(route + '/')
   )
   const isAuthPage = pathname === '/login' || pathname === '/register'
+  const isVerificationPage = pathname === '/verify-email'
 
   useEffect(() => {
     const verifyAuth = async () => {
@@ -55,9 +56,15 @@ export function ProtectRoute({ children }: { children: React.ReactNode }) {
           await checkSession()
         }
         
-        // If authenticated and on auth page, redirect to feed
-        if ((isAuthenticated || hasActiveSession) && isAuthPage) {
+        // Verified sessions should not remain on auth/verification pages.
+        if (isAuthenticated && isEmailVerified && (isAuthPage || isVerificationPage)) {
           router.replace('/app/feed')
+          return
+        }
+
+        // Unverified active sessions may only access public pages and verification guidance.
+        if (hasActiveSession && !isEmailVerified && !isPublicRoute) {
+          router.replace('/verify-email?required=1')
           return
         }
         
@@ -75,7 +82,7 @@ export function ProtectRoute({ children }: { children: React.ReactNode }) {
     }
     
     verifyAuth()
-  }, [isAuthenticated, loading, hasActiveSession, sessionChecked, checkSession, router, pathname, isPublicRoute, isAuthPage])
+  }, [isAuthenticated, loading, hasActiveSession, isEmailVerified, sessionChecked, checkSession, router, pathname, isPublicRoute, isAuthPage, isVerificationPage])
 
   // Show loading while checking authentication
   if (loading || isChecking) {
@@ -95,7 +102,7 @@ export function ProtectRoute({ children }: { children: React.ReactNode }) {
   }
 
   // Don't render protected content if not authenticated
-  if (!isAuthenticated && !hasActiveSession) {
+  if (!isAuthenticated || !isEmailVerified) {
     return null
   }
 

@@ -101,7 +101,7 @@ export async function POST(request: Request) {
     // Create feed post
     const postId = `post-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const post = await databases.createDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
       'feed_posts',
       postId,
       {
@@ -136,7 +136,7 @@ export async function POST(request: Request) {
     // Trigger notifications to followers
     try {
       await databases.createDocument(
-        process.env.APPWRITE_DATABASE_ID!,
+        (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
         'notifications',
         `notif-${postId}`,
         {
@@ -224,7 +224,7 @@ export async function GET(request: Request) {
     }
 
     const posts = await databases.listDocuments(
-      process.env.APPWRITE_DATABASE_ID!,
+      (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
       'feed_posts',
       filters,
       limit,
@@ -285,7 +285,7 @@ export async function PUT(request: Request) {
     const { databases } = createAdminClient();
 
     const post = await databases.getDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
       'feed_posts',
       postId
     );
@@ -293,7 +293,7 @@ export async function PUT(request: Request) {
     switch (action) {
       case 'like':
         const liked = await databases.updateDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
           'feed_posts',
           postId,
           {
@@ -307,7 +307,7 @@ export async function PUT(request: Request) {
 
       case 'share':
         const shared = await databases.updateDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
           'feed_posts',
           postId,
           {
@@ -321,7 +321,7 @@ export async function PUT(request: Request) {
 
       case 'delete':
         const deleted = await databases.updateDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
           'feed_posts',
           postId,
           {

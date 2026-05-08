@@ -62,16 +62,20 @@ export default function RegisterPage() {
     setIsLoading(true)
 
     try {
-      // Use real Appwrite authentication
-      await authService.register(formData.email, formData.password, formData.name)
+      // Use real Appwrite authentication. Registration sends verification and must not leave an app session active.
+      await authService.register(formData.email.trim().toLowerCase(), formData.password, formData.name.trim())
+      try {
+        await authService.logout()
+      } catch {
+        // No active session is fine; registration flow still continues to verification guidance.
+      }
 
       toast({
         title: "Verification Required",
-        description: "A verification email was sent. Check your inbox to verify your account.",
+        description: "A verification email was sent. Verify your email before signing in.",
       })
 
-      // Redirect to login
-      router.push("/login?verify=sent")
+      router.replace("/verify-email?sent=1")
     } catch (error: any) {
       console.error("Registration error:", error)
       const errorMessage = error?.message || error?.toString() || "Registration failed. Please try again."
@@ -86,15 +90,26 @@ export default function RegisterPage() {
     }
   }
 
-  const handleOAuthRegister = (provider: string) => {
-    toast({
-      title: `${provider} Registration`,
-      description: `Redirecting to ${provider} authentication...`,
-    })
+  const handleOAuthRegister = async (provider: string) => {
+    setIsLoading(true)
+    try {
+      toast({
+        title: `${provider} Registration`,
+        description: `Redirecting to ${provider} authentication...`,
+      })
+      await authService.loginWithOAuth(provider)
+    } catch (error: any) {
+      toast({
+        title: `${provider} Registration Failed`,
+        description: error?.message || `Unable to start ${provider} registration. Please try again.`,
+        variant: "destructive",
+      })
+      setIsLoading(false)
+    }
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-6 sm:py-10">
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center mb-8">
           <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center mr-3">
@@ -103,7 +118,7 @@ export default function RegisterPage() {
           <span className="text-2xl font-bold">PeerSpark</span>
         </div>
 
-        <Card className="border-0 shadow-lg">
+        <Card className="border-0 shadow-lg sm:rounded-2xl">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold">Create your account</CardTitle>
             <CardDescription>Join thousands of learners on PeerSpark</CardDescription>

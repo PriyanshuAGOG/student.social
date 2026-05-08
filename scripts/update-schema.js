@@ -99,6 +99,7 @@ const collections = [
       { key: 'availability', type: 'string', size: 500, array: true },
       { key: 'currentFocusAreas', type: 'string', size: 2000, array: true },
       { key: 'joinedAt', type: 'string', size: 255, required: true },
+      { key: 'createdAt', type: 'string', size: 255 },
       { key: 'updatedAt', type: 'string', size: 255 },
       { key: 'lastSeen', type: 'string', size: 255 },
       { key: 'isOnline', type: 'boolean' },
@@ -605,6 +606,7 @@ const buckets = [
   { id: 'resources', name: 'Study Resources' },
   { id: 'attachments', name: 'Message Attachments' },
   { id: 'post_images', name: 'Post Images' },
+  { id: 'pod_images', name: 'Pod Images' },
 ]
 
 async function ensureDatabase() {
