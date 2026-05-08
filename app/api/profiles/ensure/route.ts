@@ -21,7 +21,6 @@ const PROFILE_FIELDS = new Set([
   'availability',
   'currentFocusAreas',
   'joinedAt',
-  'createdAt',
   'updatedAt',
   'lastSeen',
   'isOnline',
@@ -35,6 +34,33 @@ function sanitizeProfileData(data: Record<string, unknown>) {
   return Object.fromEntries(
     Object.entries(data).filter(([key, value]) => PROFILE_FIELDS.has(key) && value !== undefined)
   )
+}
+
+function getUnknownAttribute(error: unknown) {
+  const message = error instanceof Error ? error.message : typeof error === 'object' && error !== null && 'message' in error ? String((error as { message?: unknown }).message) : ''
+  return message.match(/Unknown attribute:\s*"([^"]+)"/)?.[1]
+}
+
+async function writeProfileDocument<T>(operation: (data: Record<string, unknown>) => Promise<T>, data: Record<string, unknown>) {
+  const payload = { ...sanitizeProfileData(data) }
+  const removed = new Set<string>()
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      return await operation(payload)
+    } catch (error) {
+      const unknownAttribute = getUnknownAttribute(error)
+
+      if (!unknownAttribute || removed.has(unknownAttribute)) {
+        throw error
+      }
+
+      removed.add(unknownAttribute)
+      delete payload[unknownAttribute]
+    }
+  }
+
+  return operation(payload)
 }
 
 function profilePermissions(userId: string) {
@@ -60,12 +86,15 @@ export async function POST(request: NextRequest) {
 
     try {
       const existing = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, userId)
-      const updatedProfile = await databases.updateDocument(
-        DATABASE_ID,
-        PROFILES_COLLECTION_ID,
-        userId,
-        sanitizeProfileData({ ...(updates || {}), updatedAt: updates ? new Date().toISOString() : existing.updatedAt || new Date().toISOString() }),
-        profilePermissions(userId)
+      const updatedProfile = await writeProfileDocument(
+        (data) => databases.updateDocument(
+          DATABASE_ID,
+          PROFILES_COLLECTION_ID,
+          userId,
+          data,
+          profilePermissions(userId)
+        ),
+        { ...(updates || {}), updatedAt: updates ? new Date().toISOString() : existing.updatedAt || new Date().toISOString() }
       )
 
       return NextResponse.json({ success: true, profile: updatedProfile, created: false })
@@ -84,7 +113,6 @@ export async function POST(request: NextRequest) {
       interests: [],
       avatar: '',
       joinedAt: now,
-      createdAt: now,
       updatedAt: now,
       isOnline: true,
       studyStreak: 0,
@@ -99,12 +127,15 @@ export async function POST(request: NextRequest) {
       ...(updates ? sanitizeProfileData(updates) : {}),
     })
 
-    const profile = await databases.createDocument(
-      DATABASE_ID,
-      PROFILES_COLLECTION_ID,
-      userId,
-      baseProfile,
-      profilePermissions(userId)
+    const profile = await writeProfileDocument(
+      (data) => databases.createDocument(
+        DATABASE_ID,
+        PROFILES_COLLECTION_ID,
+        userId,
+        data,
+        profilePermissions(userId)
+      ),
+      baseProfile
     )
 
     return NextResponse.json({ success: true, profile, created: true }, { status: 201 })

@@ -494,6 +494,33 @@ export const authService = {
 }
 
 
+function getUnknownAppwriteAttribute(error: unknown) {
+  const message = error instanceof Error ? error.message : typeof error === 'object' && error !== null && 'message' in error ? String((error as { message?: unknown }).message) : ''
+  return message.match(/Unknown attribute:\s*"([^"]+)"/)?.[1]
+}
+
+async function writeProfileDocumentWithSchemaRetry<T>(operation: (data: Record<string, unknown>) => Promise<T>, data: Record<string, unknown>) {
+  const payload = { ...data }
+  const removed = new Set<string>()
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      return await operation(payload)
+    } catch (error) {
+      const unknownAttribute = getUnknownAppwriteAttribute(error)
+
+      if (!unknownAttribute || removed.has(unknownAttribute)) {
+        throw error
+      }
+
+      removed.add(unknownAttribute)
+      delete payload[unknownAttribute]
+    }
+  }
+
+  return operation(payload)
+}
+
 async function ensureProfileViaApi(userId: string, defaults: Record<string, unknown> = {}, updates?: Record<string, unknown>) {
   const response = await fetch('/api/profiles/ensure', {
     method: 'POST',
@@ -537,27 +564,29 @@ export const profileService = {
           devLog(`[ensureProfileExists] Creating profile for user: ${userId}`)
           const now = new Date().toISOString()
           try {
-            const profile = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
-              userId: userId,
-              name: defaults.name || `User_${userId.slice(0, 6)}`,
-              email: defaults.email || "",
-              bio: "",
-              interests: [],
-              avatar: "",
-              joinedAt: now,
-              isOnline: true,
-              studyStreak: 0,
-              totalPoints: 0,
-              level: 1,
-              badges: [],
-              learningGoals: [],
-              learningPace: '',
-              preferredSessionTypes: [],
-              availability: [],
-              currentFocusAreas: [],
-              createdAt: now,
-              updatedAt: now,
-            })
+            const profile = await writeProfileDocumentWithSchemaRetry(
+              (payload) => databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, payload),
+              {
+                userId: userId,
+                name: defaults.name || `User_${userId.slice(0, 6)}`,
+                email: defaults.email || "",
+                bio: "",
+                interests: [],
+                avatar: "",
+                joinedAt: now,
+                isOnline: true,
+                studyStreak: 0,
+                totalPoints: 0,
+                level: 1,
+                badges: [],
+                learningGoals: [],
+                learningPace: '',
+                preferredSessionTypes: [],
+                availability: [],
+                currentFocusAreas: [],
+                updatedAt: now,
+              }
+            )
             devLog(`[ensureProfileExists] Profile created successfully`, { id: profile.$id })
             return profile
           } catch (createError: any) {
@@ -654,19 +683,25 @@ export const profileService = {
 
     try {
       // First try to update with all attributes
-      return await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
-        ...filterData(data, true),
-        updatedAt: new Date().toISOString(),
-      })
+      return await writeProfileDocumentWithSchemaRetry(
+        (payload) => databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, payload),
+        {
+          ...filterData(data, true),
+          updatedAt: new Date().toISOString(),
+        }
+      )
     } catch (error: any) {
       // If unknown attribute error, retry without optional attributes
       if (error?.message?.includes('Unknown attribute')) {
         console.warn(`Unknown attribute in update, retrying without optional attrs:`, error.message)
         try {
-          return await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
-            ...filterData(data, false),
-            updatedAt: new Date().toISOString(),
-          })
+          return await writeProfileDocumentWithSchemaRetry(
+            (payload) => databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, payload),
+            {
+              ...filterData(data, false),
+              updatedAt: new Date().toISOString(),
+            }
+          )
         } catch (retryError) {
           console.error("Update profile error after retry:", retryError)
           throw retryError
@@ -684,21 +719,24 @@ export const profileService = {
         } catch (apiError) {
           console.warn("Server profile creation failed, trying client fallback:", apiError)
           try {
-            return await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
-              userId: userId,
-              name: data.name || "",
-              email: data.email || "",
-              bio: data.bio || "",
-              avatar: data.avatar || "",
-              joinedAt: new Date().toISOString(),
-              isOnline: true,
-              studyStreak: 0,
-              totalPoints: 0,
-              level: 1,
-              badges: [],
-              ...filterData(data, false),
-              updatedAt: new Date().toISOString(),
-            })
+            return await writeProfileDocumentWithSchemaRetry(
+              (payload) => databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, payload),
+              {
+                userId: userId,
+                name: data.name || "",
+                email: data.email || "",
+                bio: data.bio || "",
+                avatar: data.avatar || "",
+                joinedAt: new Date().toISOString(),
+                isOnline: true,
+                studyStreak: 0,
+                totalPoints: 0,
+                level: 1,
+                badges: [],
+                ...filterData(data, false),
+                updatedAt: new Date().toISOString(),
+              }
+            )
           } catch (createError) {
             console.error("Failed to create profile:", createError)
             throw createError
