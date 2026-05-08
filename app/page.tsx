@@ -2,8 +2,9 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,12 +29,15 @@ import {
   ChevronRight,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/lib/auth-context"
 
 export default function LandingPage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [email, setEmail] = useState("")
   const [currentTestimonial, setCurrentTestimonial] = useState(0)
   const { toast } = useToast()
+  const router = useRouter()
+  const { loading, hasActiveSession, isEmailVerified, isAuthenticated } = useAuth()
 
   const features = [
     {
@@ -99,6 +103,20 @@ export default function LandingPage() {
     { number: "∞", label: "Study Partners" },
   ]
 
+
+  useEffect(() => {
+    if (loading || !hasActiveSession) return
+
+    if (isAuthenticated && isEmailVerified) {
+      router.replace("/app/feed")
+      return
+    }
+
+    if (!isEmailVerified) {
+      router.replace("/verify-email?required=1")
+    }
+  }, [loading, hasActiveSession, isAuthenticated, isEmailVerified, router])
+
   const handleNewsletterSignup = (e: React.FormEvent) => {
     e.preventDefault()
     if (email) {
@@ -137,7 +155,7 @@ export default function LandingPage() {
             </div>
 
             {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center space-x-6">
+            <div className="hidden lg:flex items-center space-x-6">
               <Link href="#features" className="text-sm font-medium hover:text-primary transition-colors">
                 Features
               </Link>
@@ -152,7 +170,7 @@ export default function LandingPage() {
               </Link>
             </div>
 
-            <div className="hidden md:flex items-center space-x-4">
+            <div className="hidden lg:flex items-center space-x-4">
               <ThemeToggle />
               <Link href="/login">
                 <Button variant="ghost" size="sm">
@@ -167,7 +185,7 @@ export default function LandingPage() {
             </div>
 
             {/* Mobile menu button */}
-            <div className="flex md:hidden items-center space-x-2">
+            <div className="flex lg:hidden items-center space-x-2">
               <ThemeToggle />
               <Button variant="ghost" size="icon" onClick={() => setIsMenuOpen(!isMenuOpen)} className="touch-target">
                 {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -177,7 +195,7 @@ export default function LandingPage() {
 
           {/* Mobile Navigation Menu */}
           {isMenuOpen && (
-            <div className="md:hidden border-t bg-background/95 backdrop-blur">
+            <div className="lg:hidden border-t bg-background/95 backdrop-blur">
               <div className="mobile-space mobile-padding">
                 <div className="flex flex-col space-y-3">
                   <Link
@@ -240,13 +258,13 @@ export default function LandingPage() {
               collaborative learning.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 mt-8">
-              <Link href="/register">
+              <Link href="/register" className="w-full sm:w-auto">
                 <Button size="lg" className="mobile-button w-full sm:w-auto">
                   Start Learning Free
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
-              <Link href="/demo">
+              <Link href="/demo" className="w-full sm:w-auto">
                 <Button variant="outline" size="lg" className="mobile-button w-full sm:w-auto bg-transparent">
                   Watch Demo
                 </Button>

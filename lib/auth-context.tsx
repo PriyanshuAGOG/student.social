@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { Models, AppwriteException } from 'appwrite'
-import { account, authService, profileService } from './appwrite'
+import { account, authService, profileService, isAppwriteEmailVerified } from './appwrite'
 
 import { Profile } from '@/types'
 
@@ -19,6 +19,7 @@ interface AuthContextType {
   error: string | null
   isAuthenticated: boolean
   hasActiveSession: boolean
+  isEmailVerified: boolean
   sessionChecked: boolean
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
@@ -38,6 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [sessionChecked, setSessionChecked] = useState(false)
   const [hasActiveSession, setHasActiveSession] = useState(false)
+  const [isEmailVerified, setIsEmailVerified] = useState(false)
 
   // Clear any error
   const clearError = useCallback(() => {
@@ -58,9 +60,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       sessionCheckPromise = null
 
       if (currentUser) {
+        const verified = isAppwriteEmailVerified(currentUser)
         setUser(currentUser)
         setHasActiveSession(true)
-        setError(null)
+        setIsEmailVerified(verified)
+        setError(verified ? null : 'Please verify your email address before using PeerSpark.')
+
+        if (!verified) {
+          setProfile(null)
+          return true
+        }
 
         // Load user profile - ensure it exists
         try {
@@ -79,9 +88,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       setHasActiveSession(false)
+      setIsEmailVerified(false)
       return false
     } catch {
       setHasActiveSession(false)
+      setIsEmailVerified(false)
       sessionCheckPromise = null
       return false
     } finally {
@@ -99,11 +110,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!hasSession) {
           setUser(null)
           setProfile(null)
+          setIsEmailVerified(false)
         }
       } catch (err) {
         console.error('Auth initialization error:', err)
         setUser(null)
         setProfile(null)
+        setIsEmailVerified(false)
       } finally {
         setLoading(false)
       }
@@ -115,9 +128,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = useCallback(async () => {
     try {
       const currentUser = await account.get()
+      const verified = isAppwriteEmailVerified(currentUser)
       setUser(currentUser)
       setHasActiveSession(true)
-      setError(null)
+      setIsEmailVerified(verified)
+      setError(verified ? null : 'Please verify your email address before using PeerSpark.')
+
+      if (!verified) {
+        setProfile(null)
+        return
+      }
 
       // Also refresh profile - ensure it exists
       if (currentUser?.$id) {
@@ -141,6 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null)
         setProfile(null)
         setHasActiveSession(false)
+        setIsEmailVerified(false)
       } else {
         setError(err instanceof Error ? err.message : 'Failed to refresh user')
       }
@@ -153,6 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null)
       setProfile(null)
       setHasActiveSession(false)
+      setIsEmailVerified(false)
       setError(null)
 
       // Clear any cached session check
@@ -162,6 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null)
       setProfile(null)
       setHasActiveSession(false)
+      setIsEmailVerified(false)
 
       // Only set error if it's not a "no session" error
       const isNoSession = (err as AppwriteException)?.code === 401 || (err as AppwriteException)?.message?.includes('missing scope')
@@ -180,8 +203,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         isLoading: loading,
         error,
-        isAuthenticated: !!user,
+        isAuthenticated: !!user && isEmailVerified,
         hasActiveSession,
+        isEmailVerified,
         sessionChecked,
         logout,
         refreshUser,

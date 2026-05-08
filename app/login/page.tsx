@@ -26,7 +26,7 @@ function LoginPageContent() {
   const router = useRouter()
   const { toast } = useToast()
   const searchParams = useSearchParams()
-  const { refreshUser, isAuthenticated, loading: authLoading, checkSession, hasActiveSession, sessionChecked } = useAuth()
+  const { refreshUser, isAuthenticated, loading: authLoading, checkSession, hasActiveSession, isEmailVerified, sessionChecked } = useAuth()
 
   // Check for existing session and redirect if authenticated
   useEffect(() => {
@@ -37,8 +37,8 @@ function LoginPageContent() {
         // Wait for auth to finish loading
         if (authLoading) return
         
-        // If already authenticated, redirect to feed
-        if (isAuthenticated && hasActiveSession) {
+        // If already authenticated and verified, redirect to feed.
+        if (isAuthenticated && hasActiveSession && isEmailVerified) {
           toast({
             title: "Welcome back!",
             description: "You already have an active session.",
@@ -46,16 +46,17 @@ function LoginPageContent() {
           router.replace("/app/feed")
           return
         }
+
+        if (hasActiveSession && !isEmailVerified) {
+          router.replace("/verify-email?required=1")
+          return
+        }
         
         // Double-check session if not yet checked
         if (!sessionChecked) {
           const hasSession = await checkSession()
           if (hasSession) {
-            toast({
-              title: "Session restored",
-              description: "Redirecting to your feed...",
-            })
-            router.replace("/app/feed")
+            // checkSession updates context; unverified sessions will be handled by the effect above.
             return
           }
         }
@@ -68,7 +69,7 @@ function LoginPageContent() {
     }
     
     checkExistingSession()
-  }, [isAuthenticated, authLoading, hasActiveSession, sessionChecked, checkSession, router, toast])
+  }, [isAuthenticated, authLoading, hasActiveSession, isEmailVerified, sessionChecked, checkSession, router, toast])
 
   useEffect(() => {
     try {
@@ -107,11 +108,20 @@ function LoginPageContent() {
       // First check if there's already an active session
       const hasExistingSession = await checkSession()
       if (hasExistingSession) {
-        toast({
-          title: "Already logged in",
-          description: "You already have an active session. Redirecting...",
-        })
-        router.replace("/app/feed")
+        if (isEmailVerified) {
+          toast({
+            title: "Already logged in",
+            description: "You already have an active session. Redirecting...",
+          })
+          router.replace("/app/feed")
+        } else {
+          toast({
+            title: "Email verification required",
+            description: "Please verify your email before using PeerSpark.",
+            variant: "destructive",
+          })
+          router.replace("/verify-email?required=1")
+        }
         return
       }
 
@@ -149,6 +159,16 @@ function LoginPageContent() {
       let errorMessage = error?.message || error?.toString() || "Login failed. Please check your credentials."
       
       // Handle specific error cases with user-friendly messages
+      if (errorMessage.includes('EMAIL_NOT_VERIFIED')) {
+        toast({
+          title: "Email verification required",
+          description: "Please verify your email address. We sent you a fresh verification email.",
+          variant: "destructive",
+        })
+        router.replace("/verify-email?required=1")
+        return
+      }
+
       if (errorMessage.includes('Creation of a session is prohibited') || errorMessage.includes('session is active')) {
         // There's already an active session - redirect instead of showing error
         toast({
@@ -156,7 +176,7 @@ function LoginPageContent() {
           description: "You already have an active session. Redirecting...",
         })
         await refreshUser()
-        router.replace("/app/feed")
+        router.replace(isEmailVerified ? "/app/feed" : "/verify-email?required=1")
         return
       }
       
@@ -199,7 +219,7 @@ function LoginPageContent() {
   // Show loading while checking for existing session
   if (isCheckingSession || authLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="min-h-screen bg-background flex items-center justify-center px-4 py-6 sm:py-10">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-muted-foreground">Checking session...</p>
@@ -209,7 +229,7 @@ function LoginPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-6 sm:py-10">
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center mb-8">
           <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center mr-3">
@@ -218,7 +238,7 @@ function LoginPageContent() {
           <span className="text-2xl font-bold">PeerSpark</span>
         </div>
 
-        <Card className="border-0 shadow-lg">
+        <Card className="border-0 shadow-lg sm:rounded-2xl">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
             <CardDescription>Sign in to your account to continue learning</CardDescription>

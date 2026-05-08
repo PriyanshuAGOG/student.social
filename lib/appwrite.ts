@@ -19,6 +19,19 @@ const devLog = (message: string, data?: any) => {
   }
 }
 
+export function isAppwriteEmailVerified(user: any): boolean {
+  return user?.emailVerification === true
+    || user?.emailVerified === true
+    || user?.status === 'verified'
+    || user?.status === true
+    || user?.status === 1
+}
+
+function isNoActiveSessionError(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase()
+  return error?.code === 401 || message.includes('missing scope') || message.includes('unauthorized') || message.includes('guests')
+}
+
 // Initialize Appwrite Client with your credentials
 const endpoint = typeof window !== "undefined" 
   ? process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT 
@@ -214,15 +227,25 @@ export const authService = {
         throw new Error("Email and password are required")
       }
 
-      // First, check if there's already an active session
+      // First, check if there's already an active session and enforce verification on it.
       try {
         const currentUser = await account.get()
         if (currentUser) {
-          // Already logged in, return existing session info
-          devLog("User already has an active session")
+          if (!isAppwriteEmailVerified(currentUser)) {
+            try {
+              await this.resendVerification(currentUser.email || email)
+            } catch (verificationError) {
+              console.warn('Failed to send verification reminder for active unverified session:', verificationError)
+            }
+            throw new Error('EMAIL_NOT_VERIFIED: Please verify your email address before signing in.')
+          }
+          devLog("User already has an active verified session")
           return { userId: currentUser.$id, $id: 'existing-session' }
         }
-      } catch (e) {
+      } catch (e: any) {
+        if (String(e?.message || '').includes('EMAIL_NOT_VERIFIED')) {
+          throw e
+        }
         // No active session, proceed with login
       }
 
@@ -265,19 +288,25 @@ export const authService = {
         console.warn('Failed to get user info:', e)
       }
 
-      // Check email verification (optional - can be disabled for testing)
+      // Email verification is mandatory before app access.
       if (user) {
-        const verified = user?.emailVerification === true
-          || user?.emailVerified === true
-          || user?.status === 'verified'
-          || user?.status === true
-          || user?.status === 1
-        
-        // Uncomment below to enforce email verification
-        // if (!verified) {
-        //   try { await account.deleteSession('current') } catch (e) {}
-        //   throw new Error('Please verify your email address before logging in')
-        // }
+        const verified = isAppwriteEmailVerified(user)
+
+        if (!verified) {
+          try {
+            await this.resendVerification(email)
+          } catch (verificationError) {
+            console.warn('Failed to send verification reminder during login:', verificationError)
+          }
+          try {
+            await account.deleteSession('current')
+          } catch (logoutError) {
+            if (!isNoActiveSessionError(logoutError)) {
+              console.warn('Failed to clear unverified session after login:', logoutError)
+            }
+          }
+          throw new Error('EMAIL_NOT_VERIFIED: Please verify your email address before signing in. We sent you a fresh verification email.')
+        }
 
         // Try to update profile status, create profile if it doesn't exist or lacks client permissions
         try {
@@ -462,6 +491,33 @@ export const authService = {
     } catch (error: any) {
       console.error("Password reset confirmation error:", error)
       throw new Error(error?.message || "Failed to reset password")
+    }
+  },
+
+  // Confirm email verification from Appwrite verification link
+  async confirmEmailVerification(userId: string, secret: string) {
+    try {
+      if (!userId || !secret) {
+        throw new Error('Verification link is missing required parameters')
+      }
+      if (account && typeof (account as any).updateVerification === 'function') {
+        return await (account as any).updateVerification(userId, secret)
+      }
+      const resp = await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/verification', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Appwrite-Project': projectId || ''
+        },
+        body: JSON.stringify({ userId, secret }),
+        credentials: 'include',
+      })
+      const data = await resp.json().catch(() => ({}))
+      if (!resp.ok) throw new Error(data.message || 'Failed to verify email')
+      return data
+    } catch (error: any) {
+      console.error('Email verification confirmation error:', error)
+      throw new Error(error?.message || 'Failed to verify email')
     }
   },
 
