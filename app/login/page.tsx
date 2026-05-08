@@ -178,11 +178,22 @@ function LoginPageContent() {
     }
   }
 
-  const handleOAuthLogin = (provider: string) => {
-    toast({
-      title: `${provider} Login`,
-      description: `Redirecting to ${provider} authentication...`,
-    })
+  const handleOAuthLogin = async (provider: string) => {
+    setIsLoading(true)
+    try {
+      toast({
+        title: `${provider} Login`,
+        description: `Redirecting to ${provider} authentication...`,
+      })
+      await authService.loginWithOAuth(provider)
+    } catch (error: any) {
+      toast({
+        title: `${provider} Login Failed`,
+        description: error?.message || `Unable to start ${provider} login. Please try again.`,
+        variant: "destructive",
+      })
+      setIsLoading(false)
+    }
   }
 
   // Show loading while checking for existing session

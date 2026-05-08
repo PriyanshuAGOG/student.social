@@ -58,7 +58,7 @@ export async function GET(request: Request) {
 
     // 2. Fetch submissions requiring review
     const allSubmissions = await databases.listDocuments(
-      process.env.APPWRITE_DATABASE_ID!,
+      (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
       'assignment_submissions',
       [],
       10000
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
       try {
         const course = await courseService.getCourse(submission.courseId);
         const assignment = await databases.getDocument(
-          process.env.APPWRITE_DATABASE_ID!,
+          (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
           'course_assignments',
           submission.assignmentId
         );
@@ -194,7 +194,7 @@ export async function POST(request: Request) {
 
     // Update submission with instructor grade
     const updated = await databases.updateDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
       'assignment_submissions',
       submissionId,
       {
@@ -209,14 +209,14 @@ export async function POST(request: Request) {
 
     // Notify student
     const submission = await databases.getDocument(
-      process.env.APPWRITE_DATABASE_ID!,
+      (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
       'assignment_submissions',
       submissionId
     );
 
     try {
       await databases.createDocument(
-        process.env.APPWRITE_DATABASE_ID!,
+        (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
         'notifications',
         `notif-grade-${submissionId}`,
         {

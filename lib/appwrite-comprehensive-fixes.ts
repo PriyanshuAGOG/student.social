@@ -43,24 +43,24 @@ export function createAdminClient() {
 // Constants (copy from appwrite.ts)
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const COLLECTIONS = {
-  PROFILES: process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID!,
-  POSTS: process.env.NEXT_PUBLIC_POSTS_COLLECTION_ID!,
-  COMMENTS: process.env.NEXT_PUBLIC_COMMENTS_COLLECTION_ID!,
-  PODS: process.env.NEXT_PUBLIC_PODS_COLLECTION_ID!,
-  MESSAGES: process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID!,
-  CHAT_ROOMS: process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID!,
-  RESOURCES: process.env.NEXT_PUBLIC_RESOURCES_COLLECTION_ID!,
-  NOTIFICATIONS: process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID!,
-  CALENDAR_EVENTS: process.env.NEXT_PUBLIC_CALENDAR_EVENTS_COLLECTION_ID!,
-  SAVED_POSTS: process.env.NEXT_PUBLIC_SAVED_POSTS_COLLECTION_ID!,
+  PROFILES: (process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'),
+  POSTS: (process.env.NEXT_PUBLIC_POSTS_COLLECTION_ID || 'posts'),
+  COMMENTS: (process.env.NEXT_PUBLIC_COMMENTS_COLLECTION_ID || 'comments'),
+  PODS: (process.env.NEXT_PUBLIC_PODS_COLLECTION_ID || 'pods'),
+  MESSAGES: (process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID || 'messages'),
+  CHAT_ROOMS: (process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms'),
+  RESOURCES: (process.env.NEXT_PUBLIC_RESOURCES_COLLECTION_ID || 'resources'),
+  NOTIFICATIONS: (process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications'),
+  CALENDAR_EVENTS: (process.env.NEXT_PUBLIC_CALENDAR_EVENTS_COLLECTION_ID || 'calendar_events'),
+  SAVED_POSTS: (process.env.NEXT_PUBLIC_SAVED_POSTS_COLLECTION_ID || 'saved_posts'),
 }
 
 const BUCKETS = {
-  AVATARS: process.env.NEXT_PUBLIC_AVATARS_BUCKET_ID!,
-  RESOURCES: process.env.NEXT_PUBLIC_RESOURCES_BUCKET_ID!,
-  ATTACHMENTS: process.env.NEXT_PUBLIC_ATTACHMENTS_BUCKET_ID!,
-  POST_IMAGES: process.env.NEXT_PUBLIC_POST_IMAGES_BUCKET_ID!,
-  POD_IMAGES: process.env.NEXT_PUBLIC_POD_IMAGES_BUCKET_ID!,
+  AVATARS: (process.env.NEXT_PUBLIC_AVATARS_BUCKET_ID || 'avatars'),
+  RESOURCES: (process.env.NEXT_PUBLIC_RESOURCES_BUCKET_ID || 'resources'),
+  ATTACHMENTS: (process.env.NEXT_PUBLIC_ATTACHMENTS_BUCKET_ID || 'attachments'),
+  POST_IMAGES: (process.env.NEXT_PUBLIC_POST_IMAGES_BUCKET_ID || 'post_images'),
+  POD_IMAGES: (process.env.NEXT_PUBLIC_POD_IMAGES_BUCKET_ID || 'pod_images'),
 }
 
 // ============================================================================

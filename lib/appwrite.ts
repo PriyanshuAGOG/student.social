@@ -1,4 +1,4 @@
-import { Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query } from "appwrite"
+import { Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query, OAuthProvider } from "appwrite"
 import { rankPodsForUser } from "./pod-matching"
 
 // Debug function to log initialization (opt-in for dev only)
@@ -279,43 +279,23 @@ export const authService = {
         //   throw new Error('Please verify your email address before logging in')
         // }
 
-        // Try to update profile status, create profile if it doesn't exist
+        // Try to update profile status, create profile if it doesn't exist or lacks client permissions
         try {
-          await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
-            isOnline: true,
-            lastSeen: new Date().toISOString(),
-          })
-          devLog(`[login] Updated profile status for user: ${user.$id}`)
+          await ensureProfileViaApi(
+            user.$id,
+            { name: user.name || email.split('@')[0], email },
+            { isOnline: true, lastSeen: new Date().toISOString() }
+          )
+          devLog(`[login] Ensured profile status for user: ${user.$id}`)
         } catch (profileError: any) {
-          // Profile might not exist - try to create it
-          if (profileError?.code === 404 || profileError?.message?.includes('not be found')) {
-            devLog(`[login] Profile not found for user ${user.$id}, creating new profile`)
-            try {
-              const newProfile = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
-                userId: user.$id,
-                name: user.name || email.split('@')[0],
-                email: email,
-                bio: "",
-                interests: [],
-                avatar: "",
-                joinedAt: new Date().toISOString(),
-                isOnline: true,
-                studyStreak: 0,
-                totalPoints: 0,
-                level: 1,
-                badges: [],
-                learningGoals: [],
-                learningPace: '',
-                preferredSessionTypes: [],
-                availability: [],
-                currentFocusAreas: [],
-              })
-              devLog(`[login] Profile created successfully`, { id: newProfile.$id, name: newProfile.name })
-            } catch (createError) {
-              console.error("[login] Failed to create profile:", createError)
-            }
-          } else {
-            console.warn("[login] Failed to update user status:", profileError)
+          console.warn("[login] Server profile ensure failed, trying client status update:", profileError)
+          try {
+            await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
+              isOnline: true,
+              lastSeen: new Date().toISOString(),
+            })
+          } catch (clientProfileError) {
+            console.warn("[login] Failed to update user status:", clientProfileError)
           }
         }
       }
@@ -335,8 +315,18 @@ export const authService = {
         throw new Error("OAuth login only works in browser")
       }
 
+      const providerMap: Record<string, OAuthProvider> = {
+        google: OAuthProvider.Google,
+        github: OAuthProvider.Github,
+      }
+      const normalizedProvider = providerMap[provider.toLowerCase()]
+
+      if (!normalizedProvider) {
+        throw new Error(`Unsupported OAuth provider: ${provider}`)
+      }
+
       return await account.createOAuth2Session(
-        provider as any,
+        normalizedProvider,
         `${window.location.origin}/app/feed`,
         `${window.location.origin}/login`,
       )
@@ -503,6 +493,23 @@ export const authService = {
   },
 }
 
+
+async function ensureProfileViaApi(userId: string, defaults: Record<string, unknown> = {}, updates?: Record<string, unknown>) {
+  const response = await fetch('/api/profiles/ensure', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, defaults, updates }),
+  })
+
+  const payload = await response.json().catch(() => null)
+
+  if (!response.ok || !payload?.success) {
+    throw new Error(payload?.error || 'Failed to ensure profile')
+  }
+
+  return payload.profile
+}
+
 // Profile Functions
 export const profileService = {
   /**
@@ -514,50 +521,57 @@ export const profileService = {
     email?: string
   } = {}): Promise<any> {
     try {
-      // First try to get existing profile
-      const existing = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId)
-      devLog(`[ensureProfileExists] Profile already exists for user: ${userId}`)
-      return existing
-    } catch (error: any) {
-      // If not found, create it
-      if (error?.code === 404 || error?.message?.includes('not found')) {
-        devLog(`[ensureProfileExists] Creating profile for user: ${userId}`)
-        const now = new Date().toISOString()
-        try {
-          const profile = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
-            userId: userId,
-            name: defaults.name || `User_${userId.slice(0, 6)}`,
-            email: defaults.email || "",
-            bio: "",
-            interests: [],
-            avatar: "",
-            joinedAt: now,
-            isOnline: true,
-            studyStreak: 0,
-            totalPoints: 0,
-            level: 1,
-            badges: [],
-            learningGoals: [],
-            learningPace: '',
-            preferredSessionTypes: [],
-            availability: [],
-            currentFocusAreas: [],
-            createdAt: now,
-            updatedAt: now,
-          })
-          devLog(`[ensureProfileExists] Profile created successfully`, { id: profile.$id })
-          return profile
-        } catch (createError: any) {
-          // If document already exists (race condition), fetch it
-          if (createError?.code === 409 || createError?.message?.includes('already exists')) {
-            return await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId)
+      const profile = await ensureProfileViaApi(userId, defaults)
+      devLog(`[ensureProfileExists] Profile ensured via API`, { id: profile.$id })
+      return profile
+    } catch (apiError: any) {
+      console.warn(`[ensureProfileExists] Server profile ensure failed, trying client fallback:`, apiError)
+      try {
+        // First try to get existing profile
+        const existing = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId)
+        devLog(`[ensureProfileExists] Profile already exists for user: ${userId}`)
+        return existing
+      } catch (error: any) {
+        // If not found, create it
+        if (error?.code === 404 || error?.code === 401 || error?.message?.includes('not found') || error?.message?.includes('missing scope') || error?.message?.includes('permissions')) {
+          devLog(`[ensureProfileExists] Creating profile for user: ${userId}`)
+          const now = new Date().toISOString()
+          try {
+            const profile = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
+              userId: userId,
+              name: defaults.name || `User_${userId.slice(0, 6)}`,
+              email: defaults.email || "",
+              bio: "",
+              interests: [],
+              avatar: "",
+              joinedAt: now,
+              isOnline: true,
+              studyStreak: 0,
+              totalPoints: 0,
+              level: 1,
+              badges: [],
+              learningGoals: [],
+              learningPace: '',
+              preferredSessionTypes: [],
+              availability: [],
+              currentFocusAreas: [],
+              createdAt: now,
+              updatedAt: now,
+            })
+            devLog(`[ensureProfileExists] Profile created successfully`, { id: profile.$id })
+            return profile
+          } catch (createError: any) {
+            // If document already exists (race condition), fetch it
+            if (createError?.code === 409 || createError?.message?.includes('already exists')) {
+              return await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId)
+            }
+            console.error(`[ensureProfileExists] Failed to create profile:`, createError)
+            throw createError
           }
-          console.error(`[ensureProfileExists] Failed to create profile:`, createError)
-          throw createError
         }
+        console.error(`[ensureProfileExists] Error:`, error)
+        throw error
       }
-      console.error(`[ensureProfileExists] Error:`, error)
-      throw error
     }
   },
 
@@ -659,27 +673,36 @@ export const profileService = {
         }
       }
       // If document not found, create it instead
-      if (error?.code === 404 || error?.message?.includes('not found')) {
-        console.warn("Profile not found, creating new profile:", userId)
+      if (error?.code === 404 || error?.code === 401 || error?.message?.includes('not found') || error?.message?.includes('missing scope') || error?.message?.includes('permissions')) {
+        console.warn("Profile missing or not writable, ensuring profile via API:", userId)
         try {
-          return await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
-            userId: userId,
-            name: data.name || "",
-            email: "",
-            bio: data.bio || "",
-            avatar: data.avatar || "",
-            joinedAt: new Date().toISOString(),
-            isOnline: true,
-            studyStreak: 0,
-            totalPoints: 0,
-            level: 1,
-            badges: [],
-            ...filterData(data, false),
-            updatedAt: new Date().toISOString(),
-          })
-        } catch (createError) {
-          console.error("Failed to create profile:", createError)
-          throw createError
+          return await ensureProfileViaApi(
+            userId,
+            { name: data.name || "", email: data.email || "" },
+            filterData(data, true)
+          )
+        } catch (apiError) {
+          console.warn("Server profile creation failed, trying client fallback:", apiError)
+          try {
+            return await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
+              userId: userId,
+              name: data.name || "",
+              email: data.email || "",
+              bio: data.bio || "",
+              avatar: data.avatar || "",
+              joinedAt: new Date().toISOString(),
+              isOnline: true,
+              studyStreak: 0,
+              totalPoints: 0,
+              level: 1,
+              badges: [],
+              ...filterData(data, false),
+              updatedAt: new Date().toISOString(),
+            })
+          } catch (createError) {
+            console.error("Failed to create profile:", createError)
+            throw createError
+          }
         }
       }
       console.error("Update profile error:", error)
