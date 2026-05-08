@@ -14,13 +14,13 @@ export default function CoursePage() {
   const params = useParams();
   const router = useRouter();
   const courseId = params.id as string;
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const [course, setCourse] = useState<any>(null);
   const [chapters, setChapters] = useState<any[]>([]);
   const [enrolled, setEnrolled] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [selectedChapter, setSelectedChapter] = useState<any>(null);
+  const [selectedChapterIndex, setSelectedChapterIndex] = useState(0);
 
   useEffect(() => {
     if (courseId) {
@@ -45,7 +45,7 @@ export default function CoursePage() {
         const chaptersData = await chaptersRes.json();
         setChapters(chaptersData.chapters || []);
         if (chaptersData.chapters && chaptersData.chapters.length > 0) {
-          setSelectedChapter(chaptersData.chapters[0]);
+          setSelectedChapterIndex(0);
         }
       }
 
@@ -209,10 +209,10 @@ export default function CoursePage() {
   return (
     <div className="h-screen">
       <CoursePlayer
-        courseId={courseId}
+        course={course}
         chapters={chapters}
-        selectedChapter={selectedChapter}
-        onChapterSelect={setSelectedChapter}
+        currentChapterIndex={selectedChapterIndex}
+        onChapterChange={setSelectedChapterIndex}
       />
     </div>
   );

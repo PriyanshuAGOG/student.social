@@ -15,6 +15,7 @@ interface AuthContextType {
   user: Models.User<Models.Preferences> | null
   profile: UserProfile | null
   loading: boolean
+  isLoading: boolean
   error: string | null
   isAuthenticated: boolean
   hasActiveSession: boolean
@@ -177,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         profile,
         loading,
+        isLoading: loading,
         error,
         isAuthenticated: !!user,
         hasActiveSession,

@@ -1,14 +1,15 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
-import { Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@/lib/auth-context"
 
-const inter = Inter({ subsets: ["latin"] })
+
+const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://peerspark.app"
 
 export const metadata: Metadata = {
+  metadataBase: new URL(appUrl),
   title: "PeerSpark - Collaborative Learning Platform",
   description: "Connect, learn, and grow with peers through collaborative study sessions and AI-powered insights.",
   generator: 'v0.dev',
@@ -88,14 +89,12 @@ export default function RootLayout({
         <meta name="msapplication-TileColor" content="#000000" />
         <meta name="msapplication-config" content="/browserconfig.xml" />
         <link rel="mask-icon" href="/placeholder-icon.png" color="#000000" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* Preconnect to Jitsi for faster video calls - script loads dynamically when needed */}
         <link rel="preconnect" href="https://meet.jit.si" />
         <link rel="dns-prefetch" href="https://meet.jit.si" />
         <script src="/sw-register.js" defer></script>
       </head>
-      <body className={inter.className}>
+      <body>
         <AuthProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
             {children}

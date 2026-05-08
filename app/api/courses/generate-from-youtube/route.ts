@@ -14,7 +14,7 @@ import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_DATABASE_ID!;
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const COURSES_COLLECTION_ID = process.env.NEXT_PUBLIC_COURSES_COLLECTION_ID!;
 const CHAPTERS_COLLECTION_ID = process.env.NEXT_PUBLIC_CHAPTERS_COLLECTION_ID!;
 

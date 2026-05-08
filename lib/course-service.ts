@@ -47,11 +47,23 @@ const removeUndefined = (data: Record<string, unknown>) => {
 };
 
 // Utility parsers to coerce stored JSON strings into typed arrays safely
-const parseArray = (value: string | null | undefined) => {
+const parseArray = (value: unknown) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
   try {
-    return JSON.parse(value ?? '[]');
+    return JSON.parse(value);
   } catch {
     return [];
+  }
+};
+
+const parseJson = <T,>(value: unknown, fallback: T): T => {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (typeof value !== 'string') return value as T;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
   }
 };
 
@@ -381,12 +393,12 @@ export async function getContent(
 function parseContent(doc: StoredDocument): CourseContent {
   return {
     ...doc,
-    summaries: JSON.parse(doc.summaries || '[]'),
-    keyTakeaways: JSON.parse(doc.keyTakeaways || '[]'),
-    concepts: JSON.parse(doc.concepts || '[]'),
-    formulas: JSON.parse(doc.formulas || '[]'),
-    realWorldApplications: JSON.parse(doc.realWorldApplications || '[]'),
-  } as CourseContent;
+    summaries: parseJson(doc.summaries, []),
+    keyTakeaways: parseJson(doc.keyTakeaways, []),
+    concepts: parseJson(doc.concepts, []),
+    formulas: parseJson(doc.formulas, []),
+    realWorldApplications: parseJson(doc.realWorldApplications, []),
+  } as unknown as CourseContent;
 }
 
 // ============= COURSE ASSIGNMENTS =============
@@ -436,9 +448,9 @@ export async function getChapterAssignments(
 function parseAssignment(doc: StoredDocument): CourseAssignment {
   return {
     ...doc,
-    options: doc.options ? JSON.parse(doc.options) : undefined,
-    rubric: JSON.parse(doc.rubric),
-    variations: doc.variations ? JSON.parse(doc.variations) : undefined,
+    options: parseJson(doc.options, undefined),
+    rubric: parseJson(doc.rubric, []),
+    variations: parseJson(doc.variations, undefined),
   } as unknown as CourseAssignment;
 }
 

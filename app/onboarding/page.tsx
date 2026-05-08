@@ -192,7 +192,6 @@ export default function OnboardingPage() {
     if (currentStep === 4) {
       loadRecommendations()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep, selectedInterests, selectedGoals, selectedPace, selectedSessionTypes, selectedAvailability])
 
   const handleNext = () => {

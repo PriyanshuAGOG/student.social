@@ -12,13 +12,17 @@ function loadEnv() {
   const envPath = path.join(process.cwd(), '.env.local')
   const env = {}
   if (fs.existsSync(envPath)) {
-    const lines = fs.readFileSync(envPath, 'utf8').split('\n')
-    for (const line of lines) {
+    const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/)
+    for (const rawLine of lines) {
+      const line = rawLine.trim()
       if (!line || line.startsWith('#')) continue
       const idx = line.indexOf('=')
       if (idx === -1) continue
       const key = line.slice(0, idx).trim()
-      const val = line.slice(idx + 1).trim()
+      let val = line.slice(idx + 1).trim()
+      if ((val.startsWith('\"') && val.endsWith('\"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1)
+      }
       env[key] = val
     }
   }
@@ -26,9 +30,9 @@ function loadEnv() {
 }
 
 const env = loadEnv()
-const ENDPOINT = env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT
-const PROJECT_ID = env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
-const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db'
+const ENDPOINT = env.NEXT_PUBLIC_APPWRITE_ENDPOINT || env.APPWRITE_ENDPOINT || process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT
+const PROJECT_ID = env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || env.APPWRITE_PROJECT_ID || process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID
+const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || env.APPWRITE_DATABASE_ID || env.NEXT_PUBLIC_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const API_KEY = env.APPWRITE_API_KEY || process.env.APPWRITE_API_KEY
 
 if (!ENDPOINT || !PROJECT_ID || !API_KEY) {

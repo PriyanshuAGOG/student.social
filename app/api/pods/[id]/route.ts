@@ -12,7 +12,7 @@ import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_DATABASE_ID!;
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const PODS_COLLECTION_ID = process.env.NEXT_PUBLIC_PODS_COLLECTION_ID!;
 const CHAT_ROOMS_COLLECTION_ID = process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID!;
 const MESSAGES_COLLECTION_ID = process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID!;
@@ -25,10 +25,10 @@ const POD_IMAGES_BUCKET_ID = process.env.NEXT_PUBLIC_POD_IMAGES_BUCKET_ID!;
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { data, error } = await withErrorHandling(async () => {
-    const podId = params.id;
+    const { id: podId } = await params;
 
     validateInput({ podId }, { podId: { required: true } });
 
@@ -97,10 +97,10 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { data, error } = await withErrorHandling(async () => {
-    const podId = params.id;
+    const { id: podId } = await params;
     const body = await request.json();
     const { userId, updates } = body;
 
@@ -249,10 +249,10 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { data, error } = await withErrorHandling(async () => {
-    const podId = params.id;
+    const { id: podId } = await params;
     const searchParams = request.nextUrl.searchParams;
     const userId = searchParams.get('userId');
 

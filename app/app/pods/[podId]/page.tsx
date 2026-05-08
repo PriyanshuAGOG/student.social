@@ -145,7 +145,6 @@ export default function PodDetailPage() {
       }
     }
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [podId, user?.$id])
 
   useEffect(() => {

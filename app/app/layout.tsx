@@ -13,12 +13,12 @@ export default function AppLayout({
   return (
     <ProtectRoute>
       <SidebarProvider>
-        <div className="flex min-h-screen w-full">
+        <div className="flex min-h-dvh w-full overflow-x-hidden bg-background">
           {/* Desktop Sidebar */}
           <AppSidebar className="hidden md:flex" />
 
           {/* Main Content */}
-          <main className="flex-1 overflow-hidden">{children}</main>
+          <main className="min-w-0 flex-1 overflow-x-hidden pb-safe-nav md:pb-0">{children}</main>
 
           {/* Mobile Navigation */}
           <MobileNavigation />

@@ -4,12 +4,16 @@
  * Replace the broken sections in appwrite.ts with these implementations
  */
 
-import { Client, Databases, Storage, Query, Account, Teams } from "appwrite"
+import { Client, Databases, Storage, Query, Account, Teams } from "node-appwrite"
+
+const APPWRITE_ENDPOINT = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || "https://fra.cloud.appwrite.io/v1"
+const APPWRITE_PROJECT_ID = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID || "694ed12f003c942317f4"
+const APPWRITE_API_KEY = process.env.APPWRITE_API_KEY
 
 // Client setup (copy from appwrite.ts)
 const client = new Client()
-  .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT!)
-  .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID!)
+  .setEndpoint(APPWRITE_ENDPOINT)
+  .setProject(APPWRITE_PROJECT_ID)
 
 const databases = new Databases(client)
 const storage = new Storage(client)
@@ -19,12 +23,15 @@ const teams = new Teams(client)
 // Admin client for server-side operations
 export function createAdminClient() {
   const adminClient = new Client()
-    .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT!)
-    .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID!)
-  
-  // Note: API key authentication would be set via setKey() if using node-appwrite SDK
-  // For now, using the standard client setup
-  
+    .setEndpoint(APPWRITE_ENDPOINT)
+    .setProject(APPWRITE_PROJECT_ID)
+
+  if (APPWRITE_API_KEY) {
+    adminClient.setKey(APPWRITE_API_KEY)
+  } else if (process.env.NODE_ENV === "development") {
+    console.warn("[Appwrite] APPWRITE_API_KEY is not set; admin API routes may be limited by project permissions.")
+  }
+
   return {
     databases: new Databases(adminClient),
     storage: new Storage(adminClient),
@@ -34,7 +41,7 @@ export function createAdminClient() {
 }
 
 // Constants (copy from appwrite.ts)
-const DATABASE_ID = process.env.NEXT_PUBLIC_DATABASE_ID!
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const COLLECTIONS = {
   PROFILES: process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID!,
   POSTS: process.env.NEXT_PUBLIC_POSTS_COLLECTION_ID!,

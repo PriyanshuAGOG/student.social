@@ -37,8 +37,8 @@ export function MobileNavigation() {
   const pathname = usePathname()
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-t border-border md:hidden">
-      <div className="grid grid-cols-5 h-16">
+    <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-background/85 md:hidden">
+      <div className="grid h-16 grid-cols-5">
         {navigationItems.map((item) => {
           const isActive = pathname === item.href || (item.href === "/app/feed" && pathname === "/app")
           return (
@@ -46,14 +46,14 @@ export function MobileNavigation() {
               key={item.name}
               href={item.href}
               className={cn(
-                "flex flex-col items-center justify-center space-y-1 text-xs transition-colors",
+                "min-w-0 flex flex-col items-center justify-center gap-1 px-1 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 isActive
                   ? "text-primary bg-primary/10"
                   : "text-muted-foreground hover:text-foreground hover:bg-secondary/50",
               )}
             >
               <item.icon className={cn("h-5 w-5", isActive && "text-primary")} />
-              <span className={cn("font-medium", isActive && "text-primary")}>{item.name}</span>
+              <span className={cn("max-w-full truncate", isActive && "text-primary")}>{item.name}</span>
             </Link>
           )
         })}

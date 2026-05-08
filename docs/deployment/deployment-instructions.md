@@ -164,7 +164,7 @@ Click **"Environment Variables"** section
 Public Variables (shown in source):
 ```
 NEXT_PUBLIC_APPWRITE_ENDPOINT = https://fra.cloud.appwrite.io/v1
-NEXT_PUBLIC_APPWRITE_PROJECT_ID = 68921a0d00146e65d29b
+NEXT_PUBLIC_APPWRITE_PROJECT_ID = 694ed12f003c942317f4
 NEXT_PUBLIC_APPWRITE_DATABASE_ID = peerspark-main-db
 NEXT_PUBLIC_APPWRITE_STORAGE_ID = peerspark-storage
 NEXT_PUBLIC_APPWRITE_PROFILES_COLLECTION = profiles
@@ -185,9 +185,9 @@ NEXT_PUBLIC_APP_URL = https://peerspark.vercel.app
 
 Private Variables (hidden in source):
 ```
-APPWRITE_API_KEY = standard_335d1a664d81c56203d0e65a9c6a1efb8614cfb2a4af72c320013b20d9b97a9a203fa620d17267a9fbf1be4246b3b980a206f8285d98706b797d08d432e9c91a87629514a84372ecde3a27e1f6410a76a13dd30fc4375d296e3da56084a0b5476d4aa9f304173b56d3919045d4e7a99bc2e184ffb0a98ee604cb6a6048d6e818
+APPWRITE_API_KEY = replace-with-your-appwrite-server-api-key
 APPWRITE_LOG_DEBUG = false
-OPENROUTER_API_KEY = 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
+OPENROUTER_API_KEY = replace-with-your-openrouter-api-key
 ```
 
 ### Step 5.4: Deploy

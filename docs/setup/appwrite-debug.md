@@ -117,7 +117,7 @@ The NEXT_PUBLIC_APPWRITE_PROJECT_ID is wrong or not set.
 # Check your .env.local
 cat .env.local | grep PROJECT_ID
 
-# Should be: 68921a0d00146e65d29b
+# Should be: 694ed12f003c942317f4
 # If different, update it
 
 # Verify in Appwrite Console

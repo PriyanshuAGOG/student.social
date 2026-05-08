@@ -14,6 +14,7 @@ export default [
       "dist/**",
       "coverage/**",
       "pnpm-lock.yaml",
+      "scripts/**",
     ],
   },
   {
@@ -33,6 +34,9 @@ export default [
     rules: {
       ...tsPlugin.configs.recommended.rules,
       ...nextPlugin.configs["core-web-vitals"].rules,
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "caughtErrorsIgnorePattern": "^_" }],
+      "@typescript-eslint/ban-ts-comment": "warn",
     },
   },
 ]

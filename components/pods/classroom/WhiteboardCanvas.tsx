@@ -149,7 +149,6 @@ export function WhiteboardCanvas({ podId, readOnly = false, onSave }: Whiteboard
     resizeCanvas()
     window.addEventListener("resize", resizeCanvas)
     return () => window.removeEventListener("resize", resizeCanvas)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Redraw canvas when history changes

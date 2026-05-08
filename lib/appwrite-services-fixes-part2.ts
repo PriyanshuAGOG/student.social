@@ -5,10 +5,13 @@
 
 import { Client, Databases, Storage, Query, Account, Teams } from "appwrite"
 
+const APPWRITE_ENDPOINT = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || "https://fra.cloud.appwrite.io/v1"
+const APPWRITE_PROJECT_ID = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || "694ed12f003c942317f4"
+
 // Client setup
 const client = new Client()
-  .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT!)
-  .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID!)
+  .setEndpoint(APPWRITE_ENDPOINT)
+  .setProject(APPWRITE_PROJECT_ID)
 
 const databases = new Databases(client)
 const storage = new Storage(client)
@@ -16,7 +19,7 @@ const account = new Account(client)
 const teams = new Teams(client)
 
 // Constants
-const DATABASE_ID = process.env.NEXT_PUBLIC_DATABASE_ID!
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const COLLECTIONS = {
   PROFILES: process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID!,
   POSTS: process.env.NEXT_PUBLIC_POSTS_COLLECTION_ID!,
