@@ -189,7 +189,7 @@ export default function Dashboard() {
           studyPlanService.getPlan(user.$id, todayStr),
           podService.getUserPods(user.$id),
           calendarService.getUserEvents(user.$id),
-          profileService.getProfile(user.$id),
+          profileService.ensureProfileExists(user.$id, { name: user.name, email: user.email }),
         ])
         const serverStatuses: Record<string, "pending" | "done"> = {}
         if (serverPlan?.completedIds) {

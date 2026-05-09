@@ -30,19 +30,27 @@ const PROFILE_FIELDS = new Set([
   'badges',
 ])
 
+const SYSTEM_PROFILE_FIELDS = new Set(['$id', '$createdAt', '$updatedAt', '$permissions', '$databaseId', '$collectionId', 'createdAt'])
+
 function sanitizeProfileData(data: Record<string, unknown>) {
   return Object.fromEntries(
-    Object.entries(data).filter(([key, value]) => PROFILE_FIELDS.has(key) && value !== undefined)
+    Object.entries(data).filter(([key, value]) => PROFILE_FIELDS.has(key) && !SYSTEM_PROFILE_FIELDS.has(key) && value !== undefined)
   )
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error) return String((error as { message?: unknown }).message)
+  return String(error || '')
+}
+
 function getUnknownAttribute(error: unknown) {
-  const message = error instanceof Error ? error.message : typeof error === 'object' && error !== null && 'message' in error ? String((error as { message?: unknown }).message) : ''
-  return message.match(/Unknown attribute:\s*"([^"]+)"/)?.[1]
+  return getErrorMessage(error).match(/Unknown attribute:\s*["'`]?([^"'`\s.]+)["'`]?/)?.[1]
 }
 
 async function writeProfileDocument<T>(operation: (data: Record<string, unknown>) => Promise<T>, data: Record<string, unknown>) {
   const payload = { ...sanitizeProfileData(data) }
+  SYSTEM_PROFILE_FIELDS.forEach((field) => delete payload[field])
   const removed = new Set<string>()
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -63,6 +71,34 @@ async function writeProfileDocument<T>(operation: (data: Record<string, unknown>
   return operation(payload)
 }
 
+
+function createProfileFallback(userId: string, defaults: Record<string, unknown> = {}, updates: Record<string, unknown> | null = null) {
+  const now = new Date().toISOString()
+  const profile = sanitizeProfileData({
+    userId,
+    name: typeof defaults.name === 'string' && defaults.name.trim() ? defaults.name.trim() : `User_${userId.slice(0, 6)}`,
+    email: typeof defaults.email === 'string' ? defaults.email : '',
+    bio: '',
+    interests: [],
+    avatar: '',
+    joinedAt: now,
+    updatedAt: now,
+    isOnline: true,
+    studyStreak: 0,
+    totalPoints: 0,
+    level: 1,
+    badges: [],
+    learningGoals: [],
+    learningPace: '',
+    preferredSessionTypes: [],
+    availability: [],
+    currentFocusAreas: [],
+    ...(updates ? sanitizeProfileData(updates) : {}),
+  })
+
+  return { ...profile, $id: userId }
+}
+
 function profilePermissions(userId: string) {
   return [
     Permission.read(Role.any()),
@@ -72,11 +108,15 @@ function profilePermissions(userId: string) {
 }
 
 export async function POST(request: NextRequest) {
+  let userId = ''
+  let defaults: Record<string, unknown> = {}
+  let updates: Record<string, unknown> | null = null
+
   try {
     const body = await request.json()
-    const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
-    const defaults = typeof body.defaults === 'object' && body.defaults !== null ? body.defaults : {}
-    const updates = typeof body.updates === 'object' && body.updates !== null ? body.updates : null
+    userId = typeof body.userId === 'string' ? body.userId.trim() : ''
+    defaults = typeof body.defaults === 'object' && body.defaults !== null ? body.defaults : {}
+    updates = typeof body.updates === 'object' && body.updates !== null ? body.updates : null
 
     if (!userId) {
       return NextResponse.json({ success: false, error: 'User ID is required' }, { status: 400 })
@@ -140,7 +180,18 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, profile, created: true }, { status: 201 })
   } catch (error: any) {
-    console.error('Ensure profile API error:', error)
+    console.warn('Ensure profile API could not persist profile; returning session fallback:', error)
+
+    if (userId) {
+      return NextResponse.json({
+        success: true,
+        profile: createProfileFallback(userId, defaults, updates),
+        created: false,
+        persisted: false,
+        warning: error?.message || 'Profile could not be persisted',
+      })
+    }
+
     return NextResponse.json(
       { success: false, error: error?.message || 'Failed to ensure profile' },
       { status: error?.code === 401 ? 503 : 500 }

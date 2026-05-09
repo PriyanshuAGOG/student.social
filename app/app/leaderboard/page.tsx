@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Trophy, Medal, Crown, Flame, Clock, BookOpen, TrendingUp, Filter } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
@@ -173,7 +172,6 @@ export default function LeaderboardPage() {
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-4">
-            <SidebarTrigger className="-ml-1" />
             <div>
               <h2 className="text-3xl font-bold tracking-tight">Leaderboard</h2>
               <p className="text-muted-foreground">See how you rank among fellow learners</p>

@@ -73,7 +73,7 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
     const load = async () => {
       try {
         const [p, podsRes] = await Promise.all([
-          profileService.getProfile(user.$id),
+          profileService.ensureProfileExists(user.$id, { name: user.name, email: user.email }),
           podService.getUserPods(user.$id),
         ])
         setProfile(p)

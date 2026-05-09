@@ -3,7 +3,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import { Clock, Target, Trophy, Download, Share2, Filter, Zap, Brain, Flame } from "lucide-react"
@@ -146,7 +145,6 @@ export default function AnalyticsPage() {
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-4">
-            <SidebarTrigger className="-ml-1" />
             <div>
               <h2 className="text-3xl font-bold tracking-tight">Analytics</h2>
               <p className="text-muted-foreground">Track your learning progress and insights</p>

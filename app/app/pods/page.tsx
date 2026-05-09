@@ -78,7 +78,7 @@ export default function PodsPage() {
         const [myPodsRes, exploreRes, profile] = await Promise.all([
           podService.getUserPods(user.$id),
           podService.getAllPods(50, 0, {}),
-          profileService.getProfile(user.$id),
+          profileService.ensureProfileExists(user.$id, { name: user.name, email: user.email }),
         ])
         setMyPods(myPodsRes.documents || [])
         const pods = exploreRes.documents || []

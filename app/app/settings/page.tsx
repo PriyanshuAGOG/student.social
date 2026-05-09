@@ -37,7 +37,7 @@ export default function SettingsPage() {
       }
       
       try {
-        const profile = await profileService.getProfile(user.$id)
+        const profile = await profileService.ensureProfileExists(user.$id, { name: user.name, email: user.email })
         
         // Initialize settings with user data
         const initialSettings: Record<string, any> = {

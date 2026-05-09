@@ -47,7 +47,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
       if (!user?.$id || !open) return
       
       try {
-        const profileData = await profileService.getProfile(user.$id)
+        const profileData = await profileService.ensureProfileExists(user.$id, { name: user.name, email: user.email })
         setProfile({
           name: user.name || profileData?.name || "",
           email: user.email || "",
@@ -290,7 +290,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
 
     try {
       // Gather user data
-      const profileData = await profileService.getProfile(user.$id)
+      const profileData = await profileService.ensureProfileExists(user.$id, { name: user.name, email: user.email })
       const exportData = {
         user: {
           id: user.$id,

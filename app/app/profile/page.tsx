@@ -151,7 +151,7 @@ export default function ProfilePage() {
       }
       
       try {
-        const profile = await profileService.getProfile(user.$id)
+        const profile = await profileService.ensureProfileExists(user.$id, { name: user.name, email: user.email })
         
         // Format joined date
         const joinedDate = user.$createdAt 
