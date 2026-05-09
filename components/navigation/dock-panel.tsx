@@ -34,18 +34,18 @@ export function DockExpandablePanel({
       exit={{ opacity: 0, y: 12, scale: 0.96, filter: "blur(6px)" }}
       transition={panelTransition}
       className={cn(
-        "fixed bottom-[92px] left-3 right-3 z-[90] max-h-[min(70vh,520px)] origin-bottom overflow-y-auto rounded-[28px] border border-white/10 bg-[#121216]/90 p-[18px] text-white shadow-[0_30px_90px_rgba(0,0,0,0.55),0_0_0_1px_rgba(255,255,255,0.04),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl md:bottom-[104px] md:left-1/2 md:right-auto md:w-[360px] md:max-w-[calc(100vw-32px)] md:-translate-x-1/2",
+        "fixed bottom-[92px] left-3 right-3 z-[90] max-h-[min(70vh,520px)] origin-bottom overflow-y-auto rounded-[30px] border border-black/[0.06] bg-white/88 p-[18px] text-[#111111] shadow-[0_30px_90px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl md:bottom-[104px] md:left-1/2 md:right-auto md:w-[360px] md:max-w-[calc(100vw-32px)] md:-translate-x-1/2",
         className,
       )}
     >
-      <div className="pointer-events-none absolute inset-x-8 top-px h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-8 top-px h-px bg-gradient-to-r from-transparent via-white to-transparent" />
       <div className="relative flex h-8 items-center justify-center">
-        <h2 className="text-[15px] font-bold tracking-[-0.01em] text-white">{title}</h2>
+        <h2 className="text-[15px] font-bold tracking-[-0.01em] text-[#111111]">{title}</h2>
         <button
           type="button"
           onClick={onClose}
           aria-label={`Close ${title}`}
-          className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center rounded-full text-white/60 transition-colors hover:bg-white/[0.08] hover:text-white outline-none focus-visible:ring-2 focus-visible:ring-violet-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center rounded-full text-[#6E6E73] transition-colors hover:bg-[#F6F1FF] hover:text-[#7C4DFF] outline-none focus-visible:ring-2 focus-visible:ring-violet-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </button>

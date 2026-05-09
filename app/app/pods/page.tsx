@@ -234,16 +234,16 @@ export default function PodsPage() {
   }
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[#0B0B0C] text-white">
+    <div className="min-h-screen overflow-hidden bg-transparent text-[#111111]">
       {/* Mobile Header */}
-      <div className="md:hidden border-b border-white/10 bg-[#121216]/70 p-4 backdrop-blur-xl">
+      <div className="md:hidden border-b border-black/[0.06] bg-white/70 p-4 backdrop-blur-xl">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#7C5CFF]">Pods Command</p>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#7C4DFF]">Pods Command</p>
             <h1 className="text-xl font-bold">Study Pods</h1>
-            <p className="text-sm text-[#B7B7C0]">Your pods and discovery in one place</p>
+            <p className="text-sm text-[#6E6E73]">Your pods and discovery in one place</p>
           </div>
-          <Button size="sm" onClick={handleCreatePod} className="bg-[#7C5CFF] hover:bg-[#6F50F5]">
+          <Button size="sm" onClick={handleCreatePod} className="bg-[#7C4DFF] hover:bg-[#6F42F5]">
             <Plus className="mr-2 h-4 w-4" />
             Create
           </Button>
@@ -252,26 +252,26 @@ export default function PodsPage() {
 
       {/* Desktop Header */}
       <div className="hidden md:block px-8 pb-4 pt-8">
-        <div className="relative mx-auto max-w-7xl overflow-hidden rounded-[32px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.08),rgba(255,255,255,0.025))] p-8 shadow-[0_30px_90px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl">
-          <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-[#7C5CFF]/20 blur-3xl" />
+        <div className="relative mx-auto max-w-7xl overflow-hidden rounded-[32px] border border-black/[0.06] bg-white/82 p-8 shadow-[0_30px_90px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl">
+          <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-[#7C4DFF]/20 blur-3xl" />
           <div className="pointer-events-none absolute -right-16 bottom-0 h-56 w-56 rounded-full bg-[#7FFFD4]/10 blur-3xl" />
           <div className="relative flex items-center justify-between gap-6">
             <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-[#7C5CFF]">Unified Pods Command Center</p>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-[#7C4DFF]">Unified Pods Command Center</p>
               <h1 className="text-4xl font-bold tracking-[-0.04em]">Study Pods</h1>
-              <p className="mt-2 max-w-2xl text-[#B7B7C0]">Manage your learning communities, discover new classmates, and launch collaborative study sessions from one polished workspace.</p>
-              <div className="mt-5 flex flex-wrap gap-3 text-sm text-white/70">
-                <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">{myPods.length} joined</span>
-                <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">{explorePods.length} discoverable</span>
-                <span className="rounded-full border border-[#7C5CFF]/25 bg-[#7C5CFF]/15 px-3 py-1.5 text-white">AI-matched recommendations</span>
+              <p className="mt-2 max-w-2xl text-[#6E6E73]">Manage your learning communities, discover new classmates, and launch collaborative study sessions from one polished workspace.</p>
+              <div className="mt-5 flex flex-wrap gap-3 text-sm text-[#6E6E73]">
+                <span className="rounded-full border border-black/[0.06] bg-white/80 px-3 py-1.5">{myPods.length} joined</span>
+                <span className="rounded-full border border-black/[0.06] bg-white/80 px-3 py-1.5">{explorePods.length} discoverable</span>
+                <span className="rounded-full border border-[#7C4DFF]/20 bg-[#7C4DFF]/15 px-3 py-1.5 text-[#111111]">AI-matched recommendations</span>
               </div>
             </div>
             <div className="flex items-center space-x-2">
-              <Button variant="outline" className="border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]">
+              <Button variant="outline" className="border-black/[0.06] bg-white/80 text-[#111111] hover:bg-white/[0.08]">
                 <Filter className="mr-2 h-4 w-4" />
                 Filters
               </Button>
-              <Button onClick={handleCreatePod} className="bg-[#7C5CFF] text-white hover:bg-[#6F50F5]" disabled={isLoading}>
+              <Button onClick={handleCreatePod} className="bg-[#7C4DFF] text-white hover:bg-[#6F42F5]" disabled={isLoading}>
                 <Plus className="mr-2 h-4 w-4" />
                 Create Pod
               </Button>
@@ -283,7 +283,7 @@ export default function PodsPage() {
       <div className="max-w-7xl mx-auto px-4 md:px-8 pb-24 md:pb-8">
         {/* Tabs */}
         <div className="mb-4 md:mb-6">
-          <div className="flex max-w-fit space-x-1 rounded-2xl border border-white/10 bg-white/[0.045] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl">
+          <div className="flex max-w-fit space-x-1 rounded-2xl border border-black/[0.06] bg-white/80 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl">
             {[
               { value: "my-pods", label: "My Pods", icon: Users },
               { value: "explore", label: "Discover", icon: Search },
@@ -293,8 +293,8 @@ export default function PodsPage() {
                 onClick={() => setActiveTab(tab.value)}
                 className={`flex items-center space-x-2 rounded-xl px-3 py-2 text-xs font-medium transition-all md:px-4 md:text-sm ${
                   activeTab === tab.value
-                    ? "bg-[#7C5CFF] text-white shadow-[0_10px_24px_rgba(124,92,255,0.24)]"
-                    : "text-[#B7B7C0] hover:bg-white/[0.06] hover:text-white"
+                    ? "bg-[#7C4DFF] text-white shadow-[0_10px_24px_rgba(124,92,255,0.24)]"
+                    : "text-[#6E6E73] hover:bg-[#F6F1FF] hover:text-[#111111]"
                 }`}
               >
                 <tab.icon className="w-4 h-4" />
@@ -309,25 +309,25 @@ export default function PodsPage() {
           <div className="space-y-4 md:space-y-6">
             <div className="grid gap-3 md:gap-6 md:grid-cols-2 lg:grid-cols-3">
               {myPods.length === 0 && !isLoading && (
-                <div className="col-span-full text-center text-[#B7B7C0]">No pods yet. Join or create one.</div>
+                <div className="col-span-full text-center text-[#6E6E73]">No pods yet. Join or create one.</div>
               )}
               {myPods.map((pod) => (
-                <Card key={pod.$id} className="group cursor-pointer border-white/10 bg-white/[0.045] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-[#7C5CFF]/30 hover:shadow-[0_18px_48px_rgba(124,92,255,0.14)]">
+                <Card key={pod.$id} className="group cursor-pointer border-black/[0.06] bg-white/80 text-[#111111] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-[#7C4DFF]/20 hover:shadow-[0_18px_48px_rgba(124,77,255,0.10)]">
                   <CardContent className="p-4 space-y-3">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-lg group-hover:text-[#7C5CFF] transition-colors">{pod.name}</h3>
+                          <h3 className="font-semibold text-lg group-hover:text-[#7C4DFF] transition-colors">{pod.name}</h3>
                           {pod.isActive === false && <Badge variant="secondary">Inactive</Badge>}
                         </div>
-                        <p className="text-sm text-[#B7B7C0] line-clamp-2">{pod.description}</p>
+                        <p className="text-sm text-[#6E6E73] line-clamp-2">{pod.description}</p>
                       </div>
                       <Badge variant="outline">{pod.category || pod.subject || "General"}</Badge>
                     </div>
 
                     <div className="flex items-center justify-between text-sm">
                       <div className="flex items-center space-x-4">
-                        <span className="flex items-center text-[#B7B7C0]">
+                        <span className="flex items-center text-[#6E6E73]">
                           <Users className="w-4 h-4 mr-1" />
                           {pod.memberCount ?? pod.members?.length ?? 0}
                         </span>
@@ -345,12 +345,12 @@ export default function PodsPage() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="font-medium">Progress</span>
-                        <span className="text-[#B7B7C0]">{typeof pod.progress === "number" ? `${pod.progress}%` : "No progress yet"}</span>
+                        <span className="text-[#6E6E73]">{typeof pod.progress === "number" ? `${pod.progress}%` : "No progress yet"}</span>
                       </div>
                       <Progress value={pod.progress || 0} className="h-2" />
                     </div>
 
-                    <div className="flex items-center justify-between text-sm text-[#B7B7C0]">
+                    <div className="flex items-center justify-between text-sm text-[#6E6E73]">
                       {pod.nextSession && (
                         <span className="flex items-center">
                           <Clock className="w-4 h-4 mr-1" />
@@ -368,7 +368,7 @@ export default function PodsPage() {
                     </div>
 
                     <div className="flex space-x-2 pt-2">
-                      <Button onClick={() => handleJoinPod(pod.$id)} className="flex-1 bg-[#7C5CFF] hover:bg-[#6F50F5]">
+                      <Button onClick={() => handleJoinPod(pod.$id)} className="flex-1 bg-[#7C4DFF] hover:bg-[#6F42F5]">
                         <Video className="w-4 h-4 mr-2" />
                         Enter Pod
                       </Button>
@@ -392,7 +392,7 @@ export default function PodsPage() {
             {/* Search and Filters */}
             <div className="flex flex-col md:flex-row gap-4">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#B7B7C0] w-4 h-4" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#6E6E73] w-4 h-4" />
                 <Input
                   placeholder="Search pods, topics, or mentors..."
                   value={searchQuery}
@@ -415,7 +415,7 @@ export default function PodsPage() {
                       className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
                         selectedCategory === category.name
                           ? "bg-primary text-primary-foreground shadow-md"
-                          : "bg-secondary/50 text-[#B7B7C0] hover:bg-secondary hover:text-foreground"
+                          : "bg-secondary/50 text-[#6E6E73] hover:bg-secondary hover:text-foreground"
                       }`}
                     >
                       <Icon className="w-4 h-4" />
@@ -432,24 +432,24 @@ export default function PodsPage() {
             {/* Discover Pods Grid */}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {filteredExplorePods.map((pod) => (
-                <Card key={pod.$id} className="group border-white/10 bg-white/[0.045] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-[#7C5CFF]/30 hover:shadow-[0_18px_48px_rgba(124,92,255,0.14)]">
+                <Card key={pod.$id} className="group border-black/[0.06] bg-white/80 text-[#111111] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-[#7C4DFF]/20 hover:shadow-[0_18px_48px_rgba(124,77,255,0.10)]">
                   <CardContent className="p-4 space-y-3">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-lg group-hover:text-[#7C5CFF] transition-colors">{pod.name}</h3>
+                          <h3 className="font-semibold text-lg group-hover:text-[#7C4DFF] transition-colors">{pod.name}</h3>
                           {pod.isPublic === false && (
-                            <Badge className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white">Private</Badge>
+                            <Badge className="bg-gradient-to-r from-yellow-400 to-orange-500 text-[#111111]">Private</Badge>
                           )}
                         </div>
-                        <p className="text-sm text-[#B7B7C0] line-clamp-2">{pod.description}</p>
+                        <p className="text-sm text-[#6E6E73] line-clamp-2">{pod.description}</p>
                       </div>
                       <Badge variant="outline">{pod.category || pod.subject || "General"}</Badge>
                     </div>
 
                     <div className="flex items-center justify-between text-sm">
                       <div className="flex items-center space-x-4">
-                        <span className="flex items-center text-[#B7B7C0]">
+                        <span className="flex items-center text-[#6E6E73]">
                           <Users className="w-4 h-4 mr-1" />
                           {pod.memberCount ?? pod.members?.length ?? 0}
                         </span>
@@ -468,7 +468,7 @@ export default function PodsPage() {
                     <div className="flex space-x-2 pt-2">
                       <Button
                         onClick={() => handleJoinExplorePod(pod.$id, pod.name)}
-                        className="flex-1 bg-[#7C5CFF] hover:bg-[#6F50F5]"
+                        className="flex-1 bg-[#7C4DFF] hover:bg-[#6F42F5]"
                       >
                         <Plus className="w-4 h-4 mr-2" />
                         Join Pod
@@ -484,9 +484,9 @@ export default function PodsPage() {
 
             {filteredExplorePods.length === 0 && (
               <div className="text-center py-12">
-                <Search className="w-12 h-12 mx-auto mb-4 text-[#B7B7C0]" />
+                <Search className="w-12 h-12 mx-auto mb-4 text-[#6E6E73]" />
                 <h3 className="text-lg font-semibold mb-2">No pods found</h3>
-                <p className="text-[#B7B7C0]">Try adjusting your search or browse different categories</p>
+                <p className="text-[#6E6E73]">Try adjusting your search or browse different categories</p>
               </div>
             )}
           </div>

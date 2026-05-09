@@ -39,50 +39,23 @@ export type DockQuickAction = {
 }
 
 export const primaryDockItems: DockNavItem[] = [
-  {
-    label: "Feed",
-    href: "/app/feed",
-    icon: Home,
-    mobilePrimary: true,
-  },
-  {
-    label: "Study Pods",
-    href: "/app/pods",
-    icon: UsersRound,
-    mobilePrimary: true,
-  },
-  {
-    label: "Resource Vault",
-    href: "/app/vault",
-    icon: BookOpen,
-    mobilePrimary: true,
-  },
-  {
-    label: "Chat",
-    href: "/app/chat",
-    icon: MessageSquareText,
-    mobilePrimary: true,
-  },
+  { label: "Feed", href: "/app/feed", icon: Home, mobilePrimary: true },
+  { label: "Pods", href: "/app/pods", icon: UsersRound, mobilePrimary: true },
+  { label: "Vault", href: "/app/vault", icon: BookOpen, mobilePrimary: true },
+  { label: "Leaderboard", href: "/app/leaderboard", icon: Trophy },
+  { label: "Calendar", href: "/app/calendar", icon: CalendarDays },
+  { label: "Messages", href: "/app/chat", icon: MessageSquareText, mobilePrimary: true },
+  { label: "AI", href: "/app/ai", icon: Bot, mobilePrimary: true },
+  { label: "Notifications", href: "/app/notifications", icon: Bell },
+  { label: "Profile", href: "/app/profile", icon: UserRound },
 ]
 
 export const secondaryMenuItems: DockMenuItem[] = [
   {
-    label: "Profile",
-    href: "/app/profile",
-    icon: UserRound,
-    description: "Identity, badges, and learning presence",
-  },
-  {
-    label: "Leaderboard",
-    href: "/app/leaderboard",
-    icon: Trophy,
-    description: "Rankings, streaks, and pod momentum",
-  },
-  {
     label: "Settings",
     href: "/app/settings",
     icon: Settings,
-    description: "Preferences, privacy, and account controls",
+    description: "Privacy, preferences, and account controls",
   },
   {
     label: "Sign out",
@@ -117,7 +90,7 @@ export const quickActions: DockQuickAction[] = [
   },
   {
     label: "Ask AI",
-    description: "Open the study assistant without adding it to the dock.",
+    description: "Open the study assistant for tutoring and planning.",
     href: "/app/ai",
     icon: Bot,
     tone: "violet",
@@ -149,15 +122,5 @@ export const utilityDockItems = {
   quick: {
     label: "Quick Actions",
     icon: Plus,
-  },
-  calendar: {
-    label: "Calendar",
-    href: "/app/calendar",
-    icon: CalendarDays,
-  },
-  notifications: {
-    label: "Unread notifications",
-    href: "/app/notifications",
-    icon: Bell,
   },
 }

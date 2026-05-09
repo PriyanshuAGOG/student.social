@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Menu } from "lucide-react"
-import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 
 import { DockButton } from "@/components/navigation/dock-button"
@@ -12,7 +11,6 @@ import { DockQuickActionsPanel } from "@/components/navigation/dock-quick-action
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
-import { notificationService } from "@/lib/appwrite"
 import { primaryDockItems, quickActions, secondaryMenuItems, utilityDockItems } from "@/lib/navigation"
 
 type DockPanel = null | "menu" | "quick"
@@ -31,38 +29,13 @@ export function FloatingDockNav() {
   const pathname = usePathname()
   const router = useRouter()
   const { toast } = useToast()
-  const { user, logout } = useAuth()
+  const { logout } = useAuth()
   const [openPanel, setOpenPanel] = useState<DockPanel>(null)
-  const [unreadCount, setUnreadCount] = useState(0)
   const navRef = useRef<HTMLElement>(null)
   const panelRegionRef = useRef<HTMLDivElement>(null)
 
   const closePanel = () => setOpenPanel(null)
   const togglePanel = (panel: Exclude<DockPanel, null>) => setOpenPanel((current) => (current === panel ? null : panel))
-
-
-  useEffect(() => {
-    if (!user?.$id) {
-      setUnreadCount(0)
-      return
-    }
-
-    let isMounted = true
-
-    const loadUnreadNotifications = async () => {
-      const result = await notificationService.getUserNotifications(user.$id, 25)
-      if (!isMounted) return
-      setUnreadCount((result.documents || []).filter((notification: any) => !notification.isRead).length)
-    }
-
-    loadUnreadNotifications()
-    const interval = window.setInterval(loadUnreadNotifications, 30000)
-
-    return () => {
-      isMounted = false
-      window.clearInterval(interval)
-    }
-  }, [user?.$id])
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -120,7 +93,7 @@ export function FloatingDockNav() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
-              className="pointer-events-none fixed bottom-[72px] left-1/2 z-[85] h-20 w-20 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(124,92,255,0.18),transparent_68%)] blur-xl md:bottom-[84px]"
+              className="pointer-events-none fixed bottom-[72px] left-1/2 z-[85] h-20 w-20 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(124,77,255,0.16),transparent_68%)] blur-xl md:bottom-[84px]"
             />
           ) : null}
           {openPanel === "menu" ? (
@@ -138,9 +111,9 @@ export function FloatingDockNav() {
         transition={{ duration: 0.45, ease: dockEase }}
         className="fixed bottom-[calc(14px+env(safe-area-inset-bottom))] left-1/2 z-[80] w-[calc(100vw-24px)] -translate-x-1/2 md:bottom-7 md:w-auto"
       >
-        <div className="pointer-events-none absolute inset-x-6 -inset-y-4 rounded-full bg-[radial-gradient(circle_at_center,#7C5CFF_0%,transparent_65%)] opacity-35 blur-2xl" />
-        <div className="relative flex h-16 items-center justify-center gap-1 overflow-x-auto rounded-full border border-white/10 bg-[#121216]/[0.78] px-3 shadow-[0_18px_60px_rgba(0,0,0,0.45),0_8px_24px_rgba(124,92,255,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl scrollbar-none md:h-[62px] md:gap-1.5 md:overflow-visible">
-          <div className="pointer-events-none absolute left-[18px] right-[18px] top-px h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-6 -inset-y-4 rounded-full bg-[radial-gradient(circle_at_center,#7C4DFF_0%,transparent_65%)] opacity-20 blur-2xl" />
+        <div className="relative flex h-16 items-center justify-start gap-1 overflow-x-auto rounded-full border border-black/[0.06] bg-white/82 px-3 shadow-[0_18px_60px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl scrollbar-none md:h-[62px] md:justify-center md:gap-1.5 md:overflow-visible">
+          <div className="pointer-events-none absolute left-[18px] right-[18px] top-px h-px bg-gradient-to-r from-transparent via-white to-transparent" />
           {primaryDockItems.map((item, index) => (
             <motion.div
               key={item.href}
@@ -159,7 +132,7 @@ export function FloatingDockNav() {
             </motion.div>
           ))}
 
-          <div className="mx-1 h-6 w-px shrink-0 bg-white/10" aria-hidden="true" />
+          <div className="mx-1 h-6 w-px shrink-0 bg-black/[0.06]" aria-hidden="true" />
 
           <DockButton
             label={utilityDockItems.quick.label}
@@ -168,30 +141,8 @@ export function FloatingDockNav() {
             panelActive={openPanel === "quick"}
             className="max-md:hidden"
           />
-          <DockButton
-            href={utilityDockItems.calendar.href}
-            label={utilityDockItems.calendar.label}
-            icon={utilityDockItems.calendar.icon}
-            active={isActiveRoute(pathname, utilityDockItems.calendar.href)}
-            onNavigate={closePanel}
-            className="max-md:hidden"
-          />
           <DockButton label="Menu" icon={Menu} onClick={() => togglePanel("menu")} panelActive={openPanel === "menu"} />
         </div>
-        {unreadCount > 0 ? (
-          <Link
-            href={utilityDockItems.notifications.href}
-            aria-label={`${unreadCount} unread notifications`}
-            onClick={closePanel}
-            className="absolute -top-14 right-2 flex h-12 w-12 items-center justify-center rounded-full border border-[#7FFFD4]/25 bg-[#121216]/85 text-white shadow-[0_18px_44px_rgba(0,0,0,0.42),0_8px_24px_rgba(127,255,212,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-[#7FFFD4]/45 hover:bg-white/[0.08] md:left-[calc(100%+10px)] md:right-auto md:top-1/2 md:-translate-y-1/2 md:hover:-translate-y-[54%]"
-          >
-            <utilityDockItems.notifications.icon className="h-5 w-5" strokeWidth={1.8} aria-hidden="true" />
-            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border border-black/40 bg-[#7C5CFF] px-1 text-[10px] font-bold text-white shadow-[0_0_16px_rgba(124,92,255,0.72)]">
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-            <span aria-hidden="true" className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(127,255,212,0.22),transparent_62%)] opacity-60 blur-md" />
-          </Link>
-        ) : null}
       </motion.nav>
     </>
   )

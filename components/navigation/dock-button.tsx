@@ -30,7 +30,7 @@ type DockButtonProps = DockButtonBaseProps &
   )
 
 const focusClasses =
-  "outline-none focus-visible:ring-2 focus-visible:ring-violet-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+  "outline-none focus-visible:ring-2 focus-visible:ring-violet-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
 
 export function DockButton({ label, icon: Icon, active, panelActive, className, onNavigate, ...props }: DockButtonProps) {
   const [showTooltip, setShowTooltip] = useState(false)
@@ -50,7 +50,7 @@ export function DockButton({ label, icon: Icon, active, panelActive, className, 
       {active ? (
         <motion.span
           layoutId="dock-active-dot"
-          className="absolute bottom-1.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-[#7C5CFF] shadow-[0_0_10px_rgba(124,92,255,0.9)]"
+          className="absolute bottom-1.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-[#7C4DFF] shadow-[0_0_12px_rgba(124,77,255,0.45)]"
           transition={{ type: "spring", stiffness: 420, damping: 32, mass: 0.8 }}
         />
       ) : null}
@@ -58,8 +58,8 @@ export function DockButton({ label, icon: Icon, active, panelActive, className, 
   )
 
   const buttonClasses = cn(
-    "group relative flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full border border-transparent text-white/70 transition-colors duration-180 hover:bg-white/[0.08] hover:text-white hover:shadow-[0_8px_20px_rgba(124,92,255,0.18)]",
-    isHighlighted && "border-[#7C5CFF]/30 bg-[#7C5CFF]/20 text-white",
+    "group relative flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full border border-transparent text-[#46506B] transition-all duration-180 hover:-translate-y-0.5 hover:bg-[#F6F1FF] hover:text-[#7C4DFF] hover:shadow-[0_10px_24px_rgba(124,77,255,0.12)]",
+    isHighlighted && "border-[#7C4DFF]/20 bg-[#EFE8FF] text-[#7C4DFF] shadow-[0_10px_28px_rgba(124,77,255,0.13)]",
     focusClasses,
     className,
   )
