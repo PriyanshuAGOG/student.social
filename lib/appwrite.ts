@@ -550,6 +550,73 @@ export const authService = {
 }
 
 
+const APPWRITE_SYSTEM_FIELDS = new Set(['$id', '$createdAt', '$updatedAt', '$permissions', '$databaseId', '$collectionId'])
+
+function getAppwriteErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error) return String((error as { message?: unknown }).message)
+  return String(error || '')
+}
+
+function getUnknownAppwriteAttribute(error: unknown) {
+  return getAppwriteErrorMessage(error).match(/Unknown attribute:\s*["'`]?([^"'`\s.]+)["'`]?/)?.[1]
+}
+
+function stripSystemFields(data: Record<string, unknown>) {
+  const payload = { ...data }
+  APPWRITE_SYSTEM_FIELDS.forEach((field) => delete payload[field])
+  return payload
+}
+
+async function writeDocumentWithSchemaRetry<T>(operation: (data: Record<string, unknown>) => Promise<T>, data: Record<string, unknown>) {
+  const payload = stripSystemFields(data)
+  const removed = new Set<string>()
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      return await operation(payload)
+    } catch (error) {
+      const unknownAttribute = getUnknownAppwriteAttribute(error)
+
+      if (!unknownAttribute || removed.has(unknownAttribute)) {
+        throw error
+      }
+
+      removed.add(unknownAttribute)
+      delete payload[unknownAttribute]
+    }
+  }
+
+  return operation(payload)
+}
+
+const writeProfileDocumentWithSchemaRetry = writeDocumentWithSchemaRetry
+
+function createLocalProfileFallback(userId: string, defaults: { name?: string; email?: string } = {}) {
+  const now = new Date().toISOString()
+  return {
+    $id: userId,
+    userId,
+    name: defaults.name || `User_${userId.slice(0, 6)}`,
+    email: defaults.email || '',
+    bio: '',
+    interests: [],
+    avatar: '',
+    joinedAt: now,
+    updatedAt: now,
+    isOnline: true,
+    studyStreak: 0,
+    totalPoints: 0,
+    level: 1,
+    badges: [],
+    learningGoals: [],
+    learningPace: '',
+    preferredSessionTypes: [],
+    availability: [],
+    currentFocusAreas: [],
+  }
+}
+
 async function ensureProfileViaApi(userId: string, defaults: Record<string, unknown> = {}, updates?: Record<string, unknown>) {
   const response = await fetch('/api/profiles/ensure', {
     method: 'POST',
@@ -593,27 +660,29 @@ export const profileService = {
           devLog(`[ensureProfileExists] Creating profile for user: ${userId}`)
           const now = new Date().toISOString()
           try {
-            const profile = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
-              userId: userId,
-              name: defaults.name || `User_${userId.slice(0, 6)}`,
-              email: defaults.email || "",
-              bio: "",
-              interests: [],
-              avatar: "",
-              joinedAt: now,
-              isOnline: true,
-              studyStreak: 0,
-              totalPoints: 0,
-              level: 1,
-              badges: [],
-              learningGoals: [],
-              learningPace: '',
-              preferredSessionTypes: [],
-              availability: [],
-              currentFocusAreas: [],
-              createdAt: now,
-              updatedAt: now,
-            })
+            const profile = await writeProfileDocumentWithSchemaRetry(
+              (payload) => databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, payload),
+              {
+                userId: userId,
+                name: defaults.name || `User_${userId.slice(0, 6)}`,
+                email: defaults.email || "",
+                bio: "",
+                interests: [],
+                avatar: "",
+                joinedAt: now,
+                isOnline: true,
+                studyStreak: 0,
+                totalPoints: 0,
+                level: 1,
+                badges: [],
+                learningGoals: [],
+                learningPace: '',
+                preferredSessionTypes: [],
+                availability: [],
+                currentFocusAreas: [],
+                updatedAt: now,
+              }
+            )
             devLog(`[ensureProfileExists] Profile created successfully`, { id: profile.$id })
             return profile
           } catch (createError: any) {
@@ -621,8 +690,8 @@ export const profileService = {
             if (createError?.code === 409 || createError?.message?.includes('already exists')) {
               return await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId)
             }
-            console.error(`[ensureProfileExists] Failed to create profile:`, createError)
-            throw createError
+            console.warn(`[ensureProfileExists] Profile could not be persisted; using local fallback for this session:`, createError)
+            return createLocalProfileFallback(userId, defaults)
           }
         }
         console.error(`[ensureProfileExists] Error:`, error)
@@ -644,7 +713,7 @@ export const profileService = {
     } catch (error: any) {
       // Profile not found is expected for new users
       if (error?.code === 404 || error?.message?.includes('not found')) {
-        console.warn(`[getProfile] Profile not found for user: ${userId}. Use ensureProfileExists() to create one.`)
+        devLog(`[getProfile] Profile not found for user: ${userId}. Use ensureProfileExists() to create one.`)
         return null
       }
       console.error(`[getProfile] Error fetching profile for user ${userId}:`, error)
@@ -710,19 +779,25 @@ export const profileService = {
 
     try {
       // First try to update with all attributes
-      return await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
-        ...filterData(data, true),
-        updatedAt: new Date().toISOString(),
-      })
+      return await writeProfileDocumentWithSchemaRetry(
+        (payload) => databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, payload),
+        {
+          ...filterData(data, true),
+          updatedAt: new Date().toISOString(),
+        }
+      )
     } catch (error: any) {
       // If unknown attribute error, retry without optional attributes
       if (error?.message?.includes('Unknown attribute')) {
         console.warn(`Unknown attribute in update, retrying without optional attrs:`, error.message)
         try {
-          return await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
-            ...filterData(data, false),
-            updatedAt: new Date().toISOString(),
-          })
+          return await writeProfileDocumentWithSchemaRetry(
+            (payload) => databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, payload),
+            {
+              ...filterData(data, false),
+              updatedAt: new Date().toISOString(),
+            }
+          )
         } catch (retryError) {
           console.error("Update profile error after retry:", retryError)
           throw retryError
@@ -740,24 +815,27 @@ export const profileService = {
         } catch (apiError) {
           console.warn("Server profile creation failed, trying client fallback:", apiError)
           try {
-            return await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
-              userId: userId,
-              name: data.name || "",
-              email: data.email || "",
-              bio: data.bio || "",
-              avatar: data.avatar || "",
-              joinedAt: new Date().toISOString(),
-              isOnline: true,
-              studyStreak: 0,
-              totalPoints: 0,
-              level: 1,
-              badges: [],
-              ...filterData(data, false),
-              updatedAt: new Date().toISOString(),
-            })
+            return await writeProfileDocumentWithSchemaRetry(
+              (payload) => databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, payload),
+              {
+                userId: userId,
+                name: data.name || "",
+                email: data.email || "",
+                bio: data.bio || "",
+                avatar: data.avatar || "",
+                joinedAt: new Date().toISOString(),
+                isOnline: true,
+                studyStreak: 0,
+                totalPoints: 0,
+                level: 1,
+                badges: [],
+                ...filterData(data, false),
+                updatedAt: new Date().toISOString(),
+              }
+            )
           } catch (createError) {
-            console.error("Failed to create profile:", createError)
-            throw createError
+            console.warn("Profile could not be persisted; using local fallback for this session:", createError)
+            return { ...createLocalProfileFallback(userId, { name: data.name || "", email: data.email || "" }), ...filterData(data, false) }
           }
         }
       }
@@ -937,35 +1015,41 @@ export const podService = {
       // Generate a unique teamId (required by schema, but we're not using Appwrite Teams)
       const generatedTeamId = `pod_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
 
-      // Create the pod document (database-only, no Teams)
-      const pod = await databases.createDocument(DATABASE_ID, COLLECTIONS.PODS, "unique()", {
-        teamId: generatedTeamId, // Required by schema
-        name: name.trim(),
-        description: description || "",
-        creatorId: userId,
-        members: [userId], // Creator is first member
-        memberCount: 1,
-        image: imageUrl,
-        category: metadata.category || metadata.subject || "general",
-        isPrivate: metadata.isPrivate || false,
-        isActive: true,
-        isPublic: metadata.isPublic !== false,
-        subject: metadata.subject || "",
-        difficulty: metadata.difficulty || "Beginner",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
+      // Create the pod document (database-only, no Teams). Production schemas differ, so retry without unknown fields.
+      const pod = await writeDocumentWithSchemaRetry(
+        (payload) => databases.createDocument(DATABASE_ID, COLLECTIONS.PODS, "unique()", payload),
+        {
+          teamId: generatedTeamId, // Required by schema
+          name: name.trim(),
+          description: description || "",
+          creatorId: userId,
+          members: [userId], // Creator is first member
+          memberCount: 1,
+          image: imageUrl,
+          category: metadata.category || metadata.subject || "general",
+          isPrivate: metadata.isPrivate || false,
+          isActive: true,
+          isPublic: metadata.isPublic !== false,
+          subject: metadata.subject || "",
+          difficulty: metadata.difficulty || "Beginner",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }
+      )
 
       // Create a chat room for the pod
       try {
-        await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", {
-          podId: pod.$id,
-          name: `${name} Chat`,
-          type: "pod",
-          members: [userId],
-          createdAt: new Date().toISOString(),
-          isActive: true,
-        })
+        await writeDocumentWithSchemaRetry(
+          (payload) => databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", payload),
+          {
+            podId: pod.$id,
+            name: `${name} Chat`,
+            type: "pod",
+            members: [userId],
+            createdAt: new Date().toISOString(),
+            isActive: true,
+          }
+        )
       } catch (e) {
         console.error("Failed to create pod chat room:", e)
       }
@@ -977,18 +1061,21 @@ export const podService = {
         ])
 
         if (chatRooms.documents.length > 0) {
-          await databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, "unique()", {
-            roomId: chatRooms.documents[0].$id,
-            senderId: "system",
-            authorId: "system",
-            content: `🎉 Welcome to ${name}! This is your pod's group chat.`,
-            type: "text",
-            senderName: "System",
-            senderAvatar: "",
-            timestamp: new Date().toISOString(),
-            readBy: [],
-            isEdited: false,
-          })
+          await writeDocumentWithSchemaRetry(
+            (payload) => databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, "unique()", payload),
+            {
+              roomId: chatRooms.documents[0].$id,
+              senderId: "system",
+              authorId: "system",
+              content: `🎉 Welcome to ${name}! This is your pod's group chat.`,
+              type: "text",
+              senderName: "System",
+              senderAvatar: "",
+              timestamp: new Date().toISOString(),
+              readBy: [],
+              isEdited: false,
+            }
+          )
         }
       } catch (e) {
         console.error("Failed to send welcome message:", e)

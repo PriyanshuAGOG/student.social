@@ -112,7 +112,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
       let authorName = user.name || "User"
       let authorAvatar = "/placeholder.svg"
       try {
-        const profile = await profileService.getProfile(user.$id)
+        const profile = await profileService.ensureProfileExists(user.$id, { name: user.name, email: user.email })
         if (profile) {
           authorName = profile.name || authorName
           authorAvatar = profile.avatar || authorAvatar

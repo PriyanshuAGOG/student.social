@@ -24,6 +24,29 @@ const MESSAGES_COLLECTION_ID = (process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID |
 const POSTS_COLLECTION_ID = (process.env.NEXT_PUBLIC_POSTS_COLLECTION_ID || 'posts');
 const POD_IMAGES_BUCKET_ID = (process.env.NEXT_PUBLIC_POD_IMAGES_BUCKET_ID || 'pod_images');
 
+function getUnknownAttribute(error: unknown) {
+  const message = error instanceof Error ? error.message : typeof error === 'object' && error !== null && 'message' in error ? String((error as { message?: unknown }).message) : String(error || '')
+  return message.match(/Unknown attribute:\s*["'`]?([^"'`\s.]+)["'`]?/)?.[1]
+}
+
+async function writeDocumentWithSchemaRetry<T>(operation: (data: Record<string, unknown>) => Promise<T>, data: Record<string, unknown>) {
+  const payload = { ...data }
+  const removed = new Set<string>()
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      return await operation(payload)
+    } catch (error) {
+      const unknownAttribute = getUnknownAttribute(error)
+      if (!unknownAttribute || removed.has(unknownAttribute)) throw error
+      removed.add(unknownAttribute)
+      delete payload[unknownAttribute]
+    }
+  }
+
+  return operation(payload)
+}
+
 /**
  * POST /api/pods - Create a new pod
  */
@@ -89,11 +112,9 @@ export async function POST(request: NextRequest) {
     // Generate a unique teamId (required by schema, but we're not using Appwrite Teams)
     const generatedTeamId = `pod_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-    // Create pod document
-    const pod = await databases.createDocument(
-      DATABASE_ID,
-      PODS_COLLECTION_ID,
-      'unique()',
+    // Create pod document. Production schemas differ, so strip unknown fields and retry.
+    const pod = await writeDocumentWithSchemaRetry(
+      (payload) => databases.createDocument(DATABASE_ID, PODS_COLLECTION_ID, 'unique()', payload),
       {
         teamId: generatedTeamId,
         name: name.trim(),
@@ -118,10 +139,8 @@ export async function POST(request: NextRequest) {
     // Create chat room for pod
     let chatRoom = null;
     try {
-      chatRoom = await databases.createDocument(
-        DATABASE_ID,
-        CHAT_ROOMS_COLLECTION_ID,
-        'unique()',
+      chatRoom = await writeDocumentWithSchemaRetry(
+        (payload) => databases.createDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, 'unique()', payload),
         {
           podId: pod.$id,
           name: name.trim(), // Use pod name instead of "general"
@@ -133,10 +152,8 @@ export async function POST(request: NextRequest) {
       );
 
       // Send welcome message
-      await databases.createDocument(
-        DATABASE_ID,
-        MESSAGES_COLLECTION_ID,
-        'unique()',
+      await writeDocumentWithSchemaRetry(
+        (payload) => databases.createDocument(DATABASE_ID, MESSAGES_COLLECTION_ID, 'unique()', payload),
         {
           roomId: chatRoom.$id,
           senderId: 'system',
