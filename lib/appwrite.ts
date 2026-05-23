@@ -1,6 +1,6 @@
 import { Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query, OAuthProvider } from "appwrite"
 import { rankPodsForUser } from "./pod-matching"
-import { getEnv, requireEnv } from "./env"
+import { getAppwriteEndpoint, getEnv, requireEnv } from "./env"
 
 // Debug function to log initialization (opt-in for dev only)
 const debugLog = (message: string, data?: any) => {
@@ -35,7 +35,7 @@ function isNoActiveSessionError(error: any): boolean {
 
 // Initialize Appwrite Client with your credentials
 const env = getEnv()
-const endpoint = env.NEXT_PUBLIC_APPWRITE_ENDPOINT || ""
+const endpoint = getAppwriteEndpoint()
 const projectId = env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || ""
 
 debugLog("Initializing with endpoint:", endpoint)

@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { DATABASE_ID, COLLECTIONS } from "@/lib/appwrite"
 import { Client, Databases, Query } from "node-appwrite"
 import { runAIChat } from "@/lib/ai"
+import { getAppwriteEndpoint } from "@/lib/env"
 
 const REQUEST_TIMEOUT = 30000 // 30 second timeout
 
@@ -31,7 +32,7 @@ function log(level: 'info' | 'warn' | 'error', message: string, data?: Record<st
 }
 
 function getDatabases() {
-  const endpoint = process.env.APPWRITE_ENDPOINT || process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT
+  const endpoint = getAppwriteEndpoint()
   const project = process.env.APPWRITE_PROJECT_ID || process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
   const apiKey = process.env.APPWRITE_API_KEY
 

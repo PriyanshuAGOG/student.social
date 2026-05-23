@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { Client, Account, ID } from 'node-appwrite'
+import { getAppwriteEndpoint } from '@/lib/env'
 
 const schema = z.object({ email: z.string().email(), password: z.string().min(8), name: z.string().min(1) })
 
 export async function POST(req: Request) {
   try {
     const payload = schema.parse(await req.json())
-    const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT
+    const endpoint = getAppwriteEndpoint()
     const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
     const apiKey = process.env.APPWRITE_API_KEY
     if (!endpoint || !project || !apiKey) {
