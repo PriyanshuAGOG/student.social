@@ -271,7 +271,7 @@ const collections = [
   {
     id: 'calendar_feed_settings',
     name: 'Calendar Feed Settings',
-    permissions: { write: ['role:users'] },
+    permissions: { read: ['role:users'], write: ['role:users'], update: ['role:users'], delete: ['role:users'] },
     attrs: [
       { key: 'userId', type: 'string', size: 255, required: true },
       { key: 'status', type: 'string', size: 32, required: true },
@@ -284,16 +284,11 @@ const collections = [
       { key: 'createdAt', type: 'string', size: 255, required: true },
       { key: 'updatedAt', type: 'string', size: 255, required: true },
     ],
-    indexes: [
-      { key: 'idx_feed_user', type: 'key', attributes: ['userId'], orders: ['ASC'] },
-      { key: 'idx_feed_token_hash', type: 'key', attributes: ['tokenHash'], orders: ['ASC'] },
-      { key: 'idx_feed_status', type: 'key', attributes: ['status'], orders: ['ASC'] },
-    ],
   },
   {
     id: 'calendar_feed_access_logs',
     name: 'Calendar Feed Access Logs',
-    permissions: { write: ['role:users'] },
+    permissions: { read: ['role:users'], write: ['role:users'], update: ['role:users'], delete: ['role:users'] },
     attrs: [
       { key: 'feedId', type: 'string', size: 255, required: true },
       { key: 'userId', type: 'string', size: 255, required: true },
@@ -307,15 +302,11 @@ const collections = [
       { key: 'errorCode', type: 'string', size: 120 },
       { key: 'createdAt', type: 'string', size: 255, required: true },
     ],
-    indexes: [
-      { key: 'idx_access_logs_feed_created', type: 'key', attributes: ['feedId', 'createdAt'], orders: ['ASC', 'DESC'] },
-      { key: 'idx_access_logs_user_created', type: 'key', attributes: ['userId', 'createdAt'], orders: ['ASC', 'DESC'] },
-    ],
   },
   {
     id: 'calendar_feed_audit_logs',
     name: 'Calendar Feed Audit Logs',
-    permissions: { write: ['role:users'] },
+    permissions: { read: ['role:users'], write: ['role:users'], update: ['role:users'], delete: ['role:users'] },
     attrs: [
       { key: 'userId', type: 'string', size: 255, required: true },
       { key: 'feedId', type: 'string', size: 255 },
