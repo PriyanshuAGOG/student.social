@@ -13,6 +13,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
+import { enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser, ApiError } from '@/lib/api-security';
+import { scanUploadMeta } from '@/lib/upload-security';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const POSTS_COLLECTION_ID = (process.env.NEXT_PUBLIC_POSTS_COLLECTION_ID || 'posts');
@@ -26,8 +28,12 @@ const POST_IMAGES_BUCKET_ID = (process.env.NEXT_PUBLIC_POST_IMAGES_BUCKET_ID || 
  */
 export async function POST(request: NextRequest) {
   const { data, error } = await withErrorHandling(async () => {
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: 'posts_create', max: 30, windowMs: 60_000 })
+    const auth = requireUser(request)
     const body = await request.json();
     const { authorId, content, metadata = {} } = body;
+    requireOwnership(authorId, auth.userId)
 
     // Validate input
     validateInput(
@@ -63,6 +69,10 @@ export async function POST(request: NextRequest) {
     const imageUrls: string[] = [];
     if (metadata.imageFiles && Array.isArray(metadata.imageFiles)) {
       for (const imageFile of metadata.imageFiles.slice(0, 4)) { // Max 4 images
+        const scanned = scanUploadMeta({ name: imageFile?.name, type: imageFile?.type, size: imageFile?.size })
+        if (!scanned.ok) {
+          throw new ApiError(400, 'UNSAFE_UPLOAD', `Rejected upload: ${scanned.reason}`)
+        }
         try {
           const fileUpload = await storage.createFile(
             POST_IMAGES_BUCKET_ID,
