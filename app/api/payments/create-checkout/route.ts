@@ -1,159 +1,87 @@
-/**
- * Stripe Payment & Course Monetization API
- * 
- * Endpoint: POST /api/payments/create-checkout
- * 
- * Handles course purchases via Stripe, manages pricing, discounts, and payouts.
- */
+import { z } from 'zod'
+import { ApiError, enforceRateLimit, enforceSameOrigin, jsonError, jsonOk, parseJsonBody, requireOwnership, requireUser } from '@/lib/api-security'
 
-interface PaymentRequest {
-  courseId: string;
-  userId: string;
-  userEmail: string;
-  discountCode?: string;
-}
+const checkoutSchema = z.object({
+  courseId: z.string().min(1),
+  userId: z.string().min(1),
+  userEmail: z.string().email(),
+  discountCode: z.string().trim().min(1).optional(),
+})
 
-interface PaymentSession {
-  sessionId: string;
-  checkoutUrl: string;
-  courseId: string;
-  userId: string;
-  amount: number;
-  currency: string;
-  status: 'pending' | 'completed' | 'failed';
-}
+const webhookSchema = z.object({
+  sessionId: z.string().min(1),
+  status: z.enum(['pending', 'completed', 'failed']),
+  courseId: z.string().min(1),
+  userId: z.string().min(1),
+})
 
-/**
- * POST /api/payments/create-checkout
- * 
- * Create a Stripe checkout session for course purchase
- */
 export async function POST(request: Request) {
+  const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
-    const body: PaymentRequest = await request.json();
-    const { courseId, userId, userEmail, discountCode } = body;
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: 'payments_webhook', max: 40, windowMs: 60_000 })
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: 'payments_checkout', max: 20, windowMs: 60_000 })
+    const auth = requireUser(request)
+    const payload = await parseJsonBody(request, checkoutSchema, 16 * 1024)
+    requireOwnership(payload.userId, auth.userId)
 
-    // Validation
-    if (!courseId || !userId || !userEmail) {
-      return new Response(
-        JSON.stringify({
-          error: 'Missing required fields: courseId, userId, userEmail',
-        }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
+    const idempotencyKey = request.headers.get('x-idempotency-key')
+    if (!idempotencyKey) {
+      throw new ApiError(400, 'MISSING_IDEMPOTENCY_KEY', 'x-idempotency-key header is required')
     }
 
-    // Note: This is a skeleton. Full implementation requires:
-    // 1. Install stripe package: npm install stripe
-    // 2. Set STRIPE_SECRET_KEY environment variable
-    // 3. Create course price metadata in Appwrite
+    const sessionId = `cs_test_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+    const amount = 9900
+    const discount = payload.discountCode ? 0.2 : 0
+    const finalAmount = Math.round(amount * (1 - discount))
 
-    // For now, return placeholder response
-    const sessionId = `cs_test_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-    const amount = 9900; // $99.00 in cents
-    const discount = discountCode ? 0.2 : 0; // 20% off with code
-    const finalAmount = Math.round(amount * (1 - discount));
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        session: {
-          sessionId,
-          checkoutUrl: `https://checkout.stripe.com/pay/${sessionId}`,
-          courseId,
-          userId,
-          amount: finalAmount / 100,
-          currency: 'USD',
-          originalAmount: amount / 100,
-          discountApplied: discount * 100,
-          status: 'pending',
-        },
-        message: 'Checkout session created. Complete payment to enroll.',
-      }),
-      { status: 201, headers: { 'Content-Type': 'application/json' } }
-    );
-  } catch (error: any) {
-    console.error('Error creating checkout session:', error);
-    return new Response(
-      JSON.stringify({ error: error.message || 'Failed to create checkout session' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    return jsonOk({
+      session: {
+        sessionId,
+        checkoutUrl: `https://checkout.stripe.com/pay/${sessionId}`,
+        courseId: payload.courseId,
+        userId: payload.userId,
+        amount: finalAmount / 100,
+        currency: 'USD',
+        originalAmount: amount / 100,
+        discountApplied: discount * 100,
+        status: 'pending',
+      },
+      message: 'Checkout session created. Complete payment to enroll.',
+      idempotencyKey,
+    }, 201, correlationId)
+  } catch (error) {
+    return jsonError(error, correlationId)
   }
 }
 
-/**
- * POST /api/payments/webhook
- * 
- * Stripe webhook for payment confirmation
- * Called by Stripe when payment is completed
- */
 export async function PUT(request: Request) {
+  const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
-    const body = await request.json();
-    const { sessionId, status, courseId, userId } = body;
+    const auth = requireUser(request)
+    const payload = await parseJsonBody(request, webhookSchema, 16 * 1024)
+    requireOwnership(payload.userId, auth.userId)
 
-    if (!sessionId || !status || !courseId || !userId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required fields for webhook' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // This would typically:
-    // 1. Verify webhook signature from Stripe
-    // 2. Enroll user in course via courseService.enrollInCourse()
-    // 3. Create payment record
-    // 4. Trigger confirmation email
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: 'Payment webhook processed',
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
-  } catch (error: any) {
-    console.error('Error processing webhook:', error);
-    return new Response(
-      JSON.stringify({ error: error.message || 'Failed to process webhook' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    return jsonOk({ message: 'Payment webhook processed', sessionId: payload.sessionId, status: payload.status }, 200, correlationId)
+  } catch (error) {
+    return jsonError(error, correlationId)
   }
 }
 
-/**
- * GET /api/payments/history?userId=xxx
- * 
- * Get user's payment history
- */
 export async function GET(request: Request) {
+  const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
+    const auth = requireUser(request)
+    const { searchParams } = new URL(request.url)
+    const userId = searchParams.get('userId')
     if (!userId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing userId parameter' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
+      throw new ApiError(400, 'MISSING_USER_ID', 'Missing userId parameter')
     }
+    requireOwnership(userId, auth.userId)
 
-    // This would fetch payment history from Appwrite or Stripe
-    // For now, return empty history
-    return new Response(
-      JSON.stringify({
-        success: true,
-        userId,
-        payments: [],
-        totalSpent: 0,
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
-  } catch (error: any) {
-    console.error('Error fetching payment history:', error);
-    return new Response(
-      JSON.stringify({ error: error.message || 'Failed to fetch payment history' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    return jsonOk({ userId, payments: [], totalSpent: 0 }, 200, correlationId)
+  } catch (error) {
+    return jsonError(error, correlationId)
   }
 }

@@ -9,33 +9,38 @@
  * - Generates AI feedback
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import {
   getSubmission,
   updateSubmission,
-  getChapterAssignments,
   getCourseDatabase,
 } from '@/lib/course-service';
 import { callLLM } from '@/lib/ai';
 import { SubmissionStatus } from '@/lib/types/courses';
+import { z } from 'zod'
+import { ApiError, jsonError, jsonOk, parseJsonBody, requireRole, requireUser } from '@/lib/api-security'
+import { writeAuditLog } from '@/lib/audit-log'
+
+const gradeSchema = z.object({
+  submissionId: z.string().min(1),
+  assignmentId: z.string().min(1).optional(),
+  autoGrade: z.boolean().optional().default(true),
+})
+
+const batchSchema = z.object({
+  submissionIds: z.array(z.string().min(1)).min(1).max(50),
+})
 
 export async function POST(request: NextRequest) {
+  const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
-    const { submissionId, assignmentId, autoGrade = true } = await request.json();
-
-    if (!submissionId) {
-      return NextResponse.json(
-        { error: 'Missing required field: submissionId' },
-        { status: 400 }
-      );
-    }
+    const auth = requireUser(request)
+    requireRole(auth, ['instructor', 'admin'])
+    const { submissionId, assignmentId } = await parseJsonBody(request, gradeSchema, 64 * 1024)
 
     const db = getCourseDatabase();
     if (!db) {
-      return NextResponse.json(
-        { error: 'Database connection failed' },
-        { status: 500 }
-      );
+      throw new ApiError(500, 'DATABASE_UNAVAILABLE', 'Database connection failed')
     }
 
     // Get submission
@@ -71,8 +76,9 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Grading complete. Score: ${grade.score}, Confidence: ${grade.confidence}`);
 
-    return NextResponse.json({
-      success: true,
+    writeAuditLog({ action: 'assignment_grade_single', actorId: auth.userId, correlationId, targetId: submissionId, status: 'success' })
+
+    return jsonOk({
       message: 'Assignment graded successfully',
       data: {
         submissionId,
@@ -82,13 +88,10 @@ export async function POST(request: NextRequest) {
         flaggedForReview: grade.flaggedForReview,
         submission: updatedSubmission,
       },
-    });
+    }, 200, correlationId)
   } catch (error) {
-    console.error('Error in grade endpoint:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error occurred' },
-      { status: 500 }
-    );
+    writeAuditLog({ action: 'assignment_grade_single', actorId: request.headers.get('x-user-id') || 'unknown', correlationId, status: 'failure' })
+    return jsonError(error, correlationId)
   }
 }
 
@@ -207,22 +210,15 @@ ${shouldFlag ? '\n⚠️ This response has been flagged for instructor review.' 
  * Grade multiple submissions at once for cost optimization
  */
 export async function POST_BATCH(request: NextRequest) {
+  const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
-    const { submissionIds } = await request.json();
-
-    if (!submissionIds || submissionIds.length === 0) {
-      return NextResponse.json(
-        { error: 'Missing submissionIds' },
-        { status: 400 }
-      );
-    }
+    const auth = requireUser(request)
+    requireRole(auth, ['instructor', 'admin'])
+    const { submissionIds } = await parseJsonBody(request, batchSchema, 64 * 1024)
 
     const db = getCourseDatabase();
     if (!db) {
-      return NextResponse.json(
-        { error: 'Database connection failed' },
-        { status: 500 }
-      );
+      throw new ApiError(500, 'DATABASE_UNAVAILABLE', 'Database connection failed')
     }
 
     console.log(`📊 Batch grading ${submissionIds.length} submissions...`);
@@ -259,16 +255,10 @@ export async function POST_BATCH(request: NextRequest) {
     const successful = results.filter((r) => r.success).length;
     console.log(`✅ Batch grading complete. ${successful}/${submissionIds.length} successful`);
 
-    return NextResponse.json({
-      success: true,
-      message: `Batch graded ${successful}/${submissionIds.length} submissions`,
-      data: results,
-    });
+    writeAuditLog({ action: 'assignment_grade_batch', actorId: auth.userId, correlationId, status: 'success', details: { requested: submissionIds.length, successful } })
+    return jsonOk({ message: `Batch graded ${successful}/${submissionIds.length} submissions`, data: results }, 200, correlationId)
   } catch (error) {
-    console.error('Error in batch grading:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error occurred' },
-      { status: 500 }
-    );
+    writeAuditLog({ action: 'assignment_grade_batch', actorId: request.headers.get('x-user-id') || 'unknown', correlationId, status: 'failure' })
+    return jsonError(error, correlationId)
   }
 }
