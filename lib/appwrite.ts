@@ -1,6 +1,6 @@
 import { Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query, OAuthProvider } from "appwrite"
 import { rankPodsForUser } from "./pod-matching"
-import { getAppwriteEndpoint, getEnv, requireEnv } from "./env"
+import { getEnv, normalizeAppwriteEndpoint, requireEnv } from "./env"
 
 // Debug function to log initialization (opt-in for dev only)
 const debugLog = (message: string, data?: any) => {
@@ -35,7 +35,7 @@ function isNoActiveSessionError(error: any): boolean {
 
 // Initialize Appwrite Client with your credentials
 const env = getEnv()
-const endpoint = getAppwriteEndpoint()
+const endpoint = normalizeAppwriteEndpoint(env.NEXT_PUBLIC_APPWRITE_ENDPOINT) || "https://fra.cloud.appwrite.io/v1"
 const projectId = env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || ""
 
 debugLog("Initializing with endpoint:", endpoint)
@@ -104,9 +104,10 @@ export const authService = {
         const proxyResp = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, name }) })
         const proxyData = await proxyResp.json().catch(() => ({}))
         if (!proxyResp.ok) throw new Error(proxyData.error || 'Registration failed')
+        return { ...proxyData, verificationSent: false }
       }
 
-      // Create user account (use SDK when available, otherwise fallback to REST)
+      // Create user account (server/runtime path)
       let user: any = null
       if (account && typeof (account as any).create === 'function') {
         user = await account.create("unique()", email, password, name)
@@ -152,12 +153,12 @@ export const authService = {
       if (sessionCreated) {
         try {
           if (account && typeof (account as any).createVerification === 'function') {
-            await (account as any).createVerification(typeof window !== 'undefined' ? window.location.origin + '/verify-email' : '/')
+            await (account as any).createVerification((getEnv().NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '') + '/verify-email')
           } else {
             await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/verification', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'X-Appwrite-Project': projectId || '' },
-              body: JSON.stringify({ url: (typeof window !== 'undefined' ? window.location.origin + '/verify-email' : '/') }),
+              body: JSON.stringify({ url: ((getEnv().NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '') + '/verify-email') }),
               credentials: 'include',
             })
           }
@@ -253,6 +254,7 @@ export const authService = {
         const proxyResp = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
         const proxyData = await proxyResp.json().catch(() => ({}))
         if (!proxyResp.ok) throw new Error(proxyData.error || 'Login failed')
+        return { session: { $id: proxyData.sessionId || 'proxy' }, user: null, profile: null }
       }
 
       let session: any = null
@@ -529,7 +531,7 @@ export const authService = {
   async resendVerification(email?: string) {
     try {
       if (account && typeof (account as any).createVerification === 'function') {
-        return await (account as any).createVerification(typeof window !== 'undefined' ? window.location.origin + '/verify-email' : '/')
+        return await (account as any).createVerification((getEnv().NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '') + '/verify-email')
       } else {
         const body: any = { url: (typeof window !== 'undefined' ? window.location.origin + '/verify-email' : '/') }
         if (email) body.email = email

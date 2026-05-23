@@ -21,6 +21,7 @@ let cachedEnv: AppEnv | null = null
 export function getEnv(): AppEnv {
   if (cachedEnv) return cachedEnv
   const parsed = optionalEnvSchema.parse(process.env)
+  parsed.NEXT_PUBLIC_APPWRITE_ENDPOINT = normalizeAppwriteEndpoint(parsed.NEXT_PUBLIC_APPWRITE_ENDPOINT)
   cachedEnv = parsed
   return parsed
 }
@@ -54,4 +55,10 @@ export function requireServerSecret(name: 'APPWRITE_API_KEY' | 'OPENROUTER_API_K
     throw new Error(`Missing required server secret: ${name}`)
   }
   return value
+}
+
+export function normalizeAppwriteEndpoint(endpoint?: string): string | undefined {
+  if (!endpoint) return endpoint
+  if (endpoint.includes('cloud.appwrite.io')) return endpoint.replace('cloud.appwrite.io', 'fra.cloud.appwrite.io')
+  return endpoint
 }
