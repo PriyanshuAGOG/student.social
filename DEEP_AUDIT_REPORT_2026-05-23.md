@@ -210,9 +210,6 @@ Completed hardening items delivered in code:
 - Added secure upload scanning baseline (`lib/upload-security.ts`) and integrated scanning checks in `POST /api/posts` uploads.
 - Added CI-integrated contract and e2e smoke test scripts (`test:contracts`, `test:e2e`) and wired them into `.github/workflows/ci-security.yml`.
 - Added advanced feed ranking algorithms in `lib/feed-algorithms.ts` and migrated `GET /api/feed/trending-courses` to shared security wrappers, typed query validation, and normalized response envelopes.
-- Delivered Calendar Sync MVP foundation: new `/settings/calendar-sync` UX, secure manage/feed/maintenance API routes, tokenized private ICS feed endpoint, RFC5545-style ICS output helpers, and provider-ready webcal/copy flows.
-- Expanded Calendar Sync to fuller UI suite (`ProviderCards`, `FeedSettingsPanel`, `SecurityPanel`, `CalendarPreview`) and strengthened calendar manage contract coverage.
-- Upgraded calendar token security primitives with HMAC hashing + AES-256-GCM encryption/decryption utilities and added provider detection heuristics for diagnostics readiness.
 Remaining priority work for 100% production readiness:
 - Roll out the same auth/validation/error/correlation pattern to all mutating API routes.
 - Add global rate limiting + bot mitigation.
