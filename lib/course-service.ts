@@ -1,3 +1,4 @@
+import { normalizeAppwriteEndpoint } from './env'
 /**
  * Course Service - Database operations for course system
  * 
@@ -71,7 +72,7 @@ const parseJson = <T,>(value: unknown, fallback: T): T => {
 export const getCourseDatabase = (): Databases | null => {
   try {
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || 'http://localhost/v1')
+      .setEndpoint(normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT) || 'https://fra.cloud.appwrite.io/v1')
       .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || 'peerspark');
 
     return new Databases(client);
