@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+const DEFAULT_APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1'
+
 const nodeEnvSchema = z.enum(['development', 'test', 'production']).default('development')
 
 const optionalEnvSchema = z.object({
@@ -22,6 +24,20 @@ export function getEnv(): AppEnv {
   parsed.NEXT_PUBLIC_APPWRITE_ENDPOINT = normalizeAppwriteEndpoint(parsed.NEXT_PUBLIC_APPWRITE_ENDPOINT)
   cachedEnv = parsed
   return parsed
+}
+
+export function getAppwriteEndpoint(): string {
+  const rawEndpoint = getEnv().NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT || DEFAULT_APPWRITE_ENDPOINT
+
+  try {
+    const url = new URL(rawEndpoint)
+    if (url.hostname === 'cloud.appwrite.io') {
+      url.hostname = 'fra.cloud.appwrite.io'
+    }
+    return url.toString()
+  } catch {
+    return DEFAULT_APPWRITE_ENDPOINT
+  }
 }
 
 export function requireEnv(keys: Array<'NEXT_PUBLIC_APPWRITE_ENDPOINT' | 'NEXT_PUBLIC_APPWRITE_PROJECT_ID' | 'NEXT_PUBLIC_APPWRITE_DATABASE_ID'>): void {
