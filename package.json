@@ -8,7 +8,9 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint . --ext .ts,.tsx",
-    "start": "next start"
+    "start": "next start",
+    "test:contracts": "node --test tests.contract.mjs",
+    "test:e2e": "node --test tests.e2e-smoke.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

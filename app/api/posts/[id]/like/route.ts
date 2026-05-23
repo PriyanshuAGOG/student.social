@@ -1,100 +1,39 @@
-/**
- * POST INTERACTIONS API
- * Like, Save, Share endpoints for posts
- * 
- * - POST /api/posts/[id]/like
- * - POST /api/posts/[id]/save
- * - POST /api/posts/[id]/share
- */
+import { NextRequest } from 'next/server'
+import { z } from 'zod'
+import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { ApiError, jsonError, jsonOk, parseJsonBody, requireOwnership, requireUser } from '@/lib/api-security'
+import { getEnv } from '@/lib/env'
 
-import { NextRequest, NextResponse } from 'next/server';
-import { Query } from 'node-appwrite';
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
-import { withErrorHandling, validateInput } from '@/lib/error-handler';
+const bodySchema = z.object({ userId: z.string().min(1) })
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
-const POSTS_COLLECTION_ID = (process.env.NEXT_PUBLIC_POSTS_COLLECTION_ID || 'posts');
-const SAVED_POSTS_COLLECTION_ID = (process.env.NEXT_PUBLIC_SAVED_POSTS_COLLECTION_ID || 'saved_posts');
-const NOTIFICATIONS_COLLECTION_ID = (process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications');
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID()
+  try {
+    const auth = requireUser(request)
+    const { id: postId } = await params
+    const { userId } = await parseJsonBody(request, bodySchema)
+    requireOwnership(userId, auth.userId)
 
-/**
- * POST /api/posts/[id]/like - Toggle like on post
- */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { data, error } = await withErrorHandling(async () => {
-    const { id: postId } = await params;
-    const body = await request.json();
-    const { userId } = body;
+    const DATABASE_ID = getEnv().NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
+    const POSTS_COLLECTION_ID = process.env.NEXT_PUBLIC_POSTS_COLLECTION_ID || 'posts'
+    const NOTIFICATIONS_COLLECTION_ID = process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications'
 
-    validateInput({ postId, userId }, {
-      postId: { required: true },
-      userId: { required: true },
-    });
+    const { databases } = await createAdminClient()
+    const post = await databases.getDocument(DATABASE_ID, POSTS_COLLECTION_ID, postId)
+    const likedBy = Array.isArray(post.likedBy) ? post.likedBy : []
+    const isLiked = likedBy.includes(userId)
+    const newLikedBy = isLiked ? likedBy.filter((id: string) => id !== userId) : [...likedBy, userId]
 
-    const { databases } = await createAdminClient();
+    const updatedPost = await databases.updateDocument(DATABASE_ID, POSTS_COLLECTION_ID, postId, { likes: newLikedBy.length, likedBy: newLikedBy })
 
-    const post = await databases.getDocument(
-      DATABASE_ID,
-      POSTS_COLLECTION_ID,
-      postId
-    );
-
-    const likedBy = Array.isArray(post.likedBy) ? post.likedBy : [];
-    const isLiked = likedBy.includes(userId);
-
-    const newLikedBy = isLiked
-      ? likedBy.filter((id: string) => id !== userId)
-      : [...likedBy, userId];
-
-    const updatedPost = await databases.updateDocument(
-      DATABASE_ID,
-      POSTS_COLLECTION_ID,
-      postId,
-      {
-        likes: newLikedBy.length,
-        likedBy: newLikedBy,
-      }
-    );
-
-    // Create notification for post author if liking (not self-like)
     if (!isLiked && post.authorId !== userId) {
-      try {
-        await databases.createDocument(
-          DATABASE_ID,
-          NOTIFICATIONS_COLLECTION_ID,
-          'unique()',
-          {
-            userId: post.authorId,
-            type: 'like',
-            actor: userId,
-            postId: postId,
-            message: 'Someone liked your post',
-            isRead: false,
-            timestamp: new Date().toISOString(),
-          }
-        );
-      } catch (notifError) {
-        console.error('Failed to create like notification:', notifError);
-      }
+      await databases.createDocument(DATABASE_ID, NOTIFICATIONS_COLLECTION_ID, 'unique()', {
+        userId: post.authorId, type: 'like', actor: userId, postId, message: 'Someone liked your post', isRead: false, timestamp: new Date().toISOString(),
+      }).catch(() => null)
     }
 
-    return {
-      success: true,
-      likes: newLikedBy.length,
-      isLiked: !isLiked,
-      post: updatedPost,
-    };
-  }, { operation: 'toggleLike' });
-
-  if (error) {
-    return NextResponse.json(
-      { success: false, error: error.userMessage, details: error },
-      { status: error.code === 'RESOURCE_NOT_FOUND' ? 404 : 500 }
-    );
+    return jsonOk({ likes: newLikedBy.length, isLiked: !isLiked, post: updatedPost }, 200, correlationId)
+  } catch (error) {
+    return jsonError(error instanceof ApiError ? error : new ApiError(500, 'LIKE_FAILED', 'Unable to toggle like'), correlationId)
   }
-
-  return NextResponse.json(data);
 }
