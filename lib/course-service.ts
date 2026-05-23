@@ -1,3 +1,4 @@
+import { normalizeAppwriteEndpoint } from './env'
 /**
  * Course Service - Database operations for course system
  * 

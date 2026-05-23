@@ -1,3 +1,4 @@
+import { normalizeAppwriteEndpoint } from './env'
 /**
  * Whiteboard Real-time Sync Utilities
  * 
