@@ -9,9 +9,6 @@ const path = require('path')
 const { spawnSync } = require('child_process')
 
 const ENV_PATH = path.join(process.cwd(), '.env.local')
-const DEFAULT_ENDPOINT = 'https://fra.cloud.appwrite.io/v1'
-const DEFAULT_PROJECT_ID = '694ed12f003c942317f4'
-const DEFAULT_DATABASE_ID = 'peerspark-main-db'
 
 function parseEnvFile(filePath) {
   const env = {}
@@ -69,10 +66,15 @@ function serializeEnv(env) {
 
 function normalizeEnv() {
   const fileEnv = parseEnvFile(ENV_PATH)
-  const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT || fileEnv.NEXT_PUBLIC_APPWRITE_ENDPOINT || fileEnv.APPWRITE_ENDPOINT || DEFAULT_ENDPOINT
-  const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID || fileEnv.NEXT_PUBLIC_APPWRITE_PROJECT_ID || fileEnv.APPWRITE_PROJECT_ID || DEFAULT_PROJECT_ID
-  const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || fileEnv.NEXT_PUBLIC_APPWRITE_DATABASE_ID || fileEnv.APPWRITE_DATABASE_ID || fileEnv.NEXT_PUBLIC_DATABASE_ID || DEFAULT_DATABASE_ID
+  const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT || fileEnv.NEXT_PUBLIC_APPWRITE_ENDPOINT || fileEnv.APPWRITE_ENDPOINT
+  const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID || fileEnv.NEXT_PUBLIC_APPWRITE_PROJECT_ID || fileEnv.APPWRITE_PROJECT_ID
+  const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || fileEnv.NEXT_PUBLIC_APPWRITE_DATABASE_ID || fileEnv.APPWRITE_DATABASE_ID || fileEnv.NEXT_PUBLIC_DATABASE_ID
   const apiKey = process.env.APPWRITE_API_KEY || fileEnv.APPWRITE_API_KEY || ''
+
+  if (!endpoint || !projectId || !databaseId) {
+    console.error('Missing required Appwrite config. Set NEXT_PUBLIC_APPWRITE_ENDPOINT, NEXT_PUBLIC_APPWRITE_PROJECT_ID, NEXT_PUBLIC_APPWRITE_DATABASE_ID in .env.local.')
+    process.exit(1)
+  }
 
   const merged = {
     ...fileEnv,

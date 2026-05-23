@@ -1,135 +1,66 @@
-// @ts-nocheck
-/**
- * Trending Courses & Leaderboard API
- * 
- * Endpoint: GET /api/feed/trending-courses
- * 
- * Provides trending courses, top performers, and course recommendations
- * based on engagement, completions, and pod trends.
- */
+import { z } from 'zod'
+import { Query } from 'node-appwrite'
+import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { courseService } from '@/lib/course-service'
+import { ApiError, jsonError, jsonOk, requireUser } from '@/lib/api-security'
+import { getEnv } from '@/lib/env'
+import { computeCourseTrendScore, stableRankByScore } from '@/lib/feed-algorithms'
 
-// @ts-nocheck
-import { Databases } from 'node-appwrite';
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
-import { courseService } from '@/lib/course-service';
+const querySchema = z.object({
+  timeframe: z.enum(['week', 'month', 'all']).default('month'),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+  category: z.string().optional(),
+})
 
-/**
- * GET /api/feed/trending-courses
- * 
- * Get trending courses with popularity metrics
- * Query params: ?timeframe=week|month|all&limit=10&category=tech
- */
 export async function GET(request: Request) {
+  const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
-    const { searchParams } = new URL(request.url);
-    const timeframe = searchParams.get('timeframe') || 'month';
-    const limit = parseInt(searchParams.get('limit') || '10', 10);
-    const category = searchParams.get('category');
+    requireUser(request)
+    const params = new URL(request.url).searchParams
+    const parsed = querySchema.parse({
+      timeframe: params.get('timeframe') ?? undefined,
+      limit: params.get('limit') ?? undefined,
+      category: params.get('category') ?? undefined,
+    })
 
-    const { databases } = createAdminClient();
+    const { databases } = createAdminClient()
+    const databaseId = getEnv().NEXT_PUBLIC_APPWRITE_DATABASE_ID
+    if (!databaseId) throw new ApiError(500, 'DATABASE_CONFIG_MISSING', 'Database id is not configured')
 
-    // Calculate date range for trending
-    const now = new Date();
-    let startDate = new Date();
-    switch (timeframe) {
-      case 'week':
-        startDate.setDate(now.getDate() - 7);
-        break;
-      case 'month':
-        startDate.setMonth(now.getMonth() - 1);
-        break;
-      case 'all':
-      default:
-        startDate.setFullYear(2020); // Far in the past
-    }
+    const now = new Date()
+    const startDate = new Date()
+    if (parsed.timeframe === 'week') startDate.setDate(now.getDate() - 7)
+    else if (parsed.timeframe === 'month') startDate.setMonth(now.getMonth() - 1)
+    else startDate.setFullYear(2020)
 
-    // Get all courses
-    const allCourses = await courseService.getAllCourses();
+    const allCoursesResp: any = await courseService.getAllCourses()
+    const allCourses = Array.isArray(allCoursesResp) ? allCoursesResp : (allCoursesResp?.courses || [])
+    const filteredCourses = parsed.category ? allCourses.filter((c: any) => String(c?.category || '').toLowerCase() === parsed.category?.toLowerCase()) : allCourses
 
-    // Enrich with engagement metrics
-    const enrichedCourses = await Promise.all(
-      allCourses.map(async (course: any) => {
-        try {
-          // Count enrollments in timeframe
-          const enrollments = await databases.listDocuments(
-            (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
-            'course_enrollments',
-            [
-              {
-                method: 'equal',
-                attribute: 'courseId',
-                value: course.$id,
-              },
-            ]
-          );
+    const enrichedCourses = await Promise.all(filteredCourses.map(async (course: any) => {
+      try {
+        const enrollments = await databases.listDocuments(databaseId, 'course_enrollments', [Query.equal('courseId', course.$id)])
+        const stats: any = await courseService.getOrCreateStats(course.$id)
+        const completionsDate = new Date(stats?.updatedAt || stats?.createdAt || 0)
+        const completions = completionsDate >= startDate ? (stats?.completions || 0) : 0
+        const posts = await databases.listDocuments(databaseId, 'feed_posts', [Query.equal('courseId', course.$id)])
+        const recentPosts = (posts.documents || []).filter((p: any) => new Date(p.createdAt) >= startDate)
+        const trendScore = computeCourseTrendScore({
+          enrollmentCount: enrollments.total || 0,
+          completionCount: completions,
+          feedPostCount: recentPosts.length,
+          averageRating: stats?.averageRating || 0,
+          createdAtMs: new Date(course?.createdAt || Date.now()).getTime(),
+        })
+        return { ...course, enrollmentCount: enrollments.total || 0, completionCount: completions, feedPostCount: recentPosts.length, averageRating: stats?.averageRating || 0, trendScore }
+      } catch {
+        return { ...course, enrollmentCount: 0, completionCount: 0, feedPostCount: 0, averageRating: 0, trendScore: 0 }
+      }
+    }))
 
-          // Get stats
-          const stats = await courseService.getOrCreateStats(course.$id);
-
-          // Count completions in timeframe
-          let completions = 0;
-          if (stats) {
-            const completionsDate = new Date(stats.updatedAt || stats.createdAt);
-            if (completionsDate >= startDate) {
-              completions = stats.completions || 0;
-            }
-          }
-
-          // Count feed posts in timeframe
-          const posts = await databases.listDocuments(
-            (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
-            'feed_posts',
-            [
-              {
-                method: 'equal',
-                attribute: 'courseId',
-                value: course.$id,
-              },
-            ]
-          );
-
-          const recentPosts = posts.documents.filter(
-            (p: any) => new Date(p.createdAt) >= startDate
-          );
-
-          const totalEngagement =
-            enrollments.total * 1 + completions * 5 + recentPosts.length * 3;
-
-          return {
-            ...course,
-            enrollmentCount: enrollments.total,
-            completionCount: completions,
-            feedPostCount: recentPosts.length,
-            averageRating: stats?.averageRating || 0,
-            totalEngagementScore: totalEngagement,
-            completionRate: enrollments.total > 0 ? (completions / enrollments.total) * 100 : 0,
-          };
-        } catch (err) {
-          console.log('Error enriching course:', err);
-          return course;
-        }
-      })
-    );
-
-    // Sort by engagement score
-    const sorted = enrichedCourses
-      .sort((a: any, b: any) => (b.totalEngagementScore || 0) - (a.totalEngagementScore || 0))
-      .slice(0, limit);
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        timeframe,
-        courses: sorted,
-        total: sorted.length,
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
-  } catch (error: any) {
-    console.error('Error fetching trending courses:', error);
-    return new Response(
-      JSON.stringify({ error: error.message || 'Failed to fetch trending courses' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    const sorted = stableRankByScore(enrichedCourses).slice(0, parsed.limit)
+    return jsonOk({ timeframe: parsed.timeframe, courses: sorted, total: sorted.length }, 200, correlationId)
+  } catch (error) {
+    return jsonError(error, correlationId)
   }
 }
