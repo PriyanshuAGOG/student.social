@@ -6,6 +6,7 @@
  */
 
 import { Client, Databases, type Models } from 'appwrite'
+import { getAppwriteEndpoint } from './env'
 
 // Type for Appwrite realtime messages
 type RealtimeMessage = {
@@ -147,7 +148,7 @@ export function getWhiteboardShareLink(podId: string, meetingId: string): string
 export function initializeAppwrite() {
   const client = new Client()
   client
-    .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || '')
+    .setEndpoint(getAppwriteEndpoint())
     .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || '')
 
   return { client }

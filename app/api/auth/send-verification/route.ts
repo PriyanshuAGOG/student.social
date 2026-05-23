@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { normalizeAppwriteEndpoint } from '@/lib/env'
+import { getAppwriteEndpoint } from '@/lib/env'
 
 export async function POST(req: Request) {
   try {
@@ -7,7 +7,7 @@ export async function POST(req: Request) {
     const { userId } = body || {}
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
 
-    const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT) || 'https://fra.cloud.appwrite.io/v1'
+    const endpoint = getAppwriteEndpoint()
     const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || ''
     const apiKey = process.env.APPWRITE_API_KEY || ''
 
