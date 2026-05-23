@@ -6,6 +6,7 @@
  */
 
 import { Client, Databases, Query, Models } from 'appwrite';
+import { getAppwriteEndpoint } from '@/lib/env';
 import {
   Course,
   CourseChapter,
@@ -71,7 +72,7 @@ const parseJson = <T,>(value: unknown, fallback: T): T => {
 export const getCourseDatabase = (): Databases | null => {
   try {
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || 'http://localhost/v1')
+      .setEndpoint(getAppwriteEndpoint())
       .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || 'peerspark');
 
     return new Databases(client);
