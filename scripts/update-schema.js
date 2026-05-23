@@ -701,13 +701,28 @@ async function ensureCollection(col) {
       await makeRequest('PUT', `/databases/${DATABASE_ID}/collections/${col.id}`, {
         name: col.name,
         permissions: perms,
-        documentSecurity: false, // Use collection-level permissions
+        documentSecurity: true, // enforce row-level document permissions (user:{userId}) set at write-time
         enabled: true,
       })
       console.log(`  Permissions updated for ${col.id}`)
     } catch (permErr) {
       console.warn(`Could not set permissions for ${col.id}:`, permErr.data || permErr)
     }
+  }
+}
+
+
+async function ensureIndex(colId, idx) {
+  try {
+    const existing = await makeRequest('GET', `/databases/${DATABASE_ID}/collections/${colId}/indexes/${idx.key}`)
+    if (existing && existing.key) return
+  } catch (_) {}
+  try {
+    await makeRequest('POST', `/databases/${DATABASE_ID}/collections/${colId}/indexes`, idx)
+    console.log(`  + index ${colId}.${idx.key}`)
+  } catch (e) {
+    const msg = JSON.stringify(e.data || e)
+    if (!msg.includes('already')) console.warn(`Could not create index ${colId}.${idx.key}:`, e.data || e)
   }
 }
 

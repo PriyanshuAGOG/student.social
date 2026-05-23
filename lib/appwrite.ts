@@ -99,6 +99,13 @@ export const authService = {
   // Register new user
   async register(email: string, password: string, name: string) {
     try {
+      // Prefer server proxy in browser to avoid CORS misconfiguration issues
+      if (typeof window !== 'undefined') {
+        const proxyResp = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, name }) })
+        const proxyData = await proxyResp.json().catch(() => ({}))
+        if (!proxyResp.ok) throw new Error(proxyData.error || 'Registration failed')
+      }
+
       // Create user account (use SDK when available, otherwise fallback to REST)
       let user: any = null
       if (account && typeof (account as any).create === 'function') {
@@ -242,6 +249,12 @@ export const authService = {
 
       // Create new session (use SDK when available, otherwise fallback to REST)
       // Note: Don't delete existing session first - it causes 401 errors if no session exists
+      if (typeof window !== 'undefined') {
+        const proxyResp = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
+        const proxyData = await proxyResp.json().catch(() => ({}))
+        if (!proxyResp.ok) throw new Error(proxyData.error || 'Login failed')
+      }
+
       let session: any = null
       if (account && typeof (account as any).createEmailPasswordSession === 'function') {
         session = await (account as any).createEmailPasswordSession(email, password)
