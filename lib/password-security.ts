@@ -22,7 +22,7 @@ export interface PasswordStrength {
 
 // Default enterprise password policy
 export const DEFAULT_PASSWORD_POLICY: PasswordPolicy = {
-  minLength: 12,
+  minLength: 8,
   requireUppercase: true,
   requireLowercase: true,
   requireNumbers: true,
@@ -225,14 +225,43 @@ export function getPasswordRecommendation(password: string): string {
   const entropy = calculatePasswordEntropy(password)
 
   if (strength.score === 4 && entropy > 80) {
-    return '🔒 Excellent password - Very strong'
+    return 'Excellent password - Very strong'
   }
   if (strength.score >= 3 && entropy > 60) {
-    return '✓ Good password - Strong'
+    return 'Good password - Strong'
   }
   if (strength.score >= 2 && entropy > 40) {
-    return '△ Fair password - Could be stronger'
+    return 'Fair password - Could be stronger'
   }
   
-  return '✗ Weak password - Not secure enough'
+  return 'Weak password - Not secure enough'
+}
+
+/**
+ * Get detailed password requirements checklist
+ */
+export function getPasswordRequirements(password: string) {
+  return {
+    minLength: {
+      met: password.length >= DEFAULT_PASSWORD_POLICY.minLength,
+      label: `At least ${DEFAULT_PASSWORD_POLICY.minLength} characters`,
+      current: password.length,
+    },
+    uppercase: {
+      met: /[A-Z]/.test(password),
+      label: 'At least one uppercase letter (A-Z)',
+    },
+    lowercase: {
+      met: /[a-z]/.test(password),
+      label: 'At least one lowercase letter (a-z)',
+    },
+    number: {
+      met: /[0-9]/.test(password),
+      label: 'At least one number (0-9)',
+    },
+    special: {
+      met: new RegExp(`[${DEFAULT_PASSWORD_POLICY.specialChars.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}]`).test(password),
+      label: `At least one special character (!@#$%^&*)`,
+    },
+  }
 }
