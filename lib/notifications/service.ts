@@ -339,7 +339,7 @@ export async function getPendingNotifications(limit: number = 10): Promise<Notif
       COLLECTIONS.QUEUE,
       [
         Query.equal('status', 'queued'),
-        Query.lessThanOrEqual('scheduledFor', new Date().toISOString()),
+        Query.lessThanEqual('scheduledFor', new Date().toISOString()),
         Query.orderAsc('priority'),
         Query.orderAsc('scheduledFor'),
       ],
