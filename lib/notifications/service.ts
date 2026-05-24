@@ -114,7 +114,7 @@ export async function upsertUserPreferences(
           updatedAt: new Date().toISOString(),
         }
       )
-      return updated as NotificationPreferences
+      return updated as unknown as NotificationPreferences
     } else {
       const created = await databases.createDocument(
         DATABASE_ID,
@@ -127,7 +127,7 @@ export async function upsertUserPreferences(
           updatedAt: new Date().toISOString(),
         }
       )
-      return created as NotificationPreferences
+      return created as unknown as NotificationPreferences
     }
   } catch (error) {
     console.error('[Notification] Failed to upsert preferences:', error)
@@ -152,7 +152,7 @@ export async function logDelivery(log: Partial<NotificationDeliveryLog>) {
       record
     )
 
-    return result as NotificationDeliveryLog
+    return result as unknown as NotificationDeliveryLog
   } catch (error) {
     console.error('[Notification] Failed to log delivery:', error)
     throw error
@@ -207,7 +207,7 @@ export async function createInAppNotification(
       notification
     )
 
-    return result as InAppNotification
+    return result as unknown as InAppNotification
   } catch (error) {
     console.error('[Notification] Failed to create in-app notification:', error)
     throw error
@@ -223,8 +223,7 @@ export async function getUnreadNotifications(userId: string, limit: number = 20,
       DATABASE_ID,
       COLLECTIONS.IN_APP,
       [Query.equal('userId', userId), Query.equal('isRead', false), Query.orderDesc('createdAt')],
-      limit,
-      offset
+      limit
     )
 
     return response as any
