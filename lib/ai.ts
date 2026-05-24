@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { getEnv, requireServerSecret } from "./env"
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant"
@@ -16,10 +17,7 @@ const FALLBACK_MODELS = [
 ]
 
 export async function runAIChat(messages: ChatMessage[], options?: { model?: string; maxTokens?: number }) {
-  const apiKey = process.env.OPENROUTER_API_KEY
-  if (!apiKey) {
-    throw new Error("Missing OPENROUTER_API_KEY. Add it to .env.local.")
-  }
+  const apiKey = requireServerSecret("OPENROUTER_API_KEY")
 
   // Validate API key format
   if (!apiKey.startsWith("sk-or-")) {
@@ -66,7 +64,7 @@ async function tryAIRequest(apiKey: string, messages: ChatMessage[], model: stri
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+      "HTTP-Referer": getEnv().NEXT_PUBLIC_APP_URL || "http://localhost:3000",
       "X-Title": "PeerSpark",
     },
     body: JSON.stringify(body),

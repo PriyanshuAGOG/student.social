@@ -32,11 +32,11 @@ function loadEnv() {
 const env = loadEnv()
 const ENDPOINT = env.NEXT_PUBLIC_APPWRITE_ENDPOINT || env.APPWRITE_ENDPOINT || process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT
 const PROJECT_ID = env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || env.APPWRITE_PROJECT_ID || process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID
-const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || env.APPWRITE_DATABASE_ID || env.NEXT_PUBLIC_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
+const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || env.APPWRITE_DATABASE_ID || env.NEXT_PUBLIC_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID
 const API_KEY = env.APPWRITE_API_KEY || process.env.APPWRITE_API_KEY
 
-if (!ENDPOINT || !PROJECT_ID || !API_KEY) {
-  console.error('Missing Appwrite configuration. Set NEXT_PUBLIC_APPWRITE_ENDPOINT, NEXT_PUBLIC_APPWRITE_PROJECT_ID, APPWRITE_API_KEY.')
+if (!ENDPOINT || !PROJECT_ID || !DATABASE_ID || !API_KEY) {
+  console.error('Missing Appwrite configuration. Set NEXT_PUBLIC_APPWRITE_ENDPOINT, NEXT_PUBLIC_APPWRITE_PROJECT_ID, NEXT_PUBLIC_APPWRITE_DATABASE_ID, APPWRITE_API_KEY.')
   process.exit(1)
 }
 
@@ -265,6 +265,66 @@ const collections = [
       { key: 'actorName', type: 'string', size: 255 },
       { key: 'actorAvatar', type: 'string', size: 500 },
       { key: 'metadata', type: 'string', size: 5000 },
+    ],
+  },
+
+  {
+    id: 'calendar_feed_settings',
+    name: 'Calendar Feed Settings',
+    permissions: { write: ['role:users'] },
+    attrs: [
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'status', type: 'string', size: 32, required: true },
+      { key: 'tokenHash', type: 'string', size: 255, required: true },
+      { key: 'tokenPrefix', type: 'string', size: 32, required: true },
+      { key: 'encryptedToken', type: 'string', size: 4096 },
+      { key: 'privacyMode', type: 'string', size: 32 },
+      { key: 'lastFetchedAt', type: 'string', size: 255 },
+      { key: 'fetchCount', type: 'integer' },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+      { key: 'updatedAt', type: 'string', size: 255, required: true },
+    ],
+    indexes: [
+      { key: 'idx_feed_user', type: 'key', attributes: ['userId'], orders: ['ASC'] },
+      { key: 'idx_feed_token_hash', type: 'key', attributes: ['tokenHash'], orders: ['ASC'] },
+      { key: 'idx_feed_status', type: 'key', attributes: ['status'], orders: ['ASC'] },
+    ],
+  },
+  {
+    id: 'calendar_feed_access_logs',
+    name: 'Calendar Feed Access Logs',
+    permissions: { write: ['role:users'] },
+    attrs: [
+      { key: 'feedId', type: 'string', size: 255, required: true },
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'tokenPrefix', type: 'string', size: 32, required: true },
+      { key: 'providerGuess', type: 'string', size: 120 },
+      { key: 'userAgent', type: 'string', size: 2000 },
+      { key: 'ipHash', type: 'string', size: 255 },
+      { key: 'statusCode', type: 'integer', required: true },
+      { key: 'eventCount', type: 'integer' },
+      { key: 'responseBytes', type: 'integer' },
+      { key: 'errorCode', type: 'string', size: 120 },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+    ],
+    indexes: [
+      { key: 'idx_access_logs_feed_created', type: 'key', attributes: ['feedId', 'createdAt'], orders: ['ASC', 'DESC'] },
+      { key: 'idx_access_logs_user_created', type: 'key', attributes: ['userId', 'createdAt'], orders: ['ASC', 'DESC'] },
+    ],
+  },
+  {
+    id: 'calendar_feed_audit_logs',
+    name: 'Calendar Feed Audit Logs',
+    permissions: { write: ['role:users'] },
+    attrs: [
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'feedId', type: 'string', size: 255 },
+      { key: 'action', type: 'string', size: 120, required: true },
+      { key: 'actor', type: 'string', size: 255, required: true },
+      { key: 'ipHash', type: 'string', size: 255 },
+      { key: 'userAgent', type: 'string', size: 2000 },
+      { key: 'metadata', type: 'string', size: 4096 },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
     ],
   },
   {
@@ -650,13 +710,28 @@ async function ensureCollection(col) {
       await makeRequest('PUT', `/databases/${DATABASE_ID}/collections/${col.id}`, {
         name: col.name,
         permissions: perms,
-        documentSecurity: false, // Use collection-level permissions
+        documentSecurity: true, // enforce row-level document permissions (user:{userId}) set at write-time
         enabled: true,
       })
       console.log(`  Permissions updated for ${col.id}`)
     } catch (permErr) {
       console.warn(`Could not set permissions for ${col.id}:`, permErr.data || permErr)
     }
+  }
+}
+
+
+async function ensureIndex(colId, idx) {
+  try {
+    const existing = await makeRequest('GET', `/databases/${DATABASE_ID}/collections/${colId}/indexes/${idx.key}`)
+    if (existing && existing.key) return
+  } catch (_) {}
+  try {
+    await makeRequest('POST', `/databases/${DATABASE_ID}/collections/${colId}/indexes`, idx)
+    console.log(`  + index ${colId}.${idx.key}`)
+  } catch (e) {
+    const msg = JSON.stringify(e.data || e)
+    if (!msg.includes('already')) console.warn(`Could not create index ${colId}.${idx.key}:`, e.data || e)
   }
 }
 

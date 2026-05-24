@@ -1,3 +1,4 @@
+import { normalizeAppwriteEndpoint } from './env'
 /**
  * PART 2: POD, PROFILE, CHAT, and RESOURCE SERVICE FIXES
  * These are the remaining critical services that need comprehensive fixes
@@ -5,7 +6,7 @@
 
 import { Client, Databases, Storage, Query, Account, Teams } from "appwrite"
 
-const APPWRITE_ENDPOINT = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || "https://fra.cloud.appwrite.io/v1"
+const APPWRITE_ENDPOINT = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT) || "https://fra.cloud.appwrite.io/v1"
 const APPWRITE_PROJECT_ID = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || "694ed12f003c942317f4"
 
 // Client setup
