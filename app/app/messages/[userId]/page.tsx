@@ -58,7 +58,7 @@ export default function DirectMessagePage() {
       try {
         const [profile, self] = await Promise.all([
           targetUserId ? profileService.getProfile(targetUserId) : Promise.resolve(null),
-          profileService.getProfile(user.$id),
+          profileService.ensureProfileExists(user.$id, { name: user.name, email: user.email }),
         ])
         if (!cancelled) {
           setTargetProfile(profile)
@@ -122,7 +122,7 @@ export default function DirectMessagePage() {
     if (!inputValue.trim() || !roomId || !user?.$id) return
     setIsSending(true)
     try {
-      const senderProfile = selfProfile ?? (await profileService.getProfile(user.$id))
+      const senderProfile = selfProfile ?? (await profileService.ensureProfileExists(user.$id, { name: user.name, email: user.email }))
       if (!selfProfile && senderProfile) setSelfProfile(senderProfile)
       const senderName = senderProfile?.name || user.name || "You"
       const senderAvatar = senderProfile?.avatar || "/placeholder.svg"
