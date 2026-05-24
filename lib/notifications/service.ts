@@ -222,8 +222,8 @@ export async function getUnreadNotifications(userId: string, limit: number = 20,
     const response = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.IN_APP,
-      [Query.equal('userId', userId), Query.equal('isRead', false), Query.orderDesc('createdAt')],
-      limit
+      [Query.equal('userId', userId), Query.equal('isRead', 'false'), Query.orderDesc('createdAt')],
+      limit.toString()
     )
 
     return response as any
@@ -248,7 +248,7 @@ export async function markNotificationAsRead(notificationId: string) {
       }
     )
 
-    return result as InAppNotification
+    return result as unknown as InAppNotification
   } catch (error) {
     console.error('[Notification] Failed to mark notification as read:', error)
     throw error

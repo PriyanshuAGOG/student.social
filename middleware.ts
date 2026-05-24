@@ -43,28 +43,100 @@ function checkRateLimit(req: NextRequest): string | null {
 }
 
 export function middleware(req: NextRequest) {
-  if (!isApiMutation(req)) return NextResponse.next()
-
   const correlationId = req.headers.get('x-correlation-id') || crypto.randomUUID()
+  
+  // Create response with security headers
+  let res: NextResponse
+  
+  // API mutations require additional security checks
+  if (isApiMutation(req)) {
+    const csrfError = checkCsrf(req)
+    if (csrfError) {
+      return NextResponse.json(
+        { success: false, error: { code: 'CSRF_BLOCKED', message: 'Request blocked by CSRF protection' } },
+        { status: 403, headers: { 'x-correlation-id': correlationId } },
+      )
+    }
 
-  const csrfError = checkCsrf(req)
-  if (csrfError) {
-    return NextResponse.json(
-      { success: false, error: { code: 'CSRF_BLOCKED', message: 'Request blocked by CSRF protection' } },
-      { status: 403, headers: { 'x-correlation-id': correlationId } },
-    )
+    const rlError = checkRateLimit(req)
+    if (rlError) {
+      return NextResponse.json(
+        { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' } },
+        { status: 429, headers: { 'x-correlation-id': correlationId, 'retry-after': '60' } },
+      )
+    }
+
+    res = NextResponse.next()
+  } else {
+    res = NextResponse.next()
   }
 
-  const rlError = checkRateLimit(req)
-  if (rlError) {
-    return NextResponse.json(
-      { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' } },
-      { status: 429, headers: { 'x-correlation-id': correlationId, 'retry-after': '60' } },
-    )
+  // ==================== ENTERPRISE SECURITY HEADERS ====================
+  
+  // Content Security Policy
+  res.headers.set(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' *.google.com *.googletagmanager.com",
+      "style-src 'self' 'unsafe-inline' fonts.googleapis.com",
+      "font-src 'self' fonts.gstatic.com",
+      "img-src 'self' data: https: *.google.com",
+      "connect-src 'self' https: wss:",
+      "frame-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; ')
+  )
+
+  // Prevent clickjacking
+  res.headers.set('X-Frame-Options', 'DENY')
+
+  // Prevent MIME type sniffing
+  res.headers.set('X-Content-Type-Options', 'nosniff')
+
+  // Enable XSS protection
+  res.headers.set('X-XSS-Protection', '1; mode=block')
+
+  // Referrer policy
+  res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+
+  // Permissions policy
+  res.headers.set(
+    'Permissions-Policy',
+    'geolocation=(), microphone=(), camera=(), payment=(), usb=()'
+  )
+
+  // HSTS - Force HTTPS
+  res.headers.set(
+    'Strict-Transport-Security',
+    'max-age=31536000; includeSubDomains; preload'
+  )
+
+  // Remove server identification
+  res.headers.delete('Server')
+  res.headers.set('X-Powered-By', '')
+
+  // Cache control for auth pages
+  if (req.nextUrl.pathname.includes('/auth') || req.nextUrl.pathname.includes('/api/auth')) {
+    res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, private')
+    res.headers.set('Pragma', 'no-cache')
+    res.headers.set('Expires', '0')
   }
 
-  const res = NextResponse.next()
+  // CORS validation
+  const origin = req.headers.get('origin')
+  const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001', 'https://peerspark.app']
+  
+  if (origin && allowedOrigins.some(allowed => origin.includes(allowed))) {
+    res.headers.set('Access-Control-Allow-Origin', origin)
+    res.headers.set('Access-Control-Allow-Credentials', 'true')
+  }
+
+  // Correlation ID for request tracking
   res.headers.set('x-correlation-id', correlationId)
+  
   return res
 }
 
