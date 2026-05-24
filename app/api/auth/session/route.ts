@@ -10,7 +10,8 @@ type SessionCookie = {
 
 export async function GET() {
   try {
-    const raw = cookies().get('peerspark_session')?.value
+    const cookieStore = await cookies()
+    const raw = cookieStore.get('peerspark_session')?.value
     if (!raw) {
       return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200 })
     }
