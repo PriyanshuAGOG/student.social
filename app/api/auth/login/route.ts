@@ -1,36 +1,39 @@
 import { NextResponse } from 'next/server'
 import { normalizeAppwriteEndpoint } from '@/lib/env'
 import { z } from 'zod'
-import { AUTH_COOKIE_NAME, authErrorResponse, mapAppwriteAuthError, parseJsonSafe, requireAuthEnv, signCookiePayload } from '@/lib/auth-route-utils'
+import { Client, Users, Query } from 'node-appwrite'
+import crypto from 'crypto'
 
 const schema = z.object({ email: z.string().email(), password: z.string().min(1) })
 
+const COOKIE_NAME = 'peerspark_session'
+
+function sign(payload: string, secret: string): string {
+  return crypto.createHmac('sha256', secret).update(payload).digest('hex')
+}
 
 export async function POST(req: Request) {
   try {
     const payload = schema.parse(await req.json())
     const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT)
     const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
+    const apiKey = process.env.APPWRITE_API_KEY
     const cookieSecret = process.env.APPWRITE_SESSION_COOKIE_SECRET
-    const envCheck = requireAuthEnv(['NEXT_PUBLIC_APPWRITE_ENDPOINT', 'NEXT_PUBLIC_APPWRITE_PROJECT_ID', 'APPWRITE_SESSION_COOKIE_SECRET'])
-    if (!envCheck.ok || !endpoint || !project || !cookieSecret) return authErrorResponse({ status: 500, code: 'AUTH_ENV_MISSING', message: 'Authentication server is misconfigured.', details: { missing: envCheck.ok ? [] : envCheck.missing } })
+    if (!endpoint || !project || !apiKey || !cookieSecret) return NextResponse.json({ error: 'Server config missing.' }, { status: 500 })
 
-    const base = endpoint.replace(/\/v1\/?$/i, '')
-    const appwriteResp = await fetch(`${base}/v1/account/sessions/email`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Appwrite-Project': project,
-      },
-      body: JSON.stringify({ email: payload.email.toLowerCase(), password: payload.password }),
+    const client = new Client().setEndpoint(endpoint).setProject(project).setKey(apiKey)
+    const users = new Users(client)
+
+    const matchedUsers = await users.list({
+      queries: [Query.equal('email', payload.email.toLowerCase())],
+      total: false,
     })
-
-    const appwriteData = await parseJsonSafe(appwriteResp)
-    if (!appwriteResp.ok) {
-      const mapped = mapAppwriteAuthError(appwriteResp.status, appwriteData, 'LOGIN_FAILED', 'Login failed')
-      return authErrorResponse({ status: appwriteResp.status || 401, code: mapped.code, message: mapped.message, details: { appwriteType: appwriteData?.type || null } })
+    const matchedUser = matchedUsers.users?.[0]
+    if (!matchedUser?.$id) {
+      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
     }
-    const session = appwriteData
+
+    const session = await users.createSession({ userId: matchedUser.$id })
 
     const response = NextResponse.json(
       {
@@ -50,10 +53,10 @@ export async function POST(req: Request) {
         expire: session.expire,
       })
     const encodedPayload = Buffer.from(cookiePayload).toString('base64url')
-    const signedValue = `${encodedPayload}.${signCookiePayload(encodedPayload, cookieSecret)}`
+    const signedValue = `${encodedPayload}.${sign(encodedPayload, cookieSecret)}`
 
     response.cookies.set({
-      name: AUTH_COOKIE_NAME,
+      name: COOKIE_NAME,
       value: signedValue,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
