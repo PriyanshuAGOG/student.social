@@ -1,3 +1,4 @@
+import { normalizeAppwriteEndpoint } from './env'
 /**
  * Whiteboard Real-time Sync Utilities
  * 
@@ -147,7 +148,7 @@ export function getWhiteboardShareLink(podId: string, meetingId: string): string
 export function initializeAppwrite() {
   const client = new Client()
   client
-    .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || '')
+    .setEndpoint(normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT) || '')
     .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || '')
 
   return { client }

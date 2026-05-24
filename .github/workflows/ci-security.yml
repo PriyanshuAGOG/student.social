@@ -1,0 +1,41 @@
+name: CI Security Gates
+
+on:
+  pull_request:
+  push:
+    branches: ["**"]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint -- --quiet
+      - run: npm run build
+      - run: npx tsc --noEmit
+      - run: npm run test:contracts
+      - run: npm run test:e2e
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=high
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Simple secret patterns
+        run: |
+          ! rg -n "(AKIA[0-9A-Z]{16}|sk_live_[0-9a-zA-Z]{24,}|xox[baprs]-[0-9a-zA-Z-]{10,}|-----BEGIN (RSA|OPENSSH|EC) PRIVATE KEY-----)" .
