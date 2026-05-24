@@ -222,8 +222,13 @@ export async function getUnreadNotifications(userId: string, limit: number = 20,
     const response = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.IN_APP,
-      [Query.equal('userId', userId), Query.equal('isRead', 'false'), Query.orderDesc('createdAt')],
-      limit.toString()
+      [
+        Query.equal('userId', userId),
+        Query.equal('isRead', 'false'),
+        Query.orderDesc('createdAt'),
+        Query.limit(limit),
+        Query.offset(offset),
+      ]
     )
 
     return response as any
@@ -339,14 +344,14 @@ export async function getPendingNotifications(limit: number = 10): Promise<Notif
       COLLECTIONS.QUEUE,
       [
         Query.equal('status', 'queued'),
-        Query.lessThanOrEqual('scheduledFor', new Date().toISOString()),
+        Query.lessThanEqual('scheduledFor', new Date().toISOString()),
         Query.orderAsc('priority'),
         Query.orderAsc('scheduledFor'),
-      ],
-      limit
+        Query.limit(limit),
+      ]
     )
 
-    return response.documents as NotificationQueue[]
+    return response.documents as unknown as NotificationQueue[]
   } catch (error) {
     console.error('[Notification] Failed to get pending notifications:', error)
     return []
