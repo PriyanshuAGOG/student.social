@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { normalizeAppwriteEndpoint } from '@/lib/env'
 import { z } from 'zod'
-import { Client, Account } from 'node-appwrite'
 
 const schema = z.object({
   userId: z.string().min(1),
@@ -17,9 +16,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Server config missing.' }, { status: 500 })
     }
 
-    const client = new Client().setEndpoint(endpoint).setProject(project)
-    const account = new Account(client)
-    await account.updateVerification(payload.userId, payload.secret)
+    const base = endpoint.replace(/\/v1\/?$/i, '')
+    const response = await fetch(`${base}/v1/account/verification`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Appwrite-Project': project,
+      },
+      body: JSON.stringify({ userId: payload.userId, secret: payload.secret }),
+    })
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      return NextResponse.json({ error: data?.message || 'Failed to verify email' }, { status: response.status })
+    }
 
     return NextResponse.json({ ok: true })
   } catch (error: any) {
