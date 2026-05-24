@@ -35,8 +35,7 @@ export async function GET(req: NextRequest) {
       DATABASE_ID,
       'in_app_notifications',
       queries,
-      limit,
-      offset
+      String(limit)
     )
 
     return NextResponse.json({

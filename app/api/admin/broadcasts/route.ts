@@ -77,14 +77,12 @@ export async function GET(req: NextRequest) {
     }
 
     const limit = parseInt(req.nextUrl.searchParams.get('limit') || '20')
-    const offset = parseInt(req.nextUrl.searchParams.get('offset') || '0')
 
     const response = await databases.listDocuments(
       DATABASE_ID,
       'admin_broadcasts',
       [],
-      limit,
-      offset
+      String(limit)
     )
 
     return NextResponse.json({

@@ -12,7 +12,7 @@ const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const userId = req.headers.get('x-user-id')
@@ -20,7 +20,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const notificationId = params.id
+    const { id } = await params
+    const notificationId = id
 
     const result = await databases.updateDocument(
       DATABASE_ID,

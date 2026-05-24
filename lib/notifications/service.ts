@@ -71,7 +71,7 @@ export async function queueNotification(payload: NotificationPayload) {
     )
 
     console.log('[Notification] Queued notification:', result.$id)
-    return result as NotificationQueue
+    return result as unknown as NotificationQueue
   } catch (error) {
     console.error('[Notification] Failed to queue notification:', error)
     throw error
@@ -87,7 +87,7 @@ export async function getUserPreferences(userId: string): Promise<NotificationPr
       Query.equal('userId', userId),
     ])
 
-    return (response.documents[0] as NotificationPreferences) || null
+    return (response.documents[0] as unknown as NotificationPreferences) || null
   } catch (error) {
     console.error('[Notification] Failed to get user preferences:', error)
     return null

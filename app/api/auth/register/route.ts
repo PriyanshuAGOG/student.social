@@ -95,8 +95,8 @@ export async function POST(req: Request) {
       return authErrorResponse({
         status: 400,
         code: 'WEAK_PASSWORD',
-        message: 'Password does not meet security requirements',
-        details: { feedback: passwordStrength.feedback },
+        message: 'Password must contain: at least 8 characters, uppercase letter, lowercase letter, number, and special character',
+        details: { requirements: passwordStrength.feedback },
       })
     }
 
