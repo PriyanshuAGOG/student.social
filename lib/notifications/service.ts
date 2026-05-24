@@ -322,7 +322,7 @@ export async function updateQueueItemStatus(
       ...updates,
     })
 
-    return result as NotificationQueue
+    return result as unknown as NotificationQueue
   } catch (error) {
     console.error('[Notification] Failed to update queue item:', error)
     throw error
