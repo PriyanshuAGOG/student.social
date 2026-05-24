@@ -2,9 +2,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { client, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite"
 import { Client, Databases, Query } from "node-appwrite"
+import { getAppwriteEndpoint } from "@/lib/env"
 
 function getDatabases() {
-  const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT
+  const endpoint = getAppwriteEndpoint()
   const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
   const apiKey = process.env.APPWRITE_API_KEY
 

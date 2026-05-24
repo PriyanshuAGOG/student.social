@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { Models, AppwriteException } from 'appwrite'
-import { account, authService, profileService, isAppwriteEmailVerified } from './appwrite'
+import { authService, profileService, isAppwriteEmailVerified } from './appwrite'
 
 import { Profile } from '@/types'
 
@@ -32,6 +32,19 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 // Session state stored in memory to prevent unnecessary API calls
 let sessionCheckPromise: Promise<Models.User<Models.Preferences> | null> | null = null
 
+async function fetchSessionUser(): Promise<Models.User<Models.Preferences> | null> {
+  try {
+    const response = await fetch('/api/auth/session', { credentials: 'include' })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok || !payload?.authenticated || !payload?.user) {
+      return null
+    }
+    return payload.user as Models.User<Models.Preferences>
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -55,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return !!result
       }
 
-      sessionCheckPromise = account.get().catch(() => null)
+      sessionCheckPromise = fetchSessionUser()
       const currentUser = await sessionCheckPromise
       sessionCheckPromise = null
 
@@ -127,7 +140,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     try {
-      const currentUser = await account.get()
+      const currentUser = await fetchSessionUser()
+      if (!currentUser) {
+        setUser(null)
+        setProfile(null)
+        setHasActiveSession(false)
+        setIsEmailVerified(false)
+        return
+      }
       const verified = isAppwriteEmailVerified(currentUser)
       setUser(currentUser)
       setHasActiveSession(true)
