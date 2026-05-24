@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
     const client = new Client().setEndpoint(endpoint).setProject(project)
     const account = new Account(client)
-    await account.updateRecovery(payload.userId, payload.secret, payload.password, payload.passwordAgain)
+    await account.updateRecovery(payload.userId, payload.secret, payload.password)
 
     return NextResponse.json({ ok: true })
   } catch (error: any) {
