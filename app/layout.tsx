@@ -81,7 +81,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
+      <head suppressHydrationWarning>
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -92,7 +92,7 @@ export default function RootLayout({
         {/* Preconnect to Jitsi for faster video calls - script loads dynamically when needed */}
         <link rel="preconnect" href="https://meet.jit.si" />
         <link rel="dns-prefetch" href="https://meet.jit.si" />
-        <script src="/sw-register.js" defer></script>
+        <script src="/sw-register.js" defer suppressHydrationWarning></script>
       </head>
       <body>
         <AuthProvider>
