@@ -351,7 +351,7 @@ export async function getPendingNotifications(limit: number = 10): Promise<Notif
       ]
     )
 
-    return response.documents as NotificationQueue[]
+    return response.documents as unknown as NotificationQueue[]
   } catch (error) {
     console.error('[Notification] Failed to get pending notifications:', error)
     return []
