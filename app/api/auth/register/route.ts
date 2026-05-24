@@ -10,9 +10,9 @@ export async function POST(req: Request) {
     const payload = schema.parse(await req.json())
     const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT)
     const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
-    const apiKey = process.env.APPWRITE_API_KEY
-    if (!endpoint || !project || !apiKey) {
-      return NextResponse.json({ error: 'Server configuration missing for Appwrite registration.' }, { status: 500 })
+    const envCheck = requireAuthEnv(['NEXT_PUBLIC_APPWRITE_ENDPOINT', 'NEXT_PUBLIC_APPWRITE_PROJECT_ID'])
+    if (!envCheck.ok || !endpoint || !project) {
+      return authErrorResponse({ status: 500, code: 'AUTH_ENV_MISSING', message: 'Authentication server is misconfigured.', details: { missing: envCheck.ok ? [] : envCheck.missing } })
     }
 
     const client = new Client().setEndpoint(endpoint).setProject(project).setKey(apiKey)
@@ -21,6 +21,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, userId: user.$id, email: user.email, name: user.name }, { status: 201 })
   } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Registration failed' }, { status: 400 })
+    return authErrorResponse({ status: 400, code: 'REGISTER_REQUEST_INVALID', message: error?.message || 'Registration failed' })
   }
 }

@@ -67,6 +67,6 @@ export async function POST(req: Request) {
 
     return response
   } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Login failed' }, { status: 400 })
+    return authErrorResponse({ status: 400, code: 'LOGIN_REQUEST_INVALID', message: error?.message || 'Login failed' })
   }
 }
