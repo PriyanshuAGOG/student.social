@@ -529,7 +529,10 @@ export const authService = {
       }
 
       if (account && typeof (account as any).createRecovery === 'function') {
-        return await (account as any).createRecovery(email, `${typeof window !== "undefined" ? window.location.origin : ""}/reset-password`)
+        return await (account as any).createRecovery(
+          email,
+          `${((getEnv().NEXT_PUBLIC_APP_URL || '').endsWith('/') ? (getEnv().NEXT_PUBLIC_APP_URL || '').slice(0, -1) : (getEnv().NEXT_PUBLIC_APP_URL || ''))}/reset-password`
+        )
       } else {
         const resp = await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/recovery', {
           method: 'POST',
@@ -537,7 +540,10 @@ export const authService = {
             'Content-Type': 'application/json',
             'X-Appwrite-Project': projectId || ''
           },
-          body: JSON.stringify({ email, url: `${typeof window !== "undefined" ? window.location.origin : ""}/reset-password` }),
+          body: JSON.stringify({
+            email,
+            url: `${((getEnv().NEXT_PUBLIC_APP_URL || '').endsWith('/') ? (getEnv().NEXT_PUBLIC_APP_URL || '').slice(0, -1) : (getEnv().NEXT_PUBLIC_APP_URL || ''))}/reset-password`,
+          }),
           credentials: 'include',
         })
         const data = await resp.json()
@@ -651,7 +657,9 @@ export const authService = {
       if (account && typeof (account as any).createVerification === 'function') {
         return await (account as any).createVerification((getEnv().NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '') + '/verify-email')
       } else {
-        const body: any = { url: (typeof window !== 'undefined' ? window.location.origin + '/verify-email' : '/') }
+        const body: any = {
+          url: `${((getEnv().NEXT_PUBLIC_APP_URL || '').endsWith('/') ? (getEnv().NEXT_PUBLIC_APP_URL || '').slice(0, -1) : (getEnv().NEXT_PUBLIC_APP_URL || ''))}/verify-email`,
+        }
         if (email) body.email = email
         const resp = await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/verification', {
           method: 'POST',
