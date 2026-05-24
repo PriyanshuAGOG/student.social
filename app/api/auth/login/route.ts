@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { normalizeAppwriteEndpoint } from '@/lib/env'
 import { z } from 'zod'
-import { Client, Users } from 'node-appwrite'
+import { Client, Users, Query } from 'node-appwrite'
 import crypto from 'crypto'
 
 const schema = z.object({ email: z.string().email(), password: z.string().min(1) })
@@ -23,7 +23,17 @@ export async function POST(req: Request) {
 
     const client = new Client().setEndpoint(endpoint).setProject(project).setKey(apiKey)
     const users = new Users(client)
-    const session = await users.createSession(payload.email, payload.password)
+
+    const matchedUsers = await users.list({
+      queries: [Query.equal('email', payload.email.toLowerCase())],
+      total: false,
+    })
+    const matchedUser = matchedUsers.users?.[0]
+    if (!matchedUser?.$id) {
+      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
+    }
+
+    const session = await users.createSession({ userId: matchedUser.$id })
 
     const response = NextResponse.json(
       {
