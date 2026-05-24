@@ -132,8 +132,7 @@ function LoginPageContent() {
       
       // Check if user has completed onboarding by checking profile
       try {
-        const { profileService } = await import('@/lib/appwrite')
-        const profile = await profileService.getProfile(session.userId)
+        const profile = await authService.getCurrentUserProfile()
         // If profile has identity set, onboarding is complete
         if (profile && profile.identity) {
           toast({
