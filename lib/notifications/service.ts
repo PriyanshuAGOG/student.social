@@ -300,7 +300,7 @@ export async function isNotificationSuppressed(userId: string, channel: Notifica
 export async function getQueueItem(queueId: string): Promise<NotificationQueue | null> {
   try {
     const result = await databases.getDocument(DATABASE_ID, COLLECTIONS.QUEUE, queueId)
-    return result as NotificationQueue
+    return result as unknown as NotificationQueue
   } catch (error) {
     console.error('[Notification] Failed to get queue item:', error)
     return null
