@@ -67,7 +67,7 @@ export const postServiceFixed = {
             file
           )
 
-          const imageUrl = `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/${this.BUCKETS.POST_IMAGES}/files/${uploadedFile.$id}/preview?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`
+          const imageUrl = `${(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT || '').replace('cloud.appwrite.io', 'fra.cloud.appwrite.io')}/storage/buckets/${this.BUCKETS.POST_IMAGES}/files/${uploadedFile.$id}/preview?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID}`
           imageUrls.push(imageUrl)
         } catch (error) {
           console.error("Failed to upload image:", error)
@@ -513,7 +513,7 @@ export const podServiceFixed = {
           podData.photoFile
         )
 
-        photoUrl = `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/pod_images/files/${uploadedFile.$id}/preview?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`
+        photoUrl = `${(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT || '').replace('cloud.appwrite.io', 'fra.cloud.appwrite.io')}/storage/buckets/pod_images/files/${uploadedFile.$id}/preview?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID}`
       } catch (error) {
         console.error("Failed to upload pod photo:", error)
         throw new Error("Failed to upload pod photo")

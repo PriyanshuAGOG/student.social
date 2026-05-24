@@ -20,7 +20,15 @@ let cachedEnv: AppEnv | null = null
 
 export function getEnv(): AppEnv {
   if (cachedEnv) return cachedEnv
-  const parsed = optionalEnvSchema.parse(process.env)
+  const parsed = optionalEnvSchema.parse({
+    NODE_ENV: process.env.NODE_ENV,
+    NEXT_PUBLIC_APPWRITE_ENDPOINT: process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT,
+    NEXT_PUBLIC_APPWRITE_PROJECT_ID: process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID,
+    NEXT_PUBLIC_APPWRITE_DATABASE_ID: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    APPWRITE_API_KEY: process.env.APPWRITE_API_KEY,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+  })
   parsed.NEXT_PUBLIC_APPWRITE_ENDPOINT = normalizeAppwriteEndpoint(parsed.NEXT_PUBLIC_APPWRITE_ENDPOINT)
   cachedEnv = parsed
   return parsed
