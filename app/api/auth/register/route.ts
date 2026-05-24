@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { normalizeAppwriteEndpoint } from '@/lib/env'
+import { authErrorResponse, requireAuthEnv } from '@/lib/auth-route-utils'
 import { z } from 'zod'
 import { Client, Users, ID } from 'node-appwrite'
 
@@ -10,8 +11,9 @@ export async function POST(req: Request) {
     const payload = schema.parse(await req.json())
     const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT)
     const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
+    const apiKey = process.env.APPWRITE_API_KEY
     const envCheck = requireAuthEnv(['NEXT_PUBLIC_APPWRITE_ENDPOINT', 'NEXT_PUBLIC_APPWRITE_PROJECT_ID'])
-    if (!envCheck.ok || !endpoint || !project) {
+    if (!envCheck.ok || !endpoint || !project || !apiKey) {
       return authErrorResponse({ status: 500, code: 'AUTH_ENV_MISSING', message: 'Authentication server is misconfigured.', details: { missing: envCheck.ok ? [] : envCheck.missing } })
     }
 

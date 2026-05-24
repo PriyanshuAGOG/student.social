@@ -1,16 +1,10 @@
 import { NextResponse } from 'next/server'
 import { normalizeAppwriteEndpoint } from '@/lib/env'
+import { authErrorResponse, AUTH_COOKIE_NAME, signCookiePayload } from '@/lib/auth-route-utils'
 import { z } from 'zod'
 import { Client, Users, Query } from 'node-appwrite'
-import crypto from 'crypto'
 
 const schema = z.object({ email: z.string().email(), password: z.string().min(1) })
-
-const COOKIE_NAME = 'peerspark_session'
-
-function sign(payload: string, secret: string): string {
-  return crypto.createHmac('sha256', secret).update(payload).digest('hex')
-}
 
 export async function POST(req: Request) {
   try {
@@ -53,10 +47,10 @@ export async function POST(req: Request) {
         expire: session.expire,
       })
     const encodedPayload = Buffer.from(cookiePayload).toString('base64url')
-    const signedValue = `${encodedPayload}.${sign(encodedPayload, cookieSecret)}`
+    const signedValue = `${encodedPayload}.${signCookiePayload(encodedPayload, cookieSecret)}`
 
     response.cookies.set({
-      name: COOKIE_NAME,
+      name: AUTH_COOKIE_NAME,
       value: signedValue,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
