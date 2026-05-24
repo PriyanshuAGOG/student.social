@@ -44,8 +44,14 @@ debugLog("Initializing with project:", projectId)
 const client = new Client()
 export { client }
 
-if (endpoint && projectId) {
-  client.setEndpoint(endpoint).setProject(projectId)
+if (endpoint) {
+  client.setEndpoint(endpoint)
+}
+
+if (projectId) {
+  client.setProject(projectId)
+} else {
+  console.error("[Appwrite] MISSING PROJECT ID - check NEXT_PUBLIC_APPWRITE_PROJECT_ID in Vercel")
 }
 
 debugLog("Client initialized successfully")
@@ -60,6 +66,21 @@ export const functions = new Functions(client)
 export const messaging = new Messaging(client)
 const matchCache = new Map<string, { timestamp: number; data: any[] }>()
 const MATCH_CACHE_TTL = 1000 * 60 * 5 // 5 minutes
+
+async function fetchSessionUser(): Promise<any | null> {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const response = await fetch('/api/auth/session', { credentials: 'include' })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok || !payload?.authenticated || !payload?.user) {
+      return null
+    }
+    return payload.user
+  } catch {
+    return null
+  }
+}
 
 // Verify Account service has methods
 debugLog("Account service methods:", Object.keys(account).slice(0, 5))
@@ -153,12 +174,12 @@ export const authService = {
       if (sessionCreated) {
         try {
           if (account && typeof (account as any).createVerification === 'function') {
-            await (account as any).createVerification(((getEnv().NEXT_PUBLIC_APP_URL || '').endsWith('/') ? (getEnv().NEXT_PUBLIC_APP_URL || '').slice(0, -1) : (getEnv().NEXT_PUBLIC_APP_URL || '')) + '/verify-email')
+            await (account as any).createVerification((getEnv().NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '') + '/verify-email')
           } else {
             await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/verification', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'X-Appwrite-Project': projectId || '' },
-              body: JSON.stringify({ url: (((getEnv().NEXT_PUBLIC_APP_URL || '').endsWith('/') ? (getEnv().NEXT_PUBLIC_APP_URL || '').slice(0, -1) : (getEnv().NEXT_PUBLIC_APP_URL || '')) + '/verify-email') }),
+              body: JSON.stringify({ url: ((getEnv().NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '') + '/verify-email') }),
               credentials: 'include',
             })
           }
@@ -228,11 +249,11 @@ export const authService = {
 
       // First, check if there's already an active session and enforce verification on it.
       try {
-        const currentUser = await account.get()
+        const currentUser = typeof window !== 'undefined' ? await fetchSessionUser() : await account.get()
         if (currentUser) {
           if (!isAppwriteEmailVerified(currentUser)) {
             try {
-              await this.resendVerification(currentUser.email || email)
+              await this.resendVerification(currentUser.$id || currentUser.email || email)
             } catch (verificationError) {
               console.warn('Failed to send verification reminder for active unverified session:', verificationError)
             }
@@ -254,7 +275,12 @@ export const authService = {
         const proxyResp = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
         const proxyData = await proxyResp.json().catch(() => ({}))
         if (!proxyResp.ok) throw new Error(proxyData.error || 'Login failed')
-        return { session: { $id: proxyData.sessionId || 'proxy' }, user: null, profile: null }
+        return {
+          session: { $id: proxyData.sessionId || 'proxy' },
+          userId: proxyData.userId || null,
+          user: proxyData.userId ? { $id: proxyData.userId } : null,
+          profile: null,
+        }
       }
 
       let session: any = null
@@ -374,6 +400,10 @@ export const authService = {
   // Get current user
   async getCurrentUser() {
     try {
+      if (typeof window !== 'undefined') {
+        return await fetchSessionUser()
+      }
+
       return await account.get()
     } catch (error) {
       return null
@@ -383,6 +413,23 @@ export const authService = {
   // Get current user profile
   async getCurrentUserProfile() {
     try {
+      if (typeof window !== 'undefined') {
+        const response = await fetch('/api/auth/session', { credentials: 'include' })
+        const payload = await response.json().catch(() => null)
+        if (response.ok && payload?.profile) {
+          return payload.profile
+        }
+        if (response.ok && payload?.user) {
+          return {
+            $id: payload.user.$id,
+            userId: payload.user.$id,
+            name: payload.user.name || '',
+            email: payload.user.email || '',
+          }
+        }
+        return null
+      }
+
       const user = await account.get()
       if (!user) return null
       return await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id)
@@ -395,21 +442,40 @@ export const authService = {
   // Logout
   async logout() {
     try {
-      const user = await account.get()
+      const user = await this.getCurrentUser()
 
       // Update user offline status
       if (user) {
         try {
-          await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
-            isOnline: false,
-            lastSeen: new Date().toISOString(),
-          })
+          if (typeof window !== 'undefined') {
+            await ensureProfileViaApi(user.$id, {}, {
+              isOnline: false,
+              lastSeen: new Date().toISOString(),
+            })
+          } else {
+            await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
+              isOnline: false,
+              lastSeen: new Date().toISOString(),
+            })
+          }
         } catch (updateError) {
           console.warn("Failed to update offline status:", updateError)
         }
       }
 
-      // Delete session
+      if (typeof window !== 'undefined') {
+        try {
+          await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+        } catch (e) {
+          console.warn('Failed to clear local session cookie:', e)
+        }
+      }
+
+      // Delete session only in server/runtime contexts where Appwrite is directly reachable
+      if (typeof window !== 'undefined') {
+        return { success: true }
+      }
+
       return await account.deleteSession("current")
     } catch (error: any) {
       console.error("Logout error:", error)
@@ -450,6 +516,18 @@ export const authService = {
   // Request password reset
   async requestPasswordReset(email: string) {
     try {
+      if (typeof window !== 'undefined') {
+        const resp = await fetch('/api/auth/request-password-reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email }),
+        })
+        const data = await resp.json().catch(() => ({}))
+        if (!resp.ok) throw new Error(data.error || 'Failed to request password reset')
+        return data
+      }
+
       if (account && typeof (account as any).createRecovery === 'function') {
         return await (account as any).createRecovery(
           email,
@@ -484,6 +562,17 @@ export const authService = {
       if (newPassword !== confirmPassword) {
         throw new Error("Passwords do not match")
       }
+      if (typeof window !== 'undefined') {
+        const resp = await fetch('/api/auth/confirm-password-reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ userId, secret, password: newPassword, passwordAgain: confirmPassword }),
+        })
+        const data = await resp.json().catch(() => ({}))
+        if (!resp.ok) throw new Error(data.error || 'Failed to reset password')
+        return data
+      }
       if (account && typeof (account as any).updateRecovery === 'function') {
         return await (account as any).updateRecovery(userId, secret, newPassword, confirmPassword)
       } else {
@@ -512,6 +601,17 @@ export const authService = {
       if (!userId || !secret) {
         throw new Error('Verification link is missing required parameters')
       }
+      if (typeof window !== 'undefined') {
+        const resp = await fetch('/api/auth/verify-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ userId, secret }),
+        })
+        const data = await resp.json().catch(() => ({}))
+        if (!resp.ok) throw new Error(data.error || 'Failed to verify email')
+        return data
+      }
       if (account && typeof (account as any).updateVerification === 'function') {
         return await (account as any).updateVerification(userId, secret)
       }
@@ -536,8 +636,26 @@ export const authService = {
   // Resend verification email (best-effort)
   async resendVerification(email?: string) {
     try {
+      if (typeof window !== 'undefined') {
+        const sessionResp = await fetch('/api/auth/session', { credentials: 'include' })
+        const sessionPayload = await sessionResp.json().catch(() => null)
+        const userId = sessionPayload?.user?.$id || sessionPayload?.userId || sessionPayload?.profile?.userId
+        if (userId) {
+          const resp = await fetch('/api/auth/send-verification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ userId }),
+          })
+          const data = await resp.json().catch(() => ({}))
+          if (!resp.ok) throw new Error(data.error || 'Failed to resend verification')
+          return data
+        }
+        throw new Error('No active session found to resend verification')
+      }
+
       if (account && typeof (account as any).createVerification === 'function') {
-        return await (account as any).createVerification(((getEnv().NEXT_PUBLIC_APP_URL || '').endsWith('/') ? (getEnv().NEXT_PUBLIC_APP_URL || '').slice(0, -1) : (getEnv().NEXT_PUBLIC_APP_URL || '')) + '/verify-email')
+        return await (account as any).createVerification((getEnv().NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '') + '/verify-email')
       } else {
         const body: any = {
           url: `${((getEnv().NEXT_PUBLIC_APP_URL || '').endsWith('/') ? (getEnv().NEXT_PUBLIC_APP_URL || '').slice(0, -1) : (getEnv().NEXT_PUBLIC_APP_URL || ''))}/verify-email`,

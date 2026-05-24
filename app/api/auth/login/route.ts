@@ -15,7 +15,31 @@ export async function POST(req: Request) {
     const client = new Client().setEndpoint(endpoint).setProject(project)
     const account = new Account(client)
     const session = await account.createEmailPasswordSession(payload.email, payload.password)
-    return NextResponse.json({ success: true, sessionId: session.$id }, { status: 200 })
+
+    const response = NextResponse.json(
+      {
+        success: true,
+        sessionId: session.$id,
+        userId: session.userId,
+      },
+      { status: 200 }
+    )
+
+    response.cookies.set({
+      name: 'peerspark_session',
+      value: JSON.stringify({
+        sessionId: session.$id,
+        userId: session.userId,
+        email: payload.email,
+      }),
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 30,
+    })
+
+    return response
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Login failed' }, { status: 400 })
   }
