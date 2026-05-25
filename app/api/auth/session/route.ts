@@ -57,8 +57,7 @@ export async function GET() {
 
     // Fallback: validate by sessionId for environments where session secret is unavailable.
     if (!accountUser?.$id && sessionCookie.sessionId) {
-      const userSessions = await users.listSessions(userId, false).catch(() => null)
-      const activeSession = userSessions?.sessions?.find((s: any) => s.$id === sessionCookie.sessionId)
+      const activeSession = await users.getSession(userId, sessionCookie.sessionId).catch(() => null)
       if (activeSession?.$id) {
         accountUser = await users.get(userId).catch(() => null)
       }
