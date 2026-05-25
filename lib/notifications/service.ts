@@ -334,19 +334,19 @@ export async function updateQueueItemStatus(
  */
 export async function getPendingNotifications(limit: number = 10): Promise<NotificationQueue[]> {
   try {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.QUEUE,
-      [
+    const response = await databases.listDocuments({
+      databaseId: DATABASE_ID,
+      collectionId: COLLECTIONS.QUEUE,
+      queries: [
         Query.equal('status', 'queued'),
-        Query.lessThanOrEqual('scheduledFor', new Date().toISOString()),
+        Query.lessThanEqual('scheduledFor', new Date().toISOString()),
         Query.orderAsc('priority'),
         Query.orderAsc('scheduledFor'),
+        Query.limit(limit),
       ],
-      limit
-    )
+    })
 
-    return response.documents as NotificationQueue[]
+    return response.documents as unknown as NotificationQueue[]
   } catch (error) {
     console.error('[Notification] Failed to get pending notifications:', error)
     return []

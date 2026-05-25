@@ -1,0 +1,31 @@
+{
+    "projectId": "6a114e2d0034237c909c",
+    "functions": [
+        {
+            "$id": "notification-worker",
+            "name": "notification-worker",
+            "runtime": "node-18.0",
+            "buildSpecification": "s-4vcpu-4gb",
+            "runtimeSpecification": "s-4vcpu-4gb",
+            "execute": [
+                "any"
+            ],
+            "events": [],
+            "scopes": [
+                "users.read"
+            ],
+            "schedule": "",
+            "timeout": 15,
+            "enabled": true,
+            "logging": true,
+            "entrypoint": "dist/main.js",
+            "commands": "npm install && npm run build",
+            "ignore": [
+                "node_modules",
+                ".npm"
+            ],
+            "deploymentRetention": 0,
+            "path": "appwrite/functions/notification-worker"
+        }
+    ]
+}

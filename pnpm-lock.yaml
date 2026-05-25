@@ -207,6 +207,9 @@ importers:
       '@next/eslint-plugin-next':
         specifier: 16.1.1
         version: 16.1.1
+      '@tailwindcss/oxide-linux-x64-gnu':
+        specifier: 4.3.0
+        version: 4.3.0
       '@tailwindcss/postcss':
         specifier: ^4.1.9
         version: 4.1.18
@@ -1858,6 +1861,12 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [glibc]
+
+  '@tailwindcss/oxide-linux-x64-gnu@4.3.0':
+    resolution: {integrity: sha512-DRNdQRpSGzRGfARVuVkxvM8Q12nh19l4BF/G7zGA1oe+9wcC6saFBHTISrpIcKzhiXtSrlSrluCfvMuledoCTQ==}
+    engines: {node: '>= 20'}
+    cpu: [x64]
+    os: [linux]
 
   '@tailwindcss/oxide-linux-x64-musl@4.1.18':
     resolution: {integrity: sha512-bhJ2y2OQNlcRwwgOAGMY0xTFStt4/wyU6pvI6LSuZpRgKQwxTec0/3Scu91O8ir7qCR3AuepQKLU/kX99FouqQ==}
@@ -6354,6 +6363,8 @@ snapshots:
 
   '@tailwindcss/oxide-linux-x64-gnu@4.1.18':
     optional: true
+
+  '@tailwindcss/oxide-linux-x64-gnu@4.3.0': {}
 
   '@tailwindcss/oxide-linux-x64-musl@4.1.18':
     optional: true

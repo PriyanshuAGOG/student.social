@@ -33,7 +33,7 @@ export async function getTemplate(
     )
 
     if (response.documents.length > 0) {
-      return response.documents[0] as NotificationTemplate
+      return response.documents[0] as unknown as NotificationTemplate
     }
 
     // Fallback to English if requested locale not available
@@ -45,7 +45,7 @@ export async function getTemplate(
         Query.equal('status', 'active'),
       ])
 
-      return enResponse.documents.length > 0 ? (enResponse.documents[0] as NotificationTemplate) : null
+      return enResponse.documents.length > 0 ? (enResponse.documents[0] as unknown as NotificationTemplate) : null
     }
 
     return null
@@ -123,13 +123,13 @@ export async function upsertTemplate(
 
     if (existing.documents.length > 0) {
       const updated = await databases.updateDocument(DATABASE_ID, COLLECTION_ID, existing.documents[0].$id, templateData)
-      return updated as NotificationTemplate
+      return updated as unknown as NotificationTemplate
     } else {
       const created = await databases.createDocument(DATABASE_ID, COLLECTION_ID, ID.unique(), {
         ...templateData,
         createdAt: new Date().toISOString(),
       })
-      return created as NotificationTemplate
+      return created as unknown as NotificationTemplate
     }
   } catch (error) {
     console.error('[Templates] Failed to upsert template:', error)
@@ -283,7 +283,7 @@ export async function getTemplatesByCategory(category: NotificationCategory): Pr
       [Query.equal('category', category), Query.equal('status', 'active')]
     )
 
-    return response.documents as NotificationTemplate[]
+    return response.documents as unknown as NotificationTemplate[]
   } catch (error) {
     console.error('[Templates] Failed to get templates by category:', error)
     return []

@@ -1,0 +1,16 @@
+{
+  "name": "notification-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --outfile=dist/main.js",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "node-appwrite": "^21.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.18.0"
+  }
+}

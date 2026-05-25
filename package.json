@@ -81,6 +81,7 @@
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "16.1.1",
+    "@tailwindcss/oxide-linux-x64-gnu": "4.3.0",
     "@tailwindcss/postcss": "^4.1.9",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22",

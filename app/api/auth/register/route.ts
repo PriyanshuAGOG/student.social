@@ -221,7 +221,7 @@ export async function POST(req: Request) {
       }
 
       // Rate limited by Appwrite
-      if (errorStatus === 429 || errorCode === 429) {
+      if (errorStatus === 429 || errorCode === '429') {
         logRegistrationFailed(email, clientIP, userAgent, duration, 'RATE_LIMITED', 'Appwrite rate limit')
         return authErrorResponse({
           status: 429,
