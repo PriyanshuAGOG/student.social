@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { normalizeAppwriteEndpoint } from '@/lib/env'
-import { authErrorResponse, authSuccessResponse, requireAuthEnv, getClientIP, getUserAgent, validateEmail, validatePasswordBasic, addRateLimitHeaders, makeErrorId } from '@/lib/auth-route-utils'
+import { getAppwriteServerConfig } from '@/lib/env'
+import { authErrorResponse, authSuccessResponse, getClientIP, getUserAgent, addRateLimitHeaders, makeErrorId } from '@/lib/auth-route-utils'
 import { checkRateLimit, getRateLimitConfig } from '@/lib/auth-security'
 import { validatePasswordStrength, checkPasswordBreach, validateEmail as validateEmailSecurity, hashPassword, addToPasswordHistory } from '@/lib/password-security'
 import { logRegistrationSuccess, logRegistrationFailed } from '@/lib/auth-audit'
@@ -113,11 +113,19 @@ export async function POST(req: Request) {
     }
 
     // Verify environment variables
-    const envCheck = requireAuthEnv(['NEXT_PUBLIC_APPWRITE_ENDPOINT', 'NEXT_PUBLIC_APPWRITE_PROJECT_ID', 'APPWRITE_API_KEY'])
-    if (!envCheck.ok) {
-      console.error('[v0] Missing auth environment variables in register endpoint', envCheck.missing)
+    const { endpoint, projectId, apiKey } = getAppwriteServerConfig()
+    if (!endpoint || !projectId || !apiKey) {
+      console.error('[v0] Missing auth environment variables in register endpoint', {
+        endpoint: Boolean(endpoint),
+        projectId: Boolean(projectId),
+        apiKey: Boolean(apiKey),
+      })
       const duration = Date.now() - startTime
-      logRegistrationFailed(email, clientIP, userAgent, duration, 'SERVER_CONFIG_ERROR', 'Authentication server is misconfigured', { missing: envCheck.missing })
+      logRegistrationFailed(email, clientIP, userAgent, duration, 'SERVER_CONFIG_ERROR', 'Authentication server is misconfigured', {
+        endpoint: Boolean(endpoint),
+        projectId: Boolean(projectId),
+        apiKey: Boolean(apiKey),
+      })
       return authErrorResponse({
         status: 500,
         code: 'AUTH_ENV_MISSING',
@@ -126,46 +134,37 @@ export async function POST(req: Request) {
       })
     }
 
-    // Get Appwrite configuration
-    const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT)
-    const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
-    const apiKey = process.env.APPWRITE_API_KEY
-
-    if (!endpoint || !project || !apiKey) {
-      console.error('[v0] Invalid Appwrite configuration in register endpoint')
-      const duration = Date.now() - startTime
-      logRegistrationFailed(email, clientIP, userAgent, duration, 'INVALID_CONFIG', 'Authentication server misconfiguration')
-      return authErrorResponse({
-        status: 500,
-        code: 'INVALID_CONFIG',
-        message: 'Authentication server is misconfigured.',
-        details: { errorId: makeErrorId() },
-      })
-    }
-
     // Create Appwrite client
-    const client = new Client().setEndpoint(endpoint).setProject(project).setKey(apiKey)
+    const client = new Client().setEndpoint(endpoint).setProject(projectId).setKey(apiKey)
     const users = new Users(client)
 
     // Create user with comprehensive error handling
     console.log('[v0] Attempting to create user in Appwrite:', email)
     let user: any
     try {
-      user = await users.create(ID.unique(), email, undefined, password, name)
+      user = await users.create({
+        userId: ID.unique(),
+        email,
+        password,
+        name,
+      })
     } catch (appwriteError: any) {
       const duration = Date.now() - startTime
-      const errorCode = appwriteError?.code || appwriteError?.type || 'UNKNOWN'
+      const errorCode = String(appwriteError?.code ?? appwriteError?.type ?? 'UNKNOWN')
+      const errorType = String(appwriteError?.type ?? '')
       const errorMessage = appwriteError?.message || appwriteError?.toString() || 'User creation failed'
-      const errorStatus = appwriteError?.status || appwriteError?.statusCode || 400
+      const errorStatus = Number(appwriteError?.status ?? appwriteError?.statusCode ?? appwriteError?.code ?? 400)
 
       console.error('[v0] Appwrite user creation error:', {
         code: errorCode,
+        type: errorType,
         message: errorMessage,
         status: errorStatus,
+        response: appwriteError?.response,
       })
 
       // 409 Conflict - User already exists
-      if (errorStatus === 409 || errorCode === 409 || errorMessage.toLowerCase().includes('already exists') || errorMessage.toLowerCase().includes('duplicate')) {
+      if (errorStatus === 409 || errorCode === '409' || errorMessage.toLowerCase().includes('already exists') || errorMessage.toLowerCase().includes('duplicate')) {
         logRegistrationFailed(
           email,
           clientIP,
@@ -184,7 +183,7 @@ export async function POST(req: Request) {
 
       // Invalid email format
       if (
-        errorCode.includes('invalid_email') ||
+        errorType.includes('invalid_email') ||
         errorMessage.toLowerCase().includes('invalid email') ||
         (errorMessage.toLowerCase().includes('email') && errorMessage.toLowerCase().includes('invalid'))
       ) {
@@ -198,7 +197,7 @@ export async function POST(req: Request) {
 
       // Weak password or password policy violation
       if (
-        errorCode.includes('password') ||
+        errorType.includes('password') ||
         errorMessage.toLowerCase().includes('password') ||
         errorMessage.toLowerCase().includes('weak')
       ) {
@@ -212,7 +211,7 @@ export async function POST(req: Request) {
       }
 
       // Email not whitelisted (if whitelist is enabled)
-      if (errorCode.includes('email_not_whitelisted') || errorMessage.toLowerCase().includes('whitelist')) {
+      if (errorType.includes('email_not_whitelisted') || errorMessage.toLowerCase().includes('whitelist')) {
         logRegistrationFailed(email, clientIP, userAgent, duration, 'EMAIL_NOT_ALLOWED', 'Email not whitelisted')
         return authErrorResponse({
           status: 400,
@@ -247,13 +246,20 @@ export async function POST(req: Request) {
       // Fallback for unknown errors
       logRegistrationFailed(email, clientIP, userAgent, duration, 'REGISTRATION_FAILED', errorMessage, {
         errorCode,
+        errorType,
         errorStatus,
       })
       return authErrorResponse({
         status: 400,
         code: 'REGISTRATION_FAILED',
         message: 'Unable to create account. Please check your information and try again.',
-        details: { errorId: makeErrorId() },
+        details: {
+          errorId: makeErrorId(),
+          errorCode,
+          errorType,
+          errorStatus,
+          errorMessage,
+        },
       })
     }
 
@@ -287,7 +293,13 @@ export async function POST(req: Request) {
       status: 500,
       code: 'REGISTRATION_FAILED',
       message: 'Registration failed. Please try again or contact support if the problem persists.',
-      details: { errorId: makeErrorId() },
+      details: {
+        errorId: makeErrorId(),
+        errorMessage: error?.message,
+        errorCode: error?.code,
+        errorType: error?.type,
+        errorResponse: error?.response,
+      },
     })
   }
 }

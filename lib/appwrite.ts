@@ -124,7 +124,11 @@ export const authService = {
       if (typeof window !== 'undefined') {
         const proxyResp = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, name }) })
         const proxyData = await proxyResp.json().catch(() => ({}))
-        if (!proxyResp.ok) throw new Error(proxyData.error || 'Registration failed')
+        if (!proxyResp.ok) {
+          const detailedError = proxyData?.details?.errorMessage || proxyData?.details?.error || proxyData?.message || proxyData?.error || 'Registration failed'
+          const codeSuffix = proxyData?.code ? ` (${proxyData.code})` : ''
+          throw new Error(`${detailedError}${codeSuffix}`)
+        }
         return { ...proxyData, verificationSent: false }
       }
 

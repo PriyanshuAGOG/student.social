@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { normalizeAppwriteEndpoint } from '@/lib/env'
+import { getAppwriteServerConfig } from '@/lib/env'
 import { authErrorResponse, authSuccessResponse, AUTH_COOKIE_NAME, signCookiePayload, getClientIP, getUserAgent, makeErrorId, addRateLimitHeaders } from '@/lib/auth-route-utils'
 import { checkRateLimit, getRateLimitConfig, isAccountLocked, recordFailedLoginAttempt, clearLoginAttempts, generateJWT, registerDevice, generateDeviceFingerprint } from '@/lib/auth-security'
 import { logLoginSuccess, logLoginFailed, logAccountLockout, logDeviceRegistration } from '@/lib/auth-audit'
@@ -71,9 +71,7 @@ export async function POST(req: Request) {
     }
 
     // Verify environment variables
-    const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT)
-    const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
-    const apiKey = process.env.APPWRITE_API_KEY
+    const { endpoint, projectId: project, apiKey } = getAppwriteServerConfig()
     const cookieSecret = process.env.APPWRITE_SESSION_COOKIE_SECRET
 
     if (!endpoint || !project || !apiKey || !cookieSecret) {
