@@ -214,7 +214,35 @@ export async function POST(req: Request) {
       })
     }
 
-    const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(session.secret)
+    // Re-read the session via the admin API to make sure we store the secret
+    // that /api/auth/session needs to reconstruct the browser session.
+    let sessionSecret = session?.secret || ''
+    try {
+      const sessionList = await users.listSessions(matchedUser.$id, false)
+      const matchingSession = sessionList.sessions?.find((candidate: any) => candidate.$id === session.$id)
+      if (matchingSession?.secret) {
+        sessionSecret = matchingSession.secret
+      }
+    } catch (sessionLookupError: any) {
+      console.warn('[v0] Failed to re-read session secret after login:', sessionLookupError?.message)
+    }
+
+    if (!sessionSecret) {
+      try {
+        await users.deleteSession(matchedUser.$id, session.$id)
+      } catch (cleanupError) {
+        console.warn('[v0] Failed to clean up session without secret:', cleanupError)
+      }
+
+      return authErrorResponse({
+        status: 500,
+        code: 'SESSION_SETUP_FAILED',
+        message: 'Your session could not be confirmed. Please try signing in again.',
+        details: { errorId: makeErrorId() },
+      })
+    }
+
+    const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(sessionSecret)
     const sessionAccount = new Account(sessionClient)
 
     let verifiedUser: any = null
@@ -301,7 +329,7 @@ export async function POST(req: Request) {
     // Set secure session cookie
     const cookiePayload = JSON.stringify({
       sessionId: session.$id,
-      secret: session.secret,
+      secret: sessionSecret,
       userId: matchedUser.$id,
       email: matchedUser.email,
       deviceFingerprint,
