@@ -5,7 +5,7 @@ import { normalizeAppwriteEndpoint } from './env'
  * Replace the broken sections in appwrite.ts with these implementations
  */
 
-import { Client, Databases, Storage, Query, Account, Teams } from "node-appwrite"
+import { Client, Databases, Storage, Query, Account, Teams, Users } from "node-appwrite"
 
 const APPWRITE_ENDPOINT = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT) || "https://fra.cloud.appwrite.io/v1"
 const APPWRITE_PROJECT_ID = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID || "694ed12f003c942317f4"
@@ -38,6 +38,7 @@ export function createAdminClient() {
     storage: new Storage(adminClient),
     account: new Account(adminClient),
     teams: new Teams(adminClient),
+    users: new Users(adminClient),
   }
 }
 
