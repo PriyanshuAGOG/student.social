@@ -4,20 +4,59 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { databases } from '@/lib/appwrite'
 import { ID } from 'appwrite'
-import { getEnv } from '@/lib/env'
+import crypto from 'crypto'
+import { cookies } from 'next/headers'
+import { Client, Account } from 'node-appwrite'
+import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { getEnv, getSessionCookieSecret, normalizeAppwriteEndpoint } from '@/lib/env'
+import { isAdminUser } from '@/lib/admin-access'
 
 const env = getEnv()
 const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
 
+type SessionCookie = {
+  secret?: string
+  userId?: string
+}
+
+async function getCurrentAdminUser() {
+  const cookieStore = await cookies()
+  const raw = cookieStore.get('peerspark_session')?.value
+  if (!raw) return null
+
+  const [encodedPayload, signature] = raw.split('.')
+  if (!encodedPayload || !signature) return null
+
+  const expectedSignature = crypto.createHmac('sha256', getSessionCookieSecret()).update(encodedPayload).digest('hex')
+  if (signature !== expectedSignature) return null
+
+  let sessionCookie: SessionCookie | null = null
+  try {
+    sessionCookie = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as SessionCookie
+  } catch {
+    return null
+  }
+
+  if (!sessionCookie?.secret) return null
+
+  const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT)
+  const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
+  if (!endpoint || !project) return null
+
+  const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(sessionCookie.secret)
+  const sessionAccount = new Account(sessionClient)
+  const user = await sessionAccount.get().catch(() => null)
+  if (!user) return null
+
+  return isAdminUser(user) ? user : null
+}
+
 export async function POST(req: NextRequest) {
   try {
-    // Check admin authorization (implement your auth logic)
-    const userId = req.headers.get('x-user-id')
-    const isAdmin = req.headers.get('x-is-admin') === 'true'
+    const user = await getCurrentAdminUser()
 
-    if (!userId || !isAdmin) {
+    if (!user?.$id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
@@ -41,10 +80,12 @@ export async function POST(req: NextRequest) {
       targetSegment,
       scheduledFor: scheduledFor || new Date().toISOString(),
       status: 'scheduled',
-      createdBy: userId,
+      createdBy: user.$id,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
+
+    const { databases } = await createAdminClient()
 
     const result = await databases.createDocument(
       DATABASE_ID,
@@ -69,14 +110,15 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    // Check admin authorization
-    const isAdmin = req.headers.get('x-is-admin') === 'true'
+    const user = await getCurrentAdminUser()
 
-    if (!isAdmin) {
+    if (!user?.$id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
     const limit = parseInt(req.nextUrl.searchParams.get('limit') || '20')
+
+    const { databases } = await createAdminClient()
 
     const response = await databases.listDocuments(
       DATABASE_ID,

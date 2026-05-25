@@ -32,14 +32,30 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 // Session state stored in memory to prevent unnecessary API calls
 let sessionCheckPromise: Promise<Models.User<Models.Preferences> | null> | null = null
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function fetchSessionUser(): Promise<Models.User<Models.Preferences> | null> {
   try {
-    const response = await fetch('/api/auth/session', { credentials: 'include' })
-    const payload = await response.json().catch(() => null)
-    if (!response.ok || !payload?.authenticated || !payload?.user) {
-      return null
+    const retryDelays = [0, 150, 400]
+
+    for (const waitMs of retryDelays) {
+      if (waitMs > 0) {
+        await delay(waitMs)
+      }
+
+      const response = await fetch('/api/auth/session', {
+        credentials: 'include',
+        cache: 'no-store',
+      })
+      const payload = await response.json().catch(() => null)
+      if (response.ok && payload?.authenticated && payload?.user) {
+        return payload.user as Models.User<Models.Preferences>
+      }
     }
-    return payload.user as Models.User<Models.Preferences>
+
+    return null
   } catch {
     return null
   }

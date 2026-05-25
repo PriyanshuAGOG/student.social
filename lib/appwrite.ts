@@ -33,6 +33,16 @@ function isNoActiveSessionError(error: any): boolean {
   return error?.code === 401 || message.includes('missing scope') || message.includes('unauthorized') || message.includes('guests')
 }
 
+function normalizeUsername(input: string): string {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9_\s-]/g, '')
+    .replace(/[\s-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
 // Initialize Appwrite Client with your credentials
 const env = getEnv()
 const endpoint = normalizeAppwriteEndpoint(env.NEXT_PUBLIC_APPWRITE_ENDPOINT) || "https://fra.cloud.appwrite.io/v1"
@@ -210,9 +220,11 @@ export const authService = {
       // Create user profile in database
       try {
         devLog(`[register] Creating profile for user: ${user.$id}`)
+        const suggestedUsername = normalizeUsername(name || email.split('@')[0] || user.$id) || `user_${user.$id.slice(0, 6)}`
         const profile = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, user.$id, {
           userId: user.$id,
           name: name,
+          username: suggestedUsername,
           email: email,
           bio: "",
           interests: [],
@@ -793,8 +805,7 @@ export const profileService = {
   // Get profile by username (search by name with underscores converted to spaces)
   async getProfileByUsername(username: string) {
     try {
-      // Convert username format (john_doe) to name format (john doe) for search
-      const searchName = username.replace(/_/g, " ")
+      const normalizedUsername = normalizeUsername(username)
       
       // Search for profile by name - fetch ALL profiles to ensure we find the user
       const result = await databases.listDocuments(
@@ -808,10 +819,12 @@ export const profileService = {
       // Filter results to find matching name (case-insensitive)
       const matchingProfile = result.documents.find((profile: any) => {
         const profileName = (profile.name || "").toLowerCase()
-        const profileUsername = profileName.replace(/\s+/g, "_")
-        return profileUsername === username.toLowerCase() || 
-               profileName === searchName.toLowerCase() ||
-               profile.email?.split("@")[0]?.toLowerCase() === username.toLowerCase()
+         const profileUsername = normalizeUsername(profile.username || profileName)
+         const nameUsername = normalizeUsername(profileName)
+         const emailUsername = normalizeUsername(profile.email?.split("@")[0] || "")
+         return profileUsername === normalizedUsername || 
+           nameUsername === normalizedUsername ||
+           emailUsername === normalizedUsername
       })
       
       return matchingProfile || null
@@ -823,7 +836,7 @@ export const profileService = {
 
   // Update user profile (create if doesn't exist)
   async updateProfile(userId: string, data: any) {
-    const safeAttributes = ['name', 'bio', 'avatar', 'email', 'isOnline', 'studyStreak', 'totalPoints', 'level', 'badges', 'avatarFileId']
+    const safeAttributes = ['name', 'username', 'bio', 'avatar', 'email', 'isOnline', 'studyStreak', 'totalPoints', 'level', 'badges', 'avatarFileId']
     const optionalAttributes = [
       'interests',
       'identity',
@@ -881,6 +894,7 @@ export const profileService = {
             return await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
               userId: userId,
               name: data.name || "",
+              username: data.username || normalizeUsername(data.name || data.email || userId) || `user_${userId.slice(0, 6)}`,
               email: data.email || "",
               bio: data.bio || "",
               avatar: data.avatar || "",

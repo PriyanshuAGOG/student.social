@@ -8,6 +8,7 @@ const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID ||
 const PROFILE_FIELDS = new Set([
   'userId',
   'name',
+  'username',
   'email',
   'bio',
   'avatar',
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest) {
     const baseProfile = sanitizeProfileData({
       userId,
       name: typeof defaults.name === 'string' && defaults.name.trim() ? defaults.name.trim() : `User_${userId.slice(0, 6)}`,
+      username: typeof defaults.username === 'string' && defaults.username.trim() ? defaults.username.trim() : `user_${userId.slice(0, 6)}`,
       email: typeof defaults.email === 'string' ? defaults.email : '',
       bio: '',
       interests: [],

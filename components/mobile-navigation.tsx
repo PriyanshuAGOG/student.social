@@ -1,44 +1,29 @@
 "use client"
 
-import { Home, Bot, Users, Calendar, BookOpen } from "lucide-react"
+import { Home, Bot, Users, Calendar, BookOpen, Shield } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-
-const navigationItems = [
-  {
-    name: "Home",
-    href: "/app/feed",
-    icon: Home,
-  },
-  {
-    name: "AI Chat",
-    href: "/app/ai",
-    icon: Bot,
-  },
-  {
-    name: "Pods",
-    href: "/app/pods",
-    icon: Users,
-  },
-  {
-    name: "Calendar",
-    href: "/app/calendar",
-    icon: Calendar,
-  },
-  {
-    name: "Resources",
-    href: "/app/vault",
-    icon: BookOpen,
-  },
-]
+import { useAuth } from "@/lib/auth-context"
+import { isAdminUser } from "@/lib/admin-access"
 
 export function MobileNavigation() {
   const pathname = usePathname()
+  const { user } = useAuth()
+  const canAccessAdmin = isAdminUser(user)
+
+  const navigationItems = [
+    { name: "Home", href: "/app/feed", icon: Home },
+    { name: "AI Chat", href: "/app/ai", icon: Bot },
+    { name: "Pods", href: "/app/pods", icon: Users },
+    { name: "Calendar", href: "/app/calendar", icon: Calendar },
+    { name: "Resources", href: "/app/vault", icon: BookOpen },
+    ...(canAccessAdmin ? [{ name: "Admin", href: "/app/admin", icon: Shield }] : []),
+  ]
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-background/85 md:hidden">
-      <div className="grid h-16 grid-cols-5">
+      <div className={`grid h-16 ${navigationItems.length >= 6 ? 'grid-cols-6' : 'grid-cols-5'}`}>
         {navigationItems.map((item) => {
           const isActive = pathname === item.href || (item.href === "/app/feed" && pathname === "/app")
           return (

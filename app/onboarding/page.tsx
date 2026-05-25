@@ -85,6 +85,16 @@ const AVAILABILITY = [
   { id: "weekend", label: "Weekends" },
 ]
 
+function normalizeUsername(input: string) {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9_\s-]/g, '')
+    .replace(/[\s-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
 const LEARNING_VIBES = [
   {
     id: "motivation",
@@ -140,6 +150,7 @@ export default function OnboardingPage() {
   const [selectedPod, setSelectedPod] = useState("")
   const [profileData, setProfileData] = useState({
     name: "",
+    username: "",
     bio: "",
     avatar: "",
   })
@@ -154,12 +165,14 @@ export default function OnboardingPage() {
   // Pre-fill profile name from auth user to avoid duplicate name entry
   useEffect(() => {
     if (user?.name && !profileData.name) {
+      const suggestedUsername = normalizeUsername(user.name || user.email || user.$id)
       setProfileData(prev => ({
         ...prev,
         name: user.name || "",
+        username: prev.username || suggestedUsername || `user_${user.$id.slice(0, 6)}`,
       }))
     }
-  }, [user?.name])
+  }, [user?.email, user?.name, user?.$id, profileData.name, profileData.username])
 
   const totalSteps = 6
   const progress = ((currentStep + 1) / totalSteps) * 100
@@ -242,9 +255,20 @@ export default function OnboardingPage() {
         throw new Error('Please verify your email address before completing onboarding.')
       }
 
+      const requestedUsername = normalizeUsername(profileData.username || profileData.name || activeUser.name || activeUser.email || activeUser.$id)
+      if (!requestedUsername) {
+        throw new Error('Please choose a username.')
+      }
+
+      const existingUsernameProfile = await profileService.getProfileByUsername(requestedUsername)
+      if (existingUsernameProfile && existingUsernameProfile.$id !== activeUser.$id) {
+        throw new Error('That username is already taken. Please choose another one.')
+      }
+
       // Update profile with collected data
       await profileService.updateProfile(activeUser.$id, {
         name: profileData.name,
+        username: requestedUsername,
         bio: profileData.bio,
         interests: selectedInterests,
         identity: selectedIdentity,
@@ -298,7 +322,7 @@ export default function OnboardingPage() {
       case 4:
         return true
       case 5:
-        return profileData.name !== ""
+        return profileData.name !== "" && profileData.username !== ""
       default:
         return false
     }
@@ -599,10 +623,23 @@ export default function OnboardingPage() {
                   <Label htmlFor="name">Full Name</Label>
                   <Input
                     id="name"
-                    placeholder="Enter your full name"
+                    placeholder="Your name from registration"
                     value={profileData.name}
                     onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+                    readOnly
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="username">Username</Label>
+                  <Input
+                    id="username"
+                    placeholder="choose_a_unique_username"
+                    value={profileData.username}
+                    onChange={(e) => setProfileData({ ...profileData, username: normalizeUsername(e.target.value) })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This will be used in your profile link and must be unique.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="bio">Bio (Optional)</Label>

@@ -44,6 +44,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
+import { isAdminUser } from "@/lib/admin-access"
 
 // Menu items.
 const data = {
@@ -112,6 +113,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const router = useRouter()
   const { toast } = useToast()
   const { user, profile, logout } = useAuth()
+  const canAccessAdmin = isAdminUser(user)
+  const navMain = [
+    ...data.navMain,
+    ...(canAccessAdmin
+      ? [
+          {
+            title: "Admin",
+            url: "/app/admin",
+            icon: BarChart3,
+          },
+        ]
+      : []),
+  ]
 
   const handleLogout = async () => {
     try {
@@ -169,7 +183,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroupLabel>Platform</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {data.navMain.map((item) => (
+              {navMain.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={pathname === item.url}>
                     <Link href={item.url}>
