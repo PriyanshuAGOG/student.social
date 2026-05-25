@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getAppwriteServerConfig } from '@/lib/env'
+import { getAppwriteEndpointCandidates, getAppwriteServerConfig } from '@/lib/env'
 import { authErrorResponse, authSuccessResponse, getClientIP, getUserAgent, addRateLimitHeaders, makeErrorId } from '@/lib/auth-route-utils'
 import { checkRateLimit, getRateLimitConfig } from '@/lib/auth-security'
 import { validatePasswordStrength, checkPasswordBreach, validateEmail as validateEmailSecurity, hashPassword, addToPasswordHistory } from '@/lib/password-security'
@@ -135,20 +135,57 @@ export async function POST(req: Request) {
     }
 
     // Create Appwrite client
-    const client = new Client().setEndpoint(endpoint).setProject(projectId).setKey(apiKey)
-    const users = new Users(client)
+    // Log endpoint/project for debugging (do not log API keys)
+    console.log('[v0] Appwrite config for register:', { endpoint, projectId: Boolean(projectId) })
+    const endpointCandidates = getAppwriteEndpointCandidates(endpoint)
+    const lastIndex = endpointCandidates.length - 1
 
     // Create user with comprehensive error handling
     console.log('[v0] Attempting to create user in Appwrite:', email)
     let user: any
+    let appwriteError: any
     try {
-      user = await users.create({
-        userId: ID.unique(),
-        email,
-        password,
-        name,
-      })
-    } catch (appwriteError: any) {
+      for (const [index, candidateEndpoint] of endpointCandidates.entries()) {
+        const client = new Client().setEndpoint(candidateEndpoint).setProject(projectId).setKey(apiKey)
+        const users = new Users(client)
+
+        try {
+          if (index > 0) {
+            console.warn('[v0] Retrying Appwrite user creation with fallback endpoint:', candidateEndpoint)
+          }
+
+          user = await users.create({
+            userId: ID.unique(),
+            email,
+            password,
+            name,
+          })
+          break
+        } catch (error: any) {
+          appwriteError = error
+          const errorMessage = String(error?.message || '').toLowerCase()
+          const errorCauseCode = String(error?.cause?.code || '').toUpperCase()
+          const isTransportError =
+            errorMessage.includes('fetch failed') ||
+            ['ENOTFOUND', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNREFUSED', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT'].includes(errorCauseCode)
+
+          if (index < lastIndex && isTransportError) {
+            console.warn('[v0] Appwrite transport error, trying next endpoint:', {
+              endpoint: candidateEndpoint,
+              message: error?.message,
+              causeCode: error?.cause?.code,
+            })
+            continue
+          }
+
+          throw error
+        }
+      }
+    } catch (error: any) {
+      appwriteError = error
+    }
+
+    if (!user) {
       const duration = Date.now() - startTime
       const errorCode = String(appwriteError?.code ?? appwriteError?.type ?? 'UNKNOWN')
       const errorType = String(appwriteError?.type ?? '')
@@ -161,6 +198,7 @@ export async function POST(req: Request) {
         message: errorMessage,
         status: errorStatus,
         response: appwriteError?.response,
+        cause: appwriteError?.cause,
       })
 
       // 409 Conflict - User already exists

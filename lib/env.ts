@@ -39,17 +39,7 @@ export function getEnv(): AppEnv {
 }
 
 export function getAppwriteEndpoint(): string {
-  const rawEndpoint = process.env.APPWRITE_ENDPOINT || getEnv().NEXT_PUBLIC_APPWRITE_ENDPOINT || DEFAULT_APPWRITE_ENDPOINT
-
-  try {
-    const url = new URL(rawEndpoint)
-    if (url.hostname === 'cloud.appwrite.io') {
-      url.hostname = 'fra.cloud.appwrite.io'
-    }
-    return url.toString()
-  } catch {
-    return DEFAULT_APPWRITE_ENDPOINT
-  }
+  return getAppwriteEndpointCandidates()[0] || DEFAULT_APPWRITE_ENDPOINT
 }
 
 export function getAppwriteServerConfig(): { endpoint: string; projectId: string; apiKey: string } {
@@ -59,6 +49,28 @@ export function getAppwriteServerConfig(): { endpoint: string; projectId: string
   const apiKey = process.env.APPWRITE_API_KEY || env.APPWRITE_API_KEY || ''
 
   return { endpoint, projectId, apiKey }
+}
+
+export function getAppwriteEndpointCandidates(endpoint?: string): string[] {
+  const rawEndpoint = normalizeAppwriteEndpoint(endpoint || process.env.APPWRITE_ENDPOINT || getEnv().NEXT_PUBLIC_APPWRITE_ENDPOINT || DEFAULT_APPWRITE_ENDPOINT) || DEFAULT_APPWRITE_ENDPOINT
+
+  const candidates = new Set<string>([rawEndpoint])
+
+  try {
+    const url = new URL(rawEndpoint)
+    if (url.hostname === 'fra.cloud.appwrite.io') {
+      url.hostname = 'cloud.appwrite.io'
+      candidates.add(url.toString())
+    } else if (url.hostname === 'cloud.appwrite.io') {
+      url.hostname = 'fra.cloud.appwrite.io'
+      candidates.add(url.toString())
+    }
+  } catch {
+    // Ignore invalid URLs here; the caller will surface a clearer config error.
+  }
+
+  candidates.add(DEFAULT_APPWRITE_ENDPOINT)
+  return [...candidates]
 }
 
 export function requireEnv(keys: Array<'NEXT_PUBLIC_APPWRITE_ENDPOINT' | 'NEXT_PUBLIC_APPWRITE_PROJECT_ID' | 'NEXT_PUBLIC_APPWRITE_DATABASE_ID'>): void {
@@ -80,6 +92,5 @@ export function requireServerSecret(name: 'APPWRITE_API_KEY' | 'OPENROUTER_API_K
 
 export function normalizeAppwriteEndpoint(endpoint?: string): string | undefined {
   if (!endpoint) return endpoint
-  if (endpoint.includes('cloud.appwrite.io')) return endpoint.replace('cloud.appwrite.io', 'fra.cloud.appwrite.io')
-  return endpoint
+  return endpoint.replace(/\/+$/, '')
 }
