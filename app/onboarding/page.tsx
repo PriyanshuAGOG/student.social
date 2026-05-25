@@ -147,7 +147,7 @@ export default function OnboardingPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingRecos, setIsLoadingRecos] = useState(false)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
-  const { user } = useAuth()
+  const { user, checkSession, refreshUser, isEmailVerified, hasActiveSession } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
 
@@ -172,6 +172,28 @@ export default function OnboardingPage() {
     availability: selectedAvailability,
     vibes: selectedVibes,
   })
+
+  const resolveCurrentUser = async () => {
+    if (user?.$id) return user
+
+    // Re-check the session once before failing onboarding completion.
+    try {
+      await checkSession()
+      await refreshUser()
+    } catch {
+      // Swallow and fall through to explicit error handling below.
+    }
+
+    if (user?.$id) return user
+
+    try {
+      const response = await fetch('/api/auth/session', { credentials: 'include' })
+      const payload = await response.json().catch(() => null)
+      return payload?.user || null
+    } catch {
+      return null
+    }
+  }
 
   const loadRecommendations = async () => {
     if (!user?.$id) return
@@ -209,10 +231,19 @@ export default function OnboardingPage() {
   const handleComplete = async () => {
     setIsLoading(true)
     try {
-      if (!user) throw new Error("Not authenticated")
+      const activeUser = await resolveCurrentUser()
+
+      if (!activeUser?.$id) {
+        throw new Error('Your session has expired or is unavailable. Please sign in again to finish onboarding.')
+      }
+
+      if (!activeUser.emailVerification && !isEmailVerified) {
+        router.push('/verify-email?required=1')
+        throw new Error('Please verify your email address before completing onboarding.')
+      }
 
       // Update profile with collected data
-      await profileService.updateProfile(user.$id, {
+      await profileService.updateProfile(activeUser.$id, {
         name: profileData.name,
         bio: profileData.bio,
         interests: selectedInterests,
@@ -227,11 +258,11 @@ export default function OnboardingPage() {
 
       // Upload avatar if selected
       if (avatarFile) {
-        await profileService.uploadAvatar(avatarFile, user.$id)
+        await profileService.uploadAvatar(avatarFile, activeUser.$id)
       }
 
       const matchProfile = buildProfileForMatch()
-      const matchResult = await podService.autoMatchAndJoin(user.$id, matchProfile, { matchLimit: 5, joinLimit: 3 })
+      const matchResult = await podService.autoMatchAndJoin(activeUser.$id, matchProfile, { matchLimit: 5, joinLimit: 3 })
 
       toast({
         title: "Welcome to PeerSpark! 🎉",
@@ -241,6 +272,9 @@ export default function OnboardingPage() {
       })
       router.push("/app/home")
     } catch (e: any) {
+      if (String(e?.message || '').includes('session has expired')) {
+        router.replace('/login?session=expired')
+      }
       toast({
         title: "Setup failed",
         description: e?.message || "Could not complete onboarding",
