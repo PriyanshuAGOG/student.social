@@ -306,7 +306,7 @@ export async function POST(req: Request) {
     const passwordHash = await hashPassword(password)
     await addToPasswordHistory(user.$id, passwordHash)
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://studentssocial.vercel.app'
     try {
       await sendAppwriteVerificationEmail({
         endpoint,

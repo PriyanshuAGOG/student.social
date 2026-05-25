@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'server misconfigured' }, { status: 500 })
     }
 
-    const redirectUrl = new URL('/verify-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').toString()
+    const redirectUrl = new URL('/verify-email', process.env.NEXT_PUBLIC_APP_URL || 'https://studentssocial.vercel.app').toString()
 
     const result = await sendAppwriteVerificationEmail({
       endpoint,
