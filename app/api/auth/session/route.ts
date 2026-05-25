@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
-import { Client, Account } from 'node-appwrite'
-import { normalizeAppwriteEndpoint, getSessionCookieSecret } from '@/lib/env'
+import { getSessionCookieSecret } from '@/lib/env'
 import crypto from 'crypto'
 
 type SessionCookie = {
@@ -39,24 +38,34 @@ export async function GET() {
       return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
     }
 
-    if (!sessionCookie?.userId || !sessionCookie?.secret) {
+    if (!sessionCookie?.userId || (!sessionCookie?.secret && !sessionCookie?.sessionId)) {
       return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
     }
 
-    const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT)
-    const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
-    if (!endpoint || !project) {
-      return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
+    const { users, databases } = createAdminClient()
+    const userId = sessionCookie.userId
+    let accountUser: any = null
+
+    // Preferred: validate by session secret if present.
+    if (sessionCookie.secret) {
+      const userSessions = await users.listSessions(userId, false).catch(() => null)
+      const matched = userSessions?.sessions?.find((s: any) => s.secret === sessionCookie.secret)
+      if (matched?.$id) {
+        accountUser = await users.get(userId).catch(() => null)
+      }
     }
 
-    const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(sessionCookie.secret)
-    const sessionAccount = new Account(sessionClient)
-    const accountUser = await sessionAccount.get().catch(() => null)
+    // Fallback: validate by sessionId for environments where session secret is unavailable.
+    if (!accountUser?.$id && sessionCookie.sessionId) {
+      const activeSession = await users.getSession(userId, sessionCookie.sessionId).catch(() => null)
+      if (activeSession?.$id) {
+        accountUser = await users.get(userId).catch(() => null)
+      }
+    }
+
     if (!accountUser?.$id) {
       return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
     }
-
-    const { databases } = createAdminClient()
     const profile = await databases.getDocument(process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || '', 'profiles', accountUser.$id).catch(() => null)
 
     return NextResponse.json({
