@@ -4,6 +4,7 @@ import { authErrorResponse, authSuccessResponse, getClientIP, getUserAgent, addR
 import { checkRateLimit, getRateLimitConfig } from '@/lib/auth-security'
 import { validatePasswordStrength, checkPasswordBreach, validateEmail as validateEmailSecurity, hashPassword, addToPasswordHistory } from '@/lib/password-security'
 import { logRegistrationSuccess, logRegistrationFailed } from '@/lib/auth-audit'
+import { sendAppwriteVerificationEmail } from '@/lib/appwrite-verification'
 import { z } from 'zod'
 import { Client, Users, ID } from 'node-appwrite'
 
@@ -304,6 +305,50 @@ export async function POST(req: Request) {
     // Hash password for our audit trail
     const passwordHash = await hashPassword(password)
     await addToPasswordHistory(user.$id, passwordHash)
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    try {
+      await sendAppwriteVerificationEmail({
+        endpoint,
+        projectId,
+        apiKey,
+        userId: user.$id,
+        redirectUrl: new URL('/verify-email', appUrl).toString(),
+      })
+      console.log('[v0] Verification email queued for user:', user.$id)
+    } catch (verificationError: any) {
+      console.error('[v0] Failed to send verification email after registration:', {
+        message: verificationError?.message,
+        status: verificationError?.status,
+        endpoint: verificationError?.endpoint,
+        body: verificationError?.body,
+      })
+
+      try {
+        const cleanupClient = new Client().setEndpoint(endpoint).setProject(projectId).setKey(apiKey)
+        await new Users(cleanupClient).delete(user.$id)
+        console.warn('[v0] Rolled back user after verification email failure:', user.$id)
+      } catch (cleanupError: any) {
+        console.error('[v0] Failed to roll back user after verification email failure:', {
+          message: cleanupError?.message,
+          status: cleanupError?.status,
+        })
+      }
+
+      const duration = Date.now() - startTime
+      logRegistrationFailed(email, clientIP, userAgent, duration, 'VERIFICATION_EMAIL_FAILED', verificationError?.message || 'Failed to send verification email')
+      return authErrorResponse({
+        status: 502,
+        code: 'VERIFICATION_EMAIL_FAILED',
+        message: 'Account was created, but we could not send the verification email. Please try again.',
+        details: {
+          errorId: makeErrorId(),
+          errorMessage: verificationError?.message,
+          errorStatus: verificationError?.status,
+          errorEndpoint: verificationError?.endpoint,
+        },
+      })
+    }
 
     const duration = Date.now() - startTime
     logRegistrationSuccess(user.$id, email, clientIP, userAgent, duration)

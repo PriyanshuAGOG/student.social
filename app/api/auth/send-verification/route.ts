@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { normalizeAppwriteEndpoint } from '@/lib/env'
+import { getAppwriteServerConfig } from '@/lib/env'
+import { sendAppwriteVerificationEmail } from '@/lib/appwrite-verification'
 
 export async function POST(req: Request) {
   try {
@@ -7,45 +8,36 @@ export async function POST(req: Request) {
     const { userId } = body || {}
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
 
-    const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT) || 'https://fra.cloud.appwrite.io/v1'
-    const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || ''
-    const apiKey = process.env.APPWRITE_API_KEY || ''
+    const { endpoint, projectId, apiKey } = getAppwriteServerConfig()
 
-    if (!apiKey) {
-      console.error('APPWRITE_API_KEY missing in env')
+    if (!endpoint || !projectId || !apiKey) {
+      console.error('Appwrite verification env missing in env', {
+        endpoint: Boolean(endpoint),
+        projectId: Boolean(projectId),
+        apiKey: Boolean(apiKey),
+      })
       return NextResponse.json({ error: 'server misconfigured' }, { status: 500 })
     }
 
-    const redirectUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000') + '/verify-email'
+    const redirectUrl = new URL('/verify-email', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').toString()
 
-    // Normalize endpoint to ensure single /v1
-    const base = endpoint.replace(/\/v1\/?$/i, '')
-    const url = `${base}/v1/users/${userId}/verification`
-
-    // Use Appwrite REST API to create verification
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Appwrite-Key': apiKey,
-        'X-Appwrite-Project': projectId,
-      },
-      body: JSON.stringify({ url: redirectUrl }),
+    const result = await sendAppwriteVerificationEmail({
+      endpoint,
+      projectId,
+      apiKey,
+      userId,
+      redirectUrl,
     })
 
-    const text = await resp.text()
-    let data: any = text
-    try { data = JSON.parse(text) } catch (e) { /* not JSON */ }
-
-    if (!resp.ok) {
-      console.error('send-verification failed', { status: resp.status, body: data, url })
-      return NextResponse.json({ error: data?.message || data || 'Failed to create verification', status: resp.status, body: data, url }, { status: 500 })
-    }
-
     console.log(`[Verification] Sent verification link to user ${userId}`)
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, endpoint: result.endpoint })
   } catch (err: any) {
-    console.error('send-verification error', err)
-    return NextResponse.json({ error: err?.message || String(err) }, { status: 500 })
+    console.error('send-verification error', {
+      message: err?.message,
+      status: err?.status,
+      endpoint: err?.endpoint,
+      body: err?.body,
+    })
+    return NextResponse.json({ error: err?.message || String(err), status: err?.status, body: err?.body, endpoint: err?.endpoint }, { status: 500 })
   }
 }
