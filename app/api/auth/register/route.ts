@@ -6,7 +6,7 @@ import { validatePasswordStrength, checkPasswordBreach, validateEmail as validat
 import { logRegistrationSuccess, logRegistrationFailed } from '@/lib/auth-audit'
 import { sendAppwriteVerificationEmail } from '@/lib/appwrite-verification'
 import { z } from 'zod'
-import { Client, Users, ID } from 'node-appwrite'
+import { Client, Users, ID, Query } from 'node-appwrite'
 
 const schema = z.object({
   email: z.string().email('Invalid email format'),
@@ -204,6 +204,46 @@ export async function POST(req: Request) {
 
       // 409 Conflict - User already exists
       if (errorStatus === 409 || errorCode === '409' || errorMessage.toLowerCase().includes('already exists') || errorMessage.toLowerCase().includes('duplicate')) {
+        try {
+          const lookupClient = new Client().setEndpoint(endpoint).setProject(projectId).setKey(apiKey)
+          const lookupUsers = new Users(lookupClient)
+          const existingUsers = await lookupUsers.list({ queries: [Query.equal('email', email)], total: false })
+          const existingUser = existingUsers.users?.[0]
+
+          if (existingUser && !existingUser.emailVerification) {
+            try {
+              await sendAppwriteVerificationEmail({
+                endpoint,
+                projectId,
+                apiKey,
+                userId: existingUser.$id,
+                redirectUrl: new URL('/verify-email', process.env.NEXT_PUBLIC_APP_URL || 'https://studentssocial.vercel.app').toString(),
+              })
+            } catch (verificationError) {
+              console.warn('[v0] Failed to resend verification email for duplicate registration:', verificationError)
+            }
+
+            logRegistrationFailed(
+              email,
+              clientIP,
+              userAgent,
+              duration,
+              'EMAIL_NOT_VERIFIED',
+              'Account already exists but email is not verified'
+            )
+
+            return authErrorResponse({
+              status: 409,
+              code: 'EMAIL_NOT_VERIFIED',
+              message:
+                'An account already exists for this email address, but it has not been verified yet. We sent a new verification email. Please verify your email before logging in.',
+              details: { verificationSent: true },
+            })
+          }
+        } catch (lookupError) {
+          console.warn('[v0] Failed to inspect existing user during duplicate registration:', lookupError)
+        }
+
         logRegistrationFailed(
           email,
           clientIP,

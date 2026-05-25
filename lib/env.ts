@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import crypto from 'crypto'
 
 const DEFAULT_APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1'
 
@@ -13,6 +14,7 @@ const optionalEnvSchema = z.object({
   NEXT_PUBLIC_APPWRITE_DATABASE_ID: z.string().min(1).optional(),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
   APPWRITE_API_KEY: z.string().min(1).optional(),
+  APPWRITE_SESSION_COOKIE_SECRET: z.string().min(1).optional(),
   OPENROUTER_API_KEY: z.string().min(1).optional(),
 })
 
@@ -31,6 +33,7 @@ export function getEnv(): AppEnv {
     NEXT_PUBLIC_APPWRITE_DATABASE_ID: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     APPWRITE_API_KEY: process.env.APPWRITE_API_KEY,
+    APPWRITE_SESSION_COOKIE_SECRET: process.env.APPWRITE_SESSION_COOKIE_SECRET,
     OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
   })
   parsed.NEXT_PUBLIC_APPWRITE_ENDPOINT = normalizeAppwriteEndpoint(parsed.NEXT_PUBLIC_APPWRITE_ENDPOINT)
@@ -88,6 +91,16 @@ export function requireServerSecret(name: 'APPWRITE_API_KEY' | 'OPENROUTER_API_K
     throw new Error(`Missing required server secret: ${name}`)
   }
   return value
+}
+
+export function getSessionCookieSecret(): string {
+  const env = getEnv()
+  const configuredSecret = env.APPWRITE_SESSION_COOKIE_SECRET || process.env.APPWRITE_SESSION_COOKIE_SECRET
+  if (configuredSecret) return configuredSecret
+
+  const { endpoint, projectId, apiKey } = getAppwriteServerConfig()
+  const fallbackSeed = [endpoint, projectId, apiKey, 'peerspark-session-cookie'].join('|')
+  return crypto.createHash('sha256').update(fallbackSeed).digest('hex')
 }
 
 export function normalizeAppwriteEndpoint(endpoint?: string): string | undefined {

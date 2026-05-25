@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { Client, Account } from 'node-appwrite'
-import { normalizeAppwriteEndpoint } from '@/lib/env'
+import { normalizeAppwriteEndpoint, getSessionCookieSecret } from '@/lib/env'
 import crypto from 'crypto'
 
 type SessionCookie = {
@@ -20,10 +20,7 @@ export async function GET() {
       return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200 })
     }
 
-    const cookieSecret = process.env.APPWRITE_SESSION_COOKIE_SECRET
-    if (!cookieSecret) {
-      return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200 })
-    }
+    const cookieSecret = getSessionCookieSecret()
 
     const [encodedPayload, signature] = raw.split('.')
     if (!encodedPayload || !signature) {

@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
-import { getAppwriteServerConfig } from '@/lib/env'
+import { getAppwriteServerConfig, getSessionCookieSecret } from '@/lib/env'
 import { authErrorResponse, authSuccessResponse, AUTH_COOKIE_NAME, signCookiePayload, getClientIP, getUserAgent, makeErrorId, addRateLimitHeaders } from '@/lib/auth-route-utils'
 import { checkRateLimit, getRateLimitConfig, isAccountLocked, recordFailedLoginAttempt, clearLoginAttempts, generateJWT, registerDevice, generateDeviceFingerprint } from '@/lib/auth-security'
-import { logLoginSuccess, logLoginFailed, logAccountLockout, logDeviceRegistration } from '@/lib/auth-audit'
+import { logAuthEvent, logLoginSuccess, logLoginFailed, logAccountLockout, logDeviceRegistration } from '@/lib/auth-audit'
 import { z } from 'zod'
-import { Client, Users, Query } from 'node-appwrite'
+import { Client, Users, Query, Account } from 'node-appwrite'
+import { sendAppwriteVerificationEmail } from '@/lib/appwrite-verification'
 
 const schema = z.object({
   email: z.string().email('Invalid email format'),
@@ -72,9 +73,9 @@ export async function POST(req: Request) {
 
     // Verify environment variables
     const { endpoint, projectId: project, apiKey } = getAppwriteServerConfig()
-    const cookieSecret = process.env.APPWRITE_SESSION_COOKIE_SECRET
+    const cookieSecret = getSessionCookieSecret()
 
-    if (!endpoint || !project || !apiKey || !cookieSecret) {
+    if (!endpoint || !project || !apiKey) {
       console.error('[v0] Missing required config in login endpoint')
       const duration = Date.now() - startTime
       logLoginFailed(email, clientIP, userAgent, duration, 'Server configuration missing')
@@ -121,6 +122,42 @@ export async function POST(req: Request) {
       })
     }
 
+    if (!matchedUser.emailVerification) {
+      try {
+        await sendAppwriteVerificationEmail({
+          endpoint,
+          projectId: project,
+          apiKey,
+          userId: matchedUser.$id,
+          redirectUrl: new URL('/verify-email', process.env.NEXT_PUBLIC_APP_URL || 'https://studentssocial.vercel.app').toString(),
+        })
+      } catch (verificationError) {
+        console.warn('[v0] Failed to resend verification email for unverified login:', verificationError)
+      }
+
+      const duration = Date.now() - startTime
+      logAuthEvent({
+        eventType: 'LOGIN_FAILED',
+        email,
+        ipAddress: clientIP,
+        userAgent,
+        endpoint: '/api/auth/login',
+        method: 'POST',
+        statusCode: 403,
+        duration,
+        severity: 'WARNING',
+        errorCode: 'EMAIL_NOT_VERIFIED',
+        errorMessage: 'User account exists but email is not verified',
+        metadata: { verificationSent: true },
+      })
+      return authErrorResponse({
+        status: 403,
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Your account is registered but your email address has not been verified yet. We sent a new verification email. Please verify your email before signing in.',
+        details: { verificationSent: true },
+      })
+    }
+
     // Check if account is locked
     const lockoutCheck = isAccountLocked(matchedUser.$id)
     if (lockoutCheck.locked) {
@@ -140,18 +177,19 @@ export async function POST(req: Request) {
       })
     }
 
-    // Attempt to create session (password validation happens here)
+    // Attempt to create a real password-authenticated session
     let session: any
     try {
-      session = await users.createSession({ userId: matchedUser.$id })
+      const authClient = new Client().setEndpoint(endpoint).setProject(project)
+      const authAccount = new Account(authClient)
+      session = await authAccount.createEmailPasswordSession(email, password)
       console.log('[v0] Session created for user:', matchedUser.$id)
     } catch (error: any) {
-      // Password mismatch or other credential error
       console.log('[v0] Login failed for user:', matchedUser.$id, 'Error:', error?.message)
-      
+
       const failureResult = recordFailedLoginAttempt(matchedUser.$id)
       const duration = Date.now() - startTime
-      
+
       if (failureResult.locked) {
         logAccountLockout(matchedUser.$id, email, clientIP, userAgent, failureResult.lockedUntil || 0)
         return new Response(JSON.stringify({
@@ -173,6 +211,58 @@ export async function POST(req: Request) {
         code: 'INVALID_CREDENTIALS',
         message: 'Invalid email or password.',
         details: { remainingAttempts: failureResult.remainingAttempts },
+      })
+    }
+
+    const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(session.secret)
+    const sessionAccount = new Account(sessionClient)
+
+    let verifiedUser: any = null
+    try {
+      verifiedUser = await sessionAccount.get()
+    } catch (error: any) {
+      console.warn('[v0] Failed to load account after login:', error?.message)
+    }
+
+    if (verifiedUser && !verifiedUser.emailVerification) {
+      try {
+        await sendAppwriteVerificationEmail({
+          endpoint,
+          projectId: project,
+          apiKey,
+          userId: verifiedUser.$id,
+          redirectUrl: new URL('/verify-email', process.env.NEXT_PUBLIC_APP_URL || 'https://studentssocial.vercel.app').toString(),
+        })
+      } catch (verificationError) {
+        console.warn('[v0] Failed to resend verification email during login:', verificationError)
+      }
+
+      try {
+        await sessionAccount.deleteSession('current')
+      } catch (logoutError) {
+        console.warn('[v0] Failed to clear unverified session after login:', logoutError)
+      }
+
+      const duration = Date.now() - startTime
+      logAuthEvent({
+        eventType: 'LOGIN_FAILED',
+        email,
+        ipAddress: clientIP,
+        userAgent,
+        endpoint: '/api/auth/login',
+        method: 'POST',
+        statusCode: 403,
+        duration,
+        severity: 'WARNING',
+        errorCode: 'EMAIL_NOT_VERIFIED',
+        errorMessage: 'User account exists but email is not verified',
+        metadata: { verificationSent: true },
+      })
+      return authErrorResponse({
+        status: 403,
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Your account is registered but your email address has not been verified yet. We sent a new verification email. Please verify your email before signing in.',
+        details: { verificationSent: true },
       })
     }
 
