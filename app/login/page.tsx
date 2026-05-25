@@ -129,6 +129,14 @@ function LoginPageContent() {
       const session = await authService.login(email, password)
       // Refresh auth context with the new user
       await refreshUser()
+      const confirmedSession = await checkSession()
+      if (!confirmedSession) {
+        await new Promise((resolve) => setTimeout(resolve, 250))
+        const retryConfirmedSession = await checkSession()
+        if (!retryConfirmedSession) {
+          throw new Error('Your session could not be confirmed. Please try signing in again.')
+        }
+      }
       toast({
         title: "Welcome!",
         description: "You've been successfully logged in.",

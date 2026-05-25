@@ -1,5 +1,5 @@
 // Service Worker for PeerSpark PWA
-const CACHE_VERSION = 'peerspark-v1';
+const CACHE_VERSION = 'peerspark-v2';
 const RUNTIME_CACHE = 'peerspark-runtime';
 
 // Assets to cache on install
@@ -50,6 +50,10 @@ self.addEventListener('fetch', (event) => {
 
   // Handle API requests
   if (url.pathname.startsWith('/api/')) {
+    if (url.pathname.startsWith('/api/auth/')) {
+      event.respondWith(bypassAuthRequest(request));
+      return;
+    }
     event.respondWith(networkFirst(request));
     return;
   }
@@ -111,6 +115,17 @@ async function networkFirst(request) {
 
     const cached = await caches.match(request);
     return cached || new Response('Offline - API unavailable', { status: 503 });
+  }
+}
+
+async function bypassAuthRequest(request) {
+  try {
+    return await fetch(request, {
+      cache: 'no-store',
+      credentials: 'include',
+    })
+  } catch {
+    return new Response('Offline - Auth unavailable', { status: 503 })
   }
 }
 
