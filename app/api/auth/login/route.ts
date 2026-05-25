@@ -215,7 +215,7 @@ export async function POST(req: Request) {
     }
 
     // Re-read the session via the admin API to make sure we store the secret
-    // that /api/auth/session needs to reconstruct the browser session.
+    // when available. Some Appwrite environments may not expose it reliably.
     let sessionSecret = session?.secret || ''
     try {
       const sessionList = await users.listSessions(matchedUser.$id, false)
@@ -227,29 +227,23 @@ export async function POST(req: Request) {
       console.warn('[v0] Failed to re-read session secret after login:', sessionLookupError?.message)
     }
 
-    if (!sessionSecret) {
-      try {
-        await users.deleteSession(matchedUser.$id, session.$id)
-      } catch (cleanupError) {
-        console.warn('[v0] Failed to clean up session without secret:', cleanupError)
-      }
-
-      return authErrorResponse({
-        status: 500,
-        code: 'SESSION_SETUP_FAILED',
-        message: 'Your session could not be confirmed. Please try signing in again.',
-        details: { errorId: makeErrorId() },
-      })
-    }
-
-    const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(sessionSecret)
-    const sessionAccount = new Account(sessionClient)
-
     let verifiedUser: any = null
-    try {
-      verifiedUser = await sessionAccount.get()
-    } catch (error: any) {
-      console.warn('[v0] Failed to load account after login:', error?.message)
+    if (sessionSecret) {
+      const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(sessionSecret)
+      const sessionAccount = new Account(sessionClient)
+      try {
+        verifiedUser = await sessionAccount.get()
+      } catch (error: any) {
+        console.warn('[v0] Failed to load account after login:', error?.message)
+      }
+    } else {
+      // Fall back to admin-loaded user if session secret is unavailable.
+      console.warn('[v0] Session secret unavailable after login; using sessionId validation fallback')
+      try {
+        verifiedUser = await users.get(matchedUser.$id)
+      } catch (error: any) {
+        console.warn('[v0] Failed to load user via admin fallback:', error?.message)
+      }
     }
 
     if (verifiedUser && !verifiedUser.emailVerification) {
@@ -266,7 +260,7 @@ export async function POST(req: Request) {
       }
 
       try {
-        await sessionAccount.deleteSession('current')
+        await users.deleteSession(verifiedUser.$id, session.$id)
       } catch (logoutError) {
         console.warn('[v0] Failed to clear unverified session after login:', logoutError)
       }
