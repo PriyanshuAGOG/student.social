@@ -301,6 +301,7 @@ export async function POST(req: Request) {
     // Set secure session cookie
     const cookiePayload = JSON.stringify({
       sessionId: session.$id,
+      secret: session.secret,
       userId: matchedUser.$id,
       email: matchedUser.email,
       deviceFingerprint,
