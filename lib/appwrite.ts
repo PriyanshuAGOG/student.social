@@ -279,10 +279,12 @@ export const authService = {
         const proxyResp = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
         const proxyData = await proxyResp.json().catch(() => ({}))
         if (!proxyResp.ok) throw new Error(proxyData.error || 'Login failed')
+        const sessionCheck = await fetch('/api/auth/session', { credentials: 'include', cache: 'no-store' }).catch(() => null)
+        const sessionData = sessionCheck ? await sessionCheck.json().catch(() => null) : null
         return {
-          session: { $id: proxyData.sessionId || 'proxy' },
-          userId: proxyData.userId || null,
-          user: proxyData.userId ? { $id: proxyData.userId } : null,
+          session: { $id: proxyData.sessionId || sessionData?.user?.$id || 'proxy' },
+          userId: sessionData?.user?.$id || proxyData.userId || null,
+          user: sessionData?.user || (proxyData.userId ? { $id: proxyData.userId } : null),
           profile: null,
         }
       }

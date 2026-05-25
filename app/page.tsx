@@ -2,6 +2,8 @@
 
 import type React from "react"
 
+export const dynamic = "force-dynamic"
+
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -108,7 +110,7 @@ export default function LandingPage() {
     if (loading || !hasActiveSession) return
 
     if (isAuthenticated && isEmailVerified) {
-      router.replace("/app/feed")
+      router.replace("/feed")
       return
     }
 

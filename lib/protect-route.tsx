@@ -30,7 +30,7 @@ const PUBLIC_ROUTES = [
 /**
  * Higher-order component to protect routes
  * Redirects unauthenticated users to /login
- * Auto-redirects authenticated users away from auth pages to /app/feed
+ * Auto-redirects authenticated users away from auth pages to /feed
  */
 export function ProtectRoute({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -58,7 +58,7 @@ export function ProtectRoute({ children }: { children: React.ReactNode }) {
         
         // Verified sessions should not remain on auth/verification pages.
         if (isAuthenticated && isEmailVerified && (isAuthPage || isVerificationPage)) {
-          router.replace('/app/feed')
+          router.replace('/feed')
           return
         }
 

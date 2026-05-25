@@ -43,7 +43,7 @@ function LoginPageContent() {
             title: "Welcome back!",
             description: "You already have an active session.",
           })
-          router.replace("/app/feed")
+          router.replace("/feed")
           return
         }
 
@@ -113,7 +113,7 @@ function LoginPageContent() {
             title: "Already logged in",
             description: "You already have an active session. Redirecting...",
           })
-          router.replace("/app/feed")
+          router.replace("/feed")
         } else {
           toast({
             title: "Email verification required",
@@ -129,30 +129,12 @@ function LoginPageContent() {
       const session = await authService.login(email, password)
       // Refresh auth context with the new user
       await refreshUser()
-      
-      // Check if user has completed onboarding by checking profile
-      try {
-        const profile = await authService.getCurrentUserProfile()
-        // If profile has identity set, onboarding is complete
-        if (profile && profile.identity) {
-          toast({
-            title: "Welcome back!",
-            description: "You've been successfully logged in.",
-          })
-          router.replace("/app/feed")
-          return
-        }
-      } catch (e) {
-        // No profile found, needs onboarding
-      }
-      
       toast({
         title: "Welcome!",
-        description: "Let's complete your profile setup.",
+        description: "You've been successfully logged in.",
       })
-      
-      // Redirect to onboarding for new users
-      router.replace("/onboarding")
+
+      router.replace("/feed")
     } catch (error: any) {
       console.error("Login error:", error)
       let errorMessage = error?.message || error?.toString() || "Login failed. Please check your credentials."
@@ -175,7 +157,7 @@ function LoginPageContent() {
           description: "You already have an active session. Redirecting...",
         })
         await refreshUser()
-        router.replace(isEmailVerified ? "/app/feed" : "/verify-email?required=1")
+        router.replace(isEmailVerified ? "/feed" : "/verify-email?required=1")
         return
       }
       

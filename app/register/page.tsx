@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +14,7 @@ import { Eye, EyeOff, Github, Mail, Check, X, AlertCircle } from "lucide-react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/lib/auth-context"
 import { authService } from "@/lib/appwrite"
 import { getPasswordRequirements } from "@/lib/password-security"
 
@@ -29,6 +30,33 @@ export default function RegisterPage() {
   })
   const router = useRouter()
   const { toast } = useToast()
+  const { hasActiveSession, isEmailVerified, loading: authLoading, checkSession, sessionChecked } = useAuth()
+
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      if (authLoading) return
+
+      if (!sessionChecked) {
+        await checkSession()
+        return
+      }
+
+      if (hasActiveSession && isEmailVerified) {
+        toast({
+          title: "Welcome back!",
+          description: "You already have an active session.",
+        })
+        router.replace("/feed")
+        return
+      }
+
+      if (hasActiveSession && !isEmailVerified) {
+        router.replace("/verify-email?required=1")
+      }
+    }
+
+    checkExistingSession()
+  }, [authLoading, checkSession, hasActiveSession, isEmailVerified, router, sessionChecked, toast])
 
   // Get real-time password requirements
   const requirements = useMemo(() => getPasswordRequirements(formData.password), [formData.password])

@@ -35,7 +35,7 @@ function VerifyEmailContent() {
 
   useEffect(() => {
     if (isEmailVerified) {
-      router.replace("/app/feed")
+      router.replace("/feed")
     }
   }, [isEmailVerified, router])
 
