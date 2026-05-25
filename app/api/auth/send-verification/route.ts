@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     })
 
     console.log(`[Verification] Sent verification link to user ${userId}`)
-    return NextResponse.json({ ok: true, endpoint: result.endpoint })
+    return NextResponse.json({ ok: true, status: result.status })
   } catch (err: any) {
     console.error('send-verification error', {
       message: err?.message,
