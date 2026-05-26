@@ -35,10 +35,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { databases, storage } = await createAdminClient()
-    const userId = request.headers.get('x-user-id')
+    const form = await request.formData()
+    const userId = request.headers.get('x-user-id') || String(form.get('userId') || '')
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const form = await request.formData()
     const file = form.get('file')
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'File is required' }, { status: 400 })
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     const title = String(form.get('title') || file.name)
     const description = String(form.get('description') || '')
-    const podId = String(form.get('podId') || '') || null
+    const podId = String(form.get('podId') || '')
     const visibility = String(form.get('visibility') || 'public')
     const tagsRaw = String(form.get('tags') || '[]')
     let tags: string[] = []

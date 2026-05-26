@@ -25,7 +25,7 @@ export async function POST(
   const { data, error } = await withErrorHandling(async () => {
     const { id: postId } = await params;
     const body = await request.json();
-    const { userId, content, parentCommentId } = body;
+    const { userId, content, replyTo, parentCommentId } = body;
 
     validateInput(
       { postId, userId, content },
@@ -85,7 +85,7 @@ export async function POST(
         authorName,
         authorAvatar,
         content: content.trim(),
-        parentCommentId: parentCommentId || null,
+        replyTo: replyTo || parentCommentId || null,
         likes: 0,
         likedBy: [],
         replies: 0,
@@ -128,12 +128,13 @@ export async function POST(
     }
 
     // If reply, notify parent commenter
-    if (parentCommentId) {
+    const parentId = replyTo || parentCommentId || null
+    if (parentId) {
       try {
         const parentComment = await databases.getDocument(
           DATABASE_ID,
           COMMENTS_COLLECTION_ID,
-          parentCommentId
+          parentId
         );
 
         if (parentComment.authorId !== userId) {
@@ -157,7 +158,7 @@ export async function POST(
         await databases.updateDocument(
           DATABASE_ID,
           COMMENTS_COLLECTION_ID,
-          parentCommentId,
+          parentId,
           {
             replies: (parentComment.replies || 0) + 1,
           }
@@ -191,11 +192,12 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const searchParams = request.nextUrl.searchParams;
+  const limit = parseInt(searchParams.get('limit') || '50', 10);
+  const offset = parseInt(searchParams.get('offset') || '0', 10);
+
   const { data, error } = await withErrorHandling(async () => {
     const { id: postId } = await params;
-    const searchParams = request.nextUrl.searchParams;
-    const limit = parseInt(searchParams.get('limit') || '50', 10);
-    const offset = parseInt(searchParams.get('offset') || '0', 10);
 
     validateInput({ postId }, { postId: { required: true } });
 
@@ -207,12 +209,18 @@ export async function GET(
       [
         Query.equal('postId', postId),
         Query.equal('isDeleted', false),
-        Query.isNull('parentCommentId'), // Only top-level comments
+        Query.isNull('replyTo'), // Only top-level comments
         Query.orderDesc('createdAt'),
         Query.limit(Math.min(limit, 100)),
         Query.offset(offset),
       ]
-    );
+    ).catch((error: any) => {
+      const message = String(error?.message || '').toLowerCase()
+      if (error?.code === 404 || message.includes('requested item could not be found') || message.includes('not found')) {
+        return { documents: [], total: 0 } as any
+      }
+      throw error
+    });
 
     // For each comment, get its replies
     const commentsWithReplies = [];
@@ -221,12 +229,12 @@ export async function GET(
         DATABASE_ID,
         COMMENTS_COLLECTION_ID,
         [
-          Query.equal('parentCommentId', comment.$id),
+          Query.equal('replyTo', comment.$id),
           Query.equal('isDeleted', false),
           Query.orderAsc('createdAt'),
           Query.limit(10), // Limit replies per comment
         ]
-      );
+      ).catch(() => ({ documents: [] } as any));
 
       commentsWithReplies.push({
         ...comment,
@@ -244,6 +252,10 @@ export async function GET(
   }, { operation: 'getComments' });
 
   if (error) {
+    const message = String(error?.message || '').toLowerCase()
+    if (error.code === 'RESOURCE_NOT_FOUND' || message.includes('requested item could not be found') || message.includes('not found')) {
+      return NextResponse.json({ success: true, comments: [], total: 0, limit, offset });
+    }
     return NextResponse.json(
       { success: false, error: error.userMessage, details: error },
       { status: 500 }

@@ -389,9 +389,12 @@ export default function ProfilePage() {
   }
 
   const handlePostClick = (authorId: string) => {
-    if (authorId !== "alex_codes") {
-      router.push(`/app/profile/${authorId}`)
+    if (user?.$id && authorId === user.$id) {
+      router.push('/app/profile')
+      return
     }
+
+    router.push(`/app/profile/${authorId}`)
   }
 
   const getRarityColor = (rarity: string) => {

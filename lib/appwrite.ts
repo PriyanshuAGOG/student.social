@@ -3094,7 +3094,7 @@ export const commentService = {
         body: JSON.stringify({
           userId: authorId,
           content,
-          parentCommentId: metadata.replyTo || null,
+          replyTo: metadata.replyTo || null,
         }),
       })
 
