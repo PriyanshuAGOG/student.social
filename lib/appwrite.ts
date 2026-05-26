@@ -1410,8 +1410,8 @@ export const podService = {
         throw new Error("Pod ID is required")
       }
 
-      const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
-      return pod
+      const response = await apiJson(`/api/pods/${encodeURIComponent(podId)}`)
+      return response.pod || response.data || response
     } catch (error) {
       console.error("Get pod details error:", error)
       throw error
@@ -1899,16 +1899,9 @@ export const podService = {
 
   async getPledge(podId: string, userId: string) {
     try {
-      const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.POD_COMMITMENTS, [
-        Query.equal("podId", podId),
-        Query.equal("userId", userId),
-      ])
-      return res.documents[0] || null
+      const response = await apiJson(`/api/pods/${encodeURIComponent(podId)}/commitment`)
+      return response.data || null
     } catch (err: any) {
-      // Gracefully handle missing collection
-      if (err?.code === 404 || err?.message?.includes('could not be found')) {
-        return null
-      }
       console.warn("getPledge failed", err)
       return null
     }
@@ -1916,35 +1909,12 @@ export const podService = {
 
   async savePledge(podId: string, userId: string, pledge: string) {
     try {
-      const existing = await this.getPledge(podId, userId)
-      const now = new Date().toISOString()
-      const payload = {
-        podId,
-        userId,
-        pledge,
-        weekOf: now.slice(0, 10),
-        updatedAt: now,
-      }
-
-      if (existing) {
-        return await databases.updateDocument(DATABASE_ID, COLLECTIONS.POD_COMMITMENTS, existing.$id, payload)
-      }
-
-      return await databases.createDocument(DATABASE_ID, COLLECTIONS.POD_COMMITMENTS, "unique()", {
-        ...payload,
-        createdAt: now,
+      const response = await apiJson(`/api/pods/${encodeURIComponent(podId)}/commitment`, {
+        method: 'POST',
+        body: JSON.stringify({ pledge }),
       })
+      return response.data || response
     } catch (err: any) {
-      // Gracefully handle missing collection
-      if (err?.code === 404 || err?.message?.includes('could not be found')) {
-        console.warn("savePledge: Collection not found - please run schema update")
-        throw new Error("Pledges feature is not configured. Please contact support.")
-      }
-      // Handle authorization errors with clear message
-      if (err?.code === 401 || err?.message?.includes('not authorized')) {
-        console.error("savePledge: Permission denied - check collection permissions")
-        throw new Error("You don't have permission to save pledges. Please try logging out and back in.")
-      }
       console.error("savePledge failed", err)
       throw err
     }
@@ -1952,16 +1922,9 @@ export const podService = {
 
   async listCheckIns(podId: string, limit = 20, offset = 0) {
     try {
-      const queries = [
-        Query.equal("podId", podId),
-        Query.orderDesc("createdAt"),
-      ]
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.POD_CHECK_INS, queries)
+      const response = await apiJson(`/api/pods/${encodeURIComponent(podId)}/check-ins?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
+      return { documents: response.data || response.documents || [], total: response.total || 0 }
     } catch (err: any) {
-      // Gracefully handle missing collection
-      if (err?.code === 404 || err?.message?.includes('could not be found')) {
-        return { documents: [], total: 0 }
-      }
       console.warn("listCheckIns failed", err)
       return { documents: [], total: 0 }
     }
@@ -1969,25 +1932,12 @@ export const podService = {
 
   async addCheckIn(podId: string, userId: string, note: string, userName?: string) {
     try {
-      const now = new Date().toISOString()
-      return await databases.createDocument(DATABASE_ID, COLLECTIONS.POD_CHECK_INS, "unique()", {
-        podId,
-        userId,
-        note,
-        userName: userName || "Member",
-        createdAt: now,
+      const response = await apiJson(`/api/pods/${encodeURIComponent(podId)}/check-ins`, {
+        method: 'POST',
+        body: JSON.stringify({ note, userName }),
       })
+      return response.data || response
     } catch (err: any) {
-      // Gracefully handle missing collection
-      if (err?.code === 404 || err?.message?.includes('could not be found')) {
-        console.warn("addCheckIn: Collection not found - please run schema update")
-        throw new Error("Check-ins feature is not configured. Please contact support.")
-      }
-      // Handle authorization errors with clear message
-      if (err?.code === 401 || err?.message?.includes('not authorized')) {
-        console.error("addCheckIn: Permission denied - check collection permissions")
-        throw new Error("You don't have permission to add check-ins. Please try logging out and back in.")
-      }
       console.error("addCheckIn failed", err)
       throw err
     }
@@ -1995,16 +1945,9 @@ export const podService = {
 
   async listRsvps(podId: string) {
     try {
-      const queries = [
-        Query.equal("podId", podId),
-        Query.orderDesc("updatedAt"),
-      ]
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.POD_RSVPS, queries)
+      const response = await apiJson(`/api/pods/${encodeURIComponent(podId)}/rsvps`)
+      return { documents: response.data || response.documents || [], total: response.total || 0 }
     } catch (err: any) {
-      // Gracefully handle missing collection
-      if (err?.code === 404 || err?.message?.includes('could not be found')) {
-        return { documents: [], total: 0 }
-      }
       console.warn("listRsvps failed", err)
       return { documents: [], total: 0 }
     }
@@ -2088,44 +2031,16 @@ export const studyPlanService = {
         updatedAt: new Date().toISOString(),
       })
     } catch (err) {
-      console.error("upsertPlan failed", err)
+      console.warn("upsertPlan failed", err)
       throw err
     }
   },
 }
 
-// Chat/Messaging Functions
+/**
+ * Get or create a direct message room between two users
+ */
 export const chatService = {
-  async getOrCreatePodRoom(podId: string, podName?: string, initialMemberIds: string[] = []) {
-    if (!podId) throw new Error("Pod ID is required")
-
-    try {
-      const existing = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
-        Query.equal("podId", podId),
-        Query.limit(1),
-      ])
-
-      if (existing.documents?.length) {
-        return existing.documents[0]
-      }
-    } catch (err) {
-      console.warn("Pod room lookup failed, will attempt to create", err)
-    }
-
-    return await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", {
-      podId,
-      name: podName?.trim() || "Pod Chat",
-      type: "pod",
-      members: Array.from(new Set(initialMemberIds.filter(Boolean))),
-      createdAt: new Date().toISOString(),
-      lastMessageTime: new Date().toISOString(),
-      isActive: true,
-    })
-  },
-
-  /**
-   * Get or create a direct message room between two users
-   */
   async getOrCreateDirectRoom(userA: string, userB: string) {
     if (!userA || !userB) throw new Error("Both user IDs are required")
 
@@ -2156,6 +2071,21 @@ export const chatService = {
     })
 
     return room
+  },
+
+  async getOrCreatePodRoom(podId: string, podName = "Pod Chat", members: string[] = []) {
+    try {
+      if (!podId) throw new Error("Pod ID is required")
+
+      const response = await apiJson(`/api/pods/${encodeURIComponent(podId)}/chat-room`, {
+        method: 'GET',
+      })
+
+      return response.data || response.room || response
+    } catch (error) {
+      console.error("Get or create pod room error:", error)
+      throw error
+    }
   },
 
   /**
@@ -2215,41 +2145,25 @@ export const chatService = {
         }
       }
 
-      // Create message
-      const message = await databases.createDocument(
-        DATABASE_ID,
-        COLLECTIONS.MESSAGES,
-        "unique()",
-        {
-          roomId: roomId,
-          senderId: senderId,
-          authorId: senderId,
+      const response = await apiJson('/api/messages/send', {
+        method: 'POST',
+        body: JSON.stringify({
+          roomId,
+          senderId,
           content: content.trim(),
           type,
-          senderName: senderName,
-          senderAvatar: senderAvatar,
-          timestamp: new Date().toISOString(),
-          readBy: [senderId],
-          isEdited: false,
-          replyTo: metadata.replyTo || null,
-          fileUrl: metadata.fileUrl || null,
-          fileName: metadata.fileName || null,
-          fileSize: metadata.fileSize || null,
-        }
-      )
+          metadata: {
+            senderName,
+            senderAvatar,
+            replyTo: metadata.replyTo || null,
+            fileUrl: metadata.fileUrl || null,
+            fileName: metadata.fileName || null,
+            fileSize: metadata.fileSize || null,
+          },
+        }),
+      })
 
-      // Update chat room's last message timestamp
-      try {
-        await databases.updateDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, roomId, {
-          lastMessage: content.substring(0, 100),
-          lastMessageTime: new Date().toISOString(),
-          lastMessageSenderId: senderId,
-        })
-      } catch (e) {
-        console.error("Failed to update chat room:", e)
-      }
-
-      return message
+      return response.message || response.data || response
     } catch (error) {
       console.error("Send message error:", error)
       throw error
@@ -2265,17 +2179,10 @@ export const chatService = {
         throw new Error("Room ID is required")
       }
 
-      const messages = await databases.listDocuments(DATABASE_ID, COLLECTIONS.MESSAGES, [
-        Query.equal("roomId", roomId),
-        Query.orderDesc("timestamp"),
-        Query.limit(Math.min(limit, 100)),
-        Query.offset(Math.max(offset, 0)),
-      ])
-
-      // Reverse to get chronological order
+      const response = await apiJson(`/api/messages/room/${encodeURIComponent(roomId)}?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
       return {
-        documents: messages.documents.reverse(),
-        total: messages.total,
+        documents: response.messages || response.documents || [],
+        total: response.total || 0,
       }
     } catch (error) {
       console.error("Get messages error:", error)
@@ -2549,39 +2456,30 @@ export const resourceService = {
         throw new Error("File too large (max 50MB)")
       }
 
-      // Upload file
-      const response = await storage.createFile(BUCKETS.RESOURCES, "unique()", file)
-      const fileUrl = storage.getFileView(BUCKETS.RESOURCES, response.$id).toString()
-      const downloadUrl = storage.getFileDownload(BUCKETS.RESOURCES, response.$id).toString()
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('title', metadata.title || file.name)
+      formData.append('description', metadata.description || '')
+      formData.append('podId', metadata.podId || '')
+      formData.append('visibility', metadata.visibility || 'public')
+      formData.append('tags', JSON.stringify(Array.isArray(metadata.tags) ? metadata.tags.slice(0, 10) : []))
+      formData.append('userId', userId)
 
-      // Create resource document
-      const now = new Date().toISOString()
-      const resource = await databases.createDocument(
-        DATABASE_ID,
-        COLLECTIONS.RESOURCES,
-        "unique()",
-        {
-          fileId: response.$id,
-          authorId: userId,
-          title: metadata.title || file.name,
-          description: metadata.description || "",
-          fileUrl: fileUrl,
-          fileName: file.name,
-          fileSize: file.size,
-          fileType: file.type,
-          podId: metadata.podId || null,
-          visibility: metadata.visibility || "public",
-          tags: Array.isArray(metadata.tags) ? metadata.tags.slice(0, 10) : [],
-          downloads: 0,
-          likes: 0,
-          views: 0,
-          uploadedAt: now,
-          createdAt: now, // Added for consistency
-          updatedAt: now,
-        }
-      )
+      const response = await fetch('/api/resources', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          ...(typeof window !== 'undefined' ? { 'x-user-id': userId } : {}),
+        },
+        body: formData,
+      })
 
-      return resource
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to upload resource')
+      }
+
+      return payload.resource || payload.data || payload
     } catch (error) {
       console.error("Upload resource error:", error)
       throw error
@@ -2593,28 +2491,22 @@ export const resourceService = {
    */
   async getResources(filters: string | { podId?: string; visibility?: string; authorId?: string; search?: string } = {}, limit = 50, offset = 0) {
     try {
-      const queries: any[] = [
-        Query.orderDesc("$createdAt"),
-        Query.limit(Math.min(limit, 100)),
-        Query.offset(Math.max(offset, 0)),
-      ]
+      const params = new URLSearchParams({
+        limit: String(limit),
+        offset: String(offset),
+      })
 
-      // Support legacy string argument or new filter object
       if (typeof filters === "string") {
-        if (filters) queries.push(Query.equal("podId", filters))
+        if (filters) params.set('podId', filters)
       } else {
-        if (filters.podId) queries.push(Query.equal("podId", filters.podId))
-        if (filters.visibility) queries.push(Query.equal("visibility", filters.visibility))
-        if (filters.authorId) queries.push(Query.equal("authorId", filters.authorId))
-        if (filters.search) {
-          queries.push(Query.search("title", filters.search))
-          queries.push(Query.search("description", filters.search))
-        }
+        if (filters.podId) params.set('podId', filters.podId)
+        if (filters.visibility) params.set('visibility', filters.visibility)
+        if (filters.authorId) params.set('authorId', filters.authorId)
+        if (filters.search) params.set('search', filters.search)
       }
 
-      const resources = await databases.listDocuments(DATABASE_ID, COLLECTIONS.RESOURCES, queries)
-
-      return resources
+      const response = await apiJson(`/api/resources?${params.toString()}`)
+      return { documents: response.documents || [], total: response.total || 0 }
     } catch (error) {
       console.error("Get resources error:", error)
       return { documents: [], total: 0 }
@@ -2694,30 +2586,12 @@ export const resourceService = {
         throw new Error("Resource ID and User ID are required")
       }
 
-      const resource = await databases.getDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId)
-      const likedBy = Array.isArray(resource.likedBy) ? resource.likedBy : []
-      const isLiked = likedBy.includes(userId)
-      const newLikedBy = isLiked
-        ? likedBy.filter((id: string) => id !== userId)
-        : [...likedBy, userId]
+      const response = await apiJson(`/api/resources/${encodeURIComponent(resourceId)}/like`, {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      })
 
-      const updated = await databases.updateDocument(
-        DATABASE_ID,
-        COLLECTIONS.RESOURCES,
-        resourceId,
-        {
-          likedBy: newLikedBy,
-          likes: newLikedBy.length,
-          updatedAt: new Date().toISOString(),
-        }
-      )
-
-      return {
-        success: true,
-        isLiked: !isLiked,
-        likes: newLikedBy.length,
-        resource: updated,
-      }
+      return response.resource || response.data || response
     } catch (error) {
       console.error("Toggle like resource error:", error)
       throw error
@@ -2733,27 +2607,8 @@ export const resourceService = {
         throw new Error("Resource ID is required")
       }
 
-      const resource = await databases.getDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId)
-      const fileId = resource.fileId || resource.fileUrl?.split("/").pop()?.split("?")[0]
-
-      if (!fileId) {
-        throw new Error("Resource file not found")
-      }
-
-      const downloadUrl = storage.getFileDownload(BUCKETS.RESOURCES, fileId).toString()
-
-      // Best-effort download counter increment - only update downloads field
-      try {
-        await databases.updateDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId, {
-          downloads: (resource.downloads || 0) + 1,
-          updatedAt: new Date().toISOString(), // Track when it was last downloaded
-        })
-      } catch (updateError: any) {
-        // Log but don't fail - download should still work
-        console.warn("Failed to increment download count:", updateError?.message || updateError)
-      }
-
-      return { url: downloadUrl }
+      const response = await apiJson(`/api/resources/${encodeURIComponent(resourceId)}/download`)
+      return { url: response.url }
     } catch (error) {
       console.error("Download resource error:", error)
       throw error
@@ -3016,32 +2871,10 @@ export const feedService = {
         throw new Error("User ID is required")
       }
 
-      const savedPosts = await databases.listDocuments(DATABASE_ID, "saved_posts", [
-        Query.equal("userId", userId),
-        Query.orderDesc("savedAt"),
-        Query.limit(Math.min(limit, 100)),
-        Query.offset(Math.max(offset, 0)),
-      ])
-
-      // Fetch full post documents
-      const posts = await Promise.all(
-        savedPosts.documents.map(async (saved: any) => {
-          try {
-            const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, saved.postId)
-            return post
-          } catch (e) {
-            console.error("Failed to fetch post:", saved.postId, e)
-            return null
-          }
-        })
-      )
-
-      // Filter out null posts
-      const validPosts = posts.filter((p) => p !== null)
-
+      const response = await apiJson(`/api/posts/saved?userId=${encodeURIComponent(userId)}&limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
       return {
-        documents: validPosts,
-        total: validPosts.length,
+        documents: response.posts || response.documents || [],
+        total: response.total || 0,
       }
     } catch (error) {
       console.error("Get saved posts error:", error)
@@ -3155,40 +2988,12 @@ export const feedService = {
         throw new Error("Post ID and User ID are required")
       }
 
-      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
-
-      const likedBy = Array.isArray(post.likedBy) ? post.likedBy : []
-      const isLiked = likedBy.includes(userId)
-
-      const newLikedBy = isLiked ? likedBy.filter((id: string) => id !== userId) : [...likedBy, userId]
-
-      const updated = await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, postId, {
-        likes: newLikedBy.length,
-        likedBy: newLikedBy,
+      const response = await apiJson(`/api/posts/${encodeURIComponent(postId)}/like`, {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
       })
 
-      // Create notification for post author if liking (not self-like)
-      if (!isLiked && post.authorId !== userId) {
-        try {
-          await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
-            userId: post.authorId,
-            type: "like",
-            actor: userId,
-            postId: postId,
-            message: `Someone liked your post`,
-            read: false,
-            createdAt: new Date().toISOString(),
-          })
-        } catch (e) {
-          console.error("Failed to create like notification:", e)
-        }
-      }
-
-      return {
-        likes: newLikedBy.length,
-        isLiked: !isLiked,
-        post: updated,
-      }
+      return response.post || response.data || response
     } catch (error) {
       console.error("Toggle like error:", error)
       throw error
@@ -3224,48 +3029,12 @@ export const feedService = {
         throw new Error("Post ID and User ID are required")
       }
 
-      // Check if post is already saved
-      const existing = await databases.listDocuments(DATABASE_ID, "saved_posts", [
-        Query.equal("postId", postId),
-        Query.equal("userId", userId),
-      ])
+      const response = await apiJson(`/api/posts/${encodeURIComponent(postId)}/save`, {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      })
 
-      if (existing.documents.length > 0) {
-        // Already saved, remove it
-        await databases.deleteDocument(DATABASE_ID, "saved_posts", existing.documents[0].$id)
-        return { saved: false }
-      } else {
-        // Not saved, create new save
-        await databases.createDocument(DATABASE_ID, "saved_posts", "unique()", {
-          postId: postId,
-          userId: userId,
-          savedAt: new Date().toISOString(),
-        })
-
-        // Notify post author
-        try {
-          const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
-          if (post.authorId !== userId) {
-            const saverProfile = await profileService.getProfile(userId)
-            await notificationService.createNotification(
-              post.authorId,
-              "Post Saved",
-              `${saverProfile?.name || 'Someone'} saved your post`,
-              "save",
-              {
-                postId: postId,
-                actorId: userId,
-                actorName: saverProfile?.name,
-                actorAvatar: saverProfile?.avatar,
-              }
-            )
-          }
-        } catch (e) {
-          console.error("Failed to create save notification:", e)
-        }
-
-        return { saved: true }
-      }
+      return response.data || response
     } catch (error) {
       console.error("Toggle save post error:", error)
       throw error
@@ -3320,103 +3089,16 @@ export const commentService = {
         throw new Error("Comment content exceeds 2000 character limit")
       }
 
-      // Fetch post to verify it exists
-      const post = await databases.getDocument(DATABASE_ID, COLLECTIONS.POSTS, postId)
-
-      // Get comment author profile
-      let authorName = metadata.authorName || ""
-      let authorAvatar = metadata.authorAvatar || ""
-      let authorUsername = metadata.authorUsername || ""
-
-      if (!authorName) {
-        try {
-          const profile = await profileService.getProfile(authorId)
-          if (profile) {
-            authorName = profile.name || ""
-            authorAvatar = profile.avatar || ""
-            authorUsername = profile.username || `@user_${authorId.slice(0, 6)}`
-          }
-        } catch (e) {
-          console.error("Failed to fetch profile:", e)
-        }
-      }
-
-      if (!authorUsername) {
-        authorUsername = `@user_${authorId.slice(0, 6)}`
-      }
-
-      // Create comment with both timestamp and createdAt for compatibility
-      const now = new Date().toISOString()
-      const comment = await databases.createDocument(
-        DATABASE_ID,
-        COLLECTIONS.COMMENTS,
-        "unique()",
-        {
-          postId: postId,
-          authorId: authorId,
+      const response = await apiJson(`/api/posts/${encodeURIComponent(postId)}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({
           userId: authorId,
-          content: content,
-          timestamp: now,
-          createdAt: now, // Added for schema compatibility
-          likes: 0,
-          likedBy: [],
-          authorName: authorName,
-          authorAvatar: authorAvatar,
-          authorUsername: authorUsername,
-          replyTo: metadata.replyTo || null,
+          content,
           parentCommentId: metadata.replyTo || null,
-        }
-      )
-
-      // Increment post comment count
-      await databases.updateDocument(DATABASE_ID, COLLECTIONS.POSTS, postId, {
-        comments: (post.comments || 0) + 1,
+        }),
       })
 
-      // Create notification for post author (if not self-commenting)
-      if (post.authorId !== authorId) {
-        try {
-          await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
-            userId: post.authorId,
-            type: "comment",
-            actor: authorId,
-            actorName: authorName,
-            actorAvatar: authorAvatar,
-            postId: postId,
-            commentId: comment.$id,
-            message: `${authorName} commented on your post`,
-            read: false,
-            createdAt: new Date().toISOString(),
-          })
-        } catch (e) {
-          console.error("Failed to create notification:", e)
-        }
-      }
-
-      if (metadata.replyTo) {
-        try {
-          const parentComment = await databases.getDocument(DATABASE_ID, COLLECTIONS.COMMENTS, metadata.replyTo)
-          if (parentComment.authorId && parentComment.authorId !== authorId) {
-            await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
-              userId: parentComment.authorId,
-              type: "comment_reply",
-              actor: authorId,
-              actorName: authorName,
-              actorAvatar: authorAvatar,
-              postId: postId,
-              commentId: comment.$id,
-              parentCommentId: metadata.replyTo,
-              message: `${authorName} replied to your comment`,
-              read: false,
-              createdAt: new Date().toISOString(),
-            })
-          }
-        } catch (e) {
-          console.error("Failed to create reply notification:", e)
-        }
-      }
-
-      return comment
+      return response.comment || response.data || response
     } catch (error) {
       console.error("Create comment error:", error)
       throw error
@@ -3432,18 +3114,11 @@ export const commentService = {
         throw new Error("Post ID is required")
       }
 
-      const comments = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTIONS.COMMENTS,
-        [
-          Query.equal("postId", postId),
-          Query.orderAsc("timestamp"),
-          Query.limit(Math.min(limit, 100)),
-          Query.offset(Math.max(offset, 0)),
-        ]
-      )
-
-      return comments
+      const response = await apiJson(`/api/posts/${encodeURIComponent(postId)}/comments?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
+      return {
+        documents: response.comments || response.data || response.documents || [],
+        total: response.total || 0,
+      }
     } catch (error) {
       console.error("Get comments error:", error)
       return { documents: [], total: 0 }
@@ -3481,28 +3156,12 @@ export const commentService = {
         throw new Error("Comment ID and User ID are required")
       }
 
-      const comment = await databases.getDocument(DATABASE_ID, COLLECTIONS.COMMENTS, commentId)
+      const response = await apiJson(`/api/comments/${encodeURIComponent(commentId)}/like`, {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      })
 
-      const likedBy = Array.isArray(comment.likedBy) ? comment.likedBy : []
-      const isLiked = likedBy.includes(userId)
-
-      const newLikedBy = isLiked ? likedBy.filter((id: string) => id !== userId) : [...likedBy, userId]
-
-      const updated = await databases.updateDocument(
-        DATABASE_ID,
-        COLLECTIONS.COMMENTS,
-        commentId,
-        {
-          likes: newLikedBy.length,
-          likedBy: newLikedBy,
-        }
-      )
-
-      return {
-        likes: newLikedBy.length,
-        isLiked: !isLiked,
-        comment: updated,
-      }
+      return response.comment || response.data || response
     } catch (error) {
       console.error("Toggle like comment error:", error)
       throw error
