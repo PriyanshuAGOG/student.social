@@ -1,7 +1,5 @@
 import type React from "react"
-import { SidebarProvider } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app-sidebar"
-import { MobileNavigation } from "@/components/mobile-navigation"
+import { AppFloatingNav } from "@/components/app-floating-nav"
 import { Toaster } from "@/components/ui/toaster"
 import { ProtectRoute } from "@/lib/protect-route"
 
@@ -12,19 +10,11 @@ export default function AppLayout({
 }) {
   return (
     <ProtectRoute>
-      <SidebarProvider>
-        <div className="flex min-h-dvh w-full overflow-x-hidden bg-background">
-          {/* Desktop Sidebar */}
-          <AppSidebar className="hidden md:flex" />
-
-          {/* Main Content */}
-          <main className="min-w-0 flex-1 overflow-x-hidden pb-safe-nav md:pb-0">{children}</main>
-
-          {/* Mobile Navigation */}
-          <MobileNavigation />
-        </div>
-        <Toaster />
-      </SidebarProvider>
+      <div className="app-shell min-h-dvh w-full overflow-x-hidden bg-background">
+        <main className="min-w-0 flex-1 overflow-x-hidden">{children}</main>
+        <AppFloatingNav />
+      </div>
+      <Toaster />
     </ProtectRoute>
   )
 }
