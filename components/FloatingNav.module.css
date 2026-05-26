@@ -1,99 +1,26 @@
-.desktopDock {
-  position: fixed;
-  left: 20px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1000;
-  display: none;
-}
+.desktopDock { position: fixed; left: 20px; top: 50%; transform: translateY(-50%); z-index: 1000; display: none; }
+.desktopList { list-style: none; margin: 0; padding: 10px; width: 240px; border-radius: 34px; background: color-mix(in oklch, var(--background) 90%, transparent); border: 1px solid color-mix(in oklch, var(--border) 78%, transparent); box-shadow: 0 16px 44px rgba(0,0,0,.18),0 2px 12px rgba(0,0,0,.09); backdrop-filter: blur(10px); }
+.desktopItem { position: relative; display: grid; grid-template-columns: 36px 1fr; align-items: center; gap: 12px; height: 50px; border-radius: 20px; padding: 0 14px; color: var(--muted-foreground); text-decoration: none; transition: transform 180ms cubic-bezier(.4,0,.2,1), color 180ms ease, background-color 180ms ease; }
+.desktopIconWrap { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 999px; transition: transform 220ms cubic-bezier(.34,1.56,.64,1), box-shadow 180ms ease; }
+.desktopLabel { white-space: nowrap; font-weight: 580; font-size: 14px; letter-spacing: .01em; opacity: .94; }
+.desktopItem:hover { transform: translateX(2px) scale(1.02); color: var(--foreground); background: color-mix(in oklch, var(--muted) 46%, transparent); }
+.desktopItem:hover .desktopIconWrap { transform: translateY(-1px); }
+.desktopItemActive { color: var(--foreground); background: color-mix(in oklch, var(--accent) 62%, transparent); font-weight: 700; }
+.desktopItemActive .desktopIconWrap { box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 24%, transparent), 0 8px 22px color-mix(in oklch, var(--primary) 32%, transparent); }
+.desktopRail { position: absolute; left: -4px; top: 50%; transform: translateY(-50%); width: 4px; height: 24px; border-radius: 999px; background: var(--primary); }
 
-.desktopList {
-  list-style: none;
-  margin: 0;
-  padding: 10px;
-  width: 236px;
-  border-radius: 34px;
-  background: color-mix(in oklch, var(--background) 90%, transparent);
-  border: 1px solid color-mix(in oklch, var(--border) 78%, transparent);
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.18), 0 2px 12px rgba(0, 0, 0, 0.09);
-  backdrop-filter: blur(10px);
-}
-
-.desktopItem {
-  position: relative;
-  display: grid;
-  grid-template-columns: 36px 1fr;
-  align-items: center;
-  gap: 12px;
-  height: 52px;
-  border-radius: 22px;
-  padding: 0 14px;
-  color: var(--muted-foreground);
-  text-decoration: none;
-  transition: transform 180ms cubic-bezier(.4,0,.2,1), color 180ms ease, background-color 180ms ease;
-}
-
-.desktopIconWrap {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  transition: transform 220ms cubic-bezier(.34,1.56,.64,1), box-shadow 180ms ease;
-}
-
-.desktopLabel {
-  white-space: nowrap;
-  font-weight: 560;
-  font-size: 14px;
-  letter-spacing: .01em;
-  opacity: .92;
-}
-
-.desktopItem:hover {
-  transform: translateX(2px) scale(1.02);
-  color: var(--foreground);
-  background: color-mix(in oklch, var(--muted) 46%, transparent);
-}
-
-.desktopItem:hover .desktopIconWrap {
-  transform: translateY(-1px);
-}
-
-.desktopItemActive {
-  color: var(--foreground);
-  background: color-mix(in oklch, var(--accent) 62%, transparent);
-  font-weight: 700;
-}
-
-.desktopItemActive .desktopIconWrap {
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 24%, transparent), 0 8px 22px color-mix(in oklch, var(--primary) 32%, transparent);
-}
-
-.desktopRail {
-  position: absolute;
-  left: -4px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 4px;
-  height: 24px;
-  border-radius: 999px;
-  background: var(--primary);
-}
-
-.mobileDock { position: fixed; left: 14px; right: 14px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 1000; }
-.mobileList { list-style: none; margin: 0; padding: 8px; border-radius: 32px; background: color-mix(in oklch, var(--background) 88%, transparent); border: 1px solid color-mix(in oklch, var(--border) 70%, transparent); box-shadow: 0 14px 40px rgba(0,0,0,.2); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: end; backdrop-filter: blur(8px); }
-.mobileLi { min-width: 0; }
-.mobileItem { position: relative; height: 66px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; text-decoration: none; color: var(--muted-foreground); border-radius: 22px; transition: transform .18s ease, color .18s ease; }
-.mobileItem:active { transform: scale(.97); }
-.mobileIcon { transition: transform .22s cubic-bezier(.34,1.56,.64,1); }
-.mobileLabel { font-size: 11px; line-height: 1; font-weight: 500; transition: .2s ease; white-space: nowrap; }
-.mobileBubble { position: absolute; top: -17px; width: 44px; height: 44px; border-radius: 999px; background: color-mix(in oklch, var(--card) 90%, var(--primary) 10%); border: 1px solid color-mix(in oklch, var(--primary) 32%, transparent); box-shadow: 0 10px 24px rgba(0,0,0,.24); display: grid; place-items: center; opacity: 0; transform: translateY(8px) scale(.8); transition: transform .24s cubic-bezier(.34,1.56,.64,1), opacity .2s ease; pointer-events: none; }
-.mobileItemActive { color: var(--foreground); font-weight: 700; }
-.mobileItemActive .mobileBubble { opacity: 1; transform: translateY(0) scale(1); }
-.mobileItemActive .mobileIcon { opacity: 0; transform: translateY(6px) scale(.8); }
+.mobileDock { position: fixed; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 1000; }
+.mobileList { --item-count: 5; --slot-width: calc(100% / var(--item-count)); position: relative; list-style: none; margin: 0; padding: 10px 8px 9px; border-radius: 34px; background: color-mix(in oklch, var(--background) 88%, transparent); border: 1px solid color-mix(in oklch, var(--border) 70%, transparent); box-shadow: 0 20px 46px rgba(0,0,0,.24), 0 2px 8px rgba(0,0,0,.12); display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); align-items: end; backdrop-filter: blur(9px); isolation: isolate; }
+.activeBubbleTrack { position: absolute; top: -23px; left: calc((var(--active-index) * var(--slot-width)) + (var(--slot-width) / 2)); transform: translateX(-50%); pointer-events: none; z-index: 2; transition: left 320ms cubic-bezier(.34,1.56,.64,1); }
+.activeBubbleDetached { width: 52px; height: 52px; border-radius: 999px; background: color-mix(in oklch, var(--card) 92%, var(--primary) 8%); border: 1px solid color-mix(in oklch, var(--primary) 34%, transparent); box-shadow: 0 16px 28px rgba(0,0,0,.28), 0 3px 10px rgba(0,0,0,.16); display: grid; place-items: center; }
+.mobileLi { min-width: 0; position: relative; z-index: 1; }
+.mobileItem { position: relative; height: 72px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 7px; text-decoration: none; color: var(--muted-foreground); border-radius: 22px; transition: transform .18s ease, color .18s ease, background-color .18s ease; }
+.mobileItem:active { transform: scale(.965); }
+.mobileIcon { transition: transform .22s cubic-bezier(.34,1.56,.64,1), opacity .2s ease; }
+.mobileLabel { font-size: 11px; line-height: 1; font-weight: 560; white-space: nowrap; transition: .2s ease; }
+.mobileItemActive { color: var(--foreground); background: color-mix(in oklch, var(--accent) 48%, transparent); }
+.mobileItemActive .mobileIcon { opacity: 0; transform: translateY(8px) scale(.75); }
 .mobileItemActive .mobileLabel { transform: translateY(1px); font-weight: 700; }
 .icon { width: 20px; height: 20px; }
-
-@media (min-width: 768px) { .mobileDock { display: none; } .desktopDock { display: block; } }
-@media (prefers-reduced-motion: reduce) { .desktopItem, .desktopIconWrap, .mobileItem, .mobileBubble, .mobileIcon, .mobileLabel { transition: opacity .12s linear !important; animation: none !important; } }
+@media (min-width: 768px) { .mobileDock { display:none; } .desktopDock { display:block; } }
+@media (prefers-reduced-motion: reduce) { .desktopItem,.desktopIconWrap,.mobileItem,.mobileIcon,.mobileLabel,.activeBubbleTrack { transition: opacity .12s linear !important; animation: none !important; } }
