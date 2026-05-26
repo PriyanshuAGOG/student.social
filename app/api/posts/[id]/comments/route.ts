@@ -75,6 +75,7 @@ export async function POST(
     }
 
     // Create comment
+    const now = new Date().toISOString();
     const comment = await databases.createDocument(
       DATABASE_ID,
       COMMENTS_COLLECTION_ID,
@@ -90,8 +91,9 @@ export async function POST(
         likedBy: [],
         replies: 0,
         isDeleted: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        timestamp: now,
+        createdAt: now,
+        updatedAt: now,
       }
     );
 
@@ -209,8 +211,7 @@ export async function GET(
       [
         Query.equal('postId', postId),
         Query.equal('isDeleted', false),
-        Query.isNull('replyTo'), // Only top-level comments
-        Query.orderDesc('createdAt'),
+        Query.orderDesc('timestamp'),
         Query.limit(Math.min(limit, 100)),
         Query.offset(offset),
       ]
@@ -222,29 +223,27 @@ export async function GET(
       throw error
     });
 
-    // For each comment, get its replies
-    const commentsWithReplies = [];
-    for (const comment of comments.documents) {
-      const replies = await databases.listDocuments(
-        DATABASE_ID,
-        COMMENTS_COLLECTION_ID,
-        [
-          Query.equal('replyTo', comment.$id),
-          Query.equal('isDeleted', false),
-          Query.orderAsc('createdAt'),
-          Query.limit(10), // Limit replies per comment
-        ]
-      ).catch(() => ({ documents: [] } as any));
+    const allComments = Array.isArray(comments.documents) ? comments.documents : []
+    const commentsById = new Map<string, any>()
+    const roots: any[] = []
 
-      commentsWithReplies.push({
-        ...comment,
-        replies: replies.documents,
-      });
+    for (const comment of allComments) {
+      commentsById.set(comment.$id, { ...comment, replies: [] })
+    }
+
+    for (const comment of allComments) {
+      const normalized = commentsById.get(comment.$id)
+      const parentId = comment.replyTo || comment.parentCommentId || null
+      if (parentId && commentsById.has(parentId)) {
+        commentsById.get(parentId).replies.push(normalized)
+      } else {
+        roots.push(normalized)
+      }
     }
 
     return {
       success: true,
-      comments: commentsWithReplies,
+      comments: roots,
       total: comments.total,
       limit,
       offset,

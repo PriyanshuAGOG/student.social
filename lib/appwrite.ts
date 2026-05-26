@@ -1061,7 +1061,10 @@ export const profileService = {
       const following = Array.isArray(profile.following) ? profile.following : []
       return following.includes(followingId)
     } catch (error) {
-      console.error("Check following error:", error)
+      const message = String((error as any)?.message || '').toLowerCase()
+      if (!(message.includes('could not be found') || message.includes('not found'))) {
+        console.error("Check following error:", error)
+      }
       return false
     }
   },

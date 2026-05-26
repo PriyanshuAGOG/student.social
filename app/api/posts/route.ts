@@ -228,8 +228,8 @@ export async function GET(request: NextRequest) {
     // Filter by pod
     if (podId) {
       queries.push(Query.equal('podId', podId));
-    } else {
-      // Only show public posts if not filtered by pod
+    } else if (!authorId) {
+      // Feed view shows public posts by default.
       queries.push(Query.equal('visibility', 'public'));
     }
 
@@ -239,7 +239,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Add sorting and pagination
-    queries.push(Query.orderDesc('createdAt'));
+    queries.push(Query.orderDesc('timestamp'));
     queries.push(Query.limit(Math.min(limit, 100)));
     queries.push(Query.offset(offset));
 
