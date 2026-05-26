@@ -418,11 +418,8 @@ code {
 }
 
 @media (min-width: 1025px) {
-  body {
-    padding-left: 88px;
-  }
-
   .app-shell {
     padding-bottom: 0;
+    padding-left: 112px;
   }
 }
