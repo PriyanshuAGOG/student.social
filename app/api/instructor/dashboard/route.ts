@@ -112,7 +112,7 @@ export async function GET(request: Request) {
             enrollment.userId,
             course.$id
           );
-          if (progress.completedChapters === chapters.length) {
+          if (progress.chaptersCompleted === chapters.length) {
             completions++;
           }
           if (progress.averageScore) {
@@ -127,7 +127,7 @@ export async function GET(request: Request) {
 
         totalEnrollments += enrollments.total;
         totalRevenue += (course.price || 0) * enrollments.total;
-        totalRating += stats?.averageRating || 0;
+        totalRating += course.avgRating || 0;
         ratingCount++;
 
         coursesList.push({
@@ -138,7 +138,7 @@ export async function GET(request: Request) {
           completions,
           completionRate: Math.round(completionRate),
           averageScore: Math.round(avgScore),
-          averageRating: stats?.averageRating || 0,
+          averageRating: course.avgRating || 0,
           revenue: (course.price || 0) * enrollments.total,
           createdAt: course.createdAt,
         });
@@ -199,7 +199,7 @@ export async function GET(request: Request) {
         if (progress.averageScore) {
           totalScoreSum += progress.averageScore;
         }
-        if (progress.completedChapters > 0) {
+        if (progress.chaptersCompleted > 0) {
           completedCount++;
         }
         courseCount++;
@@ -236,7 +236,7 @@ export async function GET(request: Request) {
               courseId: course.courseId,
               courseName: course.title,
               currentScore: Math.round(progress.averageScore),
-              lastActivity: progress.lastActivityAt || 'No activity',
+              lastActivity: progress.lastAccessedAt || 'No activity',
             });
           }
         } catch (err) {

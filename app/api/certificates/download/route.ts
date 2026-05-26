@@ -85,9 +85,10 @@ export async function GET(request: NextRequest) {
     }
 
     const pdf = await renderCertificatePdf(bundle)
+    const pdfBytes = new Uint8Array(pdf)
     const filename = `Certificate_${bundle.certificate.certificateId || certificateId}.pdf`
 
-    return new Response(pdf, {
+    return new Response(pdfBytes, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',

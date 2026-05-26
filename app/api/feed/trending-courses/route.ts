@@ -49,10 +49,10 @@ export async function GET(request: Request) {
           enrollmentCount: enrollments.total || 0,
           completionCount: completions,
           feedPostCount: recentPosts.length,
-          averageRating: stats?.averageRating || 0,
+          averageRating: course.avgRating || 0,
           createdAtMs: new Date(course?.createdAt || Date.now()).getTime(),
         })
-        return { ...course, enrollmentCount: enrollments.total || 0, completionCount: completions, feedPostCount: recentPosts.length, averageRating: stats?.averageRating || 0, trendScore }
+        return { ...course, enrollmentCount: enrollments.total || 0, completionCount: completions, feedPostCount: recentPosts.length, averageRating: course.avgRating || 0, trendScore }
       } catch {
         return { ...course, enrollmentCount: 0, completionCount: 0, feedPostCount: 0, averageRating: 0, trendScore: 0 }
       }
