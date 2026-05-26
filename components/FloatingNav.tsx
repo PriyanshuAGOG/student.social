@@ -2,7 +2,16 @@
 
 import type React from "react"
 import Link from "next/link"
-import { Bot, BookOpen, Calendar, Home, MessageCircle, Sparkles, UserRound, Users } from "lucide-react"
+import {
+  Bot,
+  BookOpen,
+  Calendar,
+  Home,
+  MessageCircle,
+  Sparkles,
+  UserRound,
+  Users,
+} from "lucide-react"
 import { useMemo } from "react"
 import { usePathname } from "next/navigation"
 import styles from "./FloatingNav.module.css"
@@ -49,9 +58,9 @@ export function FloatingNav() {
               return (
                 <li key={item.key}>
                   <Link href={item.href} aria-current={active ? "page" : undefined} className={`${styles.desktopItem} ${active ? styles.desktopItemActive : ""}`}>
+                    {active && <span className={styles.desktopActivePill} aria-hidden="true" />}
                     <span className={styles.desktopIcon}><item.icon className={styles.icon} /></span>
                     <span className={styles.desktopLabel}>{item.label}</span>
-                    {active && <span className={styles.desktopActivePill} aria-hidden="true" />}
                   </Link>
                 </li>
               )

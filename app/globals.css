@@ -414,12 +414,12 @@ code {
 }
 
 .app-shell {
-  padding-bottom: 100px;
+  padding-bottom: 92px;
 }
 
 @media (min-width: 1025px) {
   .app-shell {
     padding-bottom: 0;
-    padding-left: 112px;
+    padding-left: 104px;
   }
 }
