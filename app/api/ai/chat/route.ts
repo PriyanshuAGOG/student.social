@@ -58,25 +58,26 @@ export async function POST(req: Request) {
         model: body?.model || "default",
       }
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     const elapsed = Date.now() - startTime
-    
-    console.error(`/api/ai/chat error (${elapsed}ms):`, err?.message)
+    const error = err instanceof Error ? err : new Error(String(err))
+
+    console.error(`/api/ai/chat error (${elapsed}ms):`, error.message)
 
     // Provide user-friendly error messages
     let errorMessage = "I'm having trouble responding right now. Please try again."
     let statusCode = 500
 
-    if (err?.message?.includes("timeout")) {
+    if (error.message.includes("timeout")) {
       errorMessage = "The AI service is taking too long to respond. Please try a shorter message."
       statusCode = 504
-    } else if (err?.message?.includes("429")) {
+    } else if (error.message.includes("429")) {
       errorMessage = "Too many requests. Please wait a moment before trying again."
       statusCode = 429
-    } else if (err?.message?.includes("401")) {
+    } else if (error.message.includes("401")) {
       errorMessage = "AI service configuration issue. Please contact support."
       statusCode = 500
-    } else if (err?.message?.includes("rate")) {
+    } else if (error.message.includes("rate")) {
       errorMessage = "The AI service is busy. Please wait a moment and try again."
       statusCode = 503
     }
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { 
         error: errorMessage,
-        details: process.env.NODE_ENV === "development" ? err?.message : undefined
+        details: process.env.NODE_ENV === "development" ? error.message : undefined
       }, 
       { status: statusCode }
     )

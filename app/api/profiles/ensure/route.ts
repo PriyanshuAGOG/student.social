@@ -41,6 +41,7 @@ function sanitizeProfileData(data: Record<string, unknown>) {
 function profilePermissions(userId: string) {
   return [
     Permission.read(Role.any()),
+    Permission.create(Role.user(userId)),
     Permission.update(Role.user(userId)),
     Permission.delete(Role.user(userId)),
   ]
@@ -101,15 +102,38 @@ export async function POST(request: NextRequest) {
       ...(updates ? sanitizeProfileData(updates) : {}),
     })
 
-    const profile = await databases.createDocument(
-      DATABASE_ID,
-      PROFILES_COLLECTION_ID,
-      userId,
-      baseProfile,
-      profilePermissions(userId)
-    )
+    try {
+      const profile = await databases.createDocument(
+        DATABASE_ID,
+        PROFILES_COLLECTION_ID,
+        userId,
+        baseProfile,
+        profilePermissions(userId)
+      )
 
-    return NextResponse.json({ success: true, profile, created: true }, { status: 201 })
+      return NextResponse.json({ success: true, profile, created: true }, { status: 201 })
+    } catch (createError: any) {
+      const isUnknownAttribute = String(createError?.message || '').includes('Unknown attribute: "username"')
+
+      if (!isUnknownAttribute) {
+        throw createError
+      }
+
+      const fallbackProfile = sanitizeProfileData({
+        ...baseProfile,
+        username: undefined,
+      })
+
+      const profile = await databases.createDocument(
+        DATABASE_ID,
+        PROFILES_COLLECTION_ID,
+        userId,
+        fallbackProfile,
+        profilePermissions(userId)
+      )
+
+      return NextResponse.json({ success: true, profile, created: true, schemaFallback: true }, { status: 201 })
+    }
   } catch (error: any) {
     console.error('Ensure profile API error:', error)
     return NextResponse.json(

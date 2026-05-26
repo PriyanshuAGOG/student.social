@@ -43,6 +43,32 @@ function normalizeUsername(input: string): string {
     .replace(/^_+|_+$/g, '')
 }
 
+async function apiJson(path: string, init: RequestInit = {}) {
+  if (typeof window === 'undefined') {
+    throw new Error('API helpers are only available in the browser')
+  }
+
+  const sessionUser = await fetchSessionUser()
+
+  const response = await fetch(path, {
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(sessionUser?.$id ? { 'x-user-id': sessionUser.$id } : {}),
+      ...(sessionUser?.role ? { 'x-user-role': sessionUser.role } : {}),
+      ...(init.headers || {}),
+    },
+    ...init,
+  })
+
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(payload?.error || payload?.message || `Request failed with ${response.status}`)
+  }
+
+  return payload
+}
+
 // Initialize Appwrite Client with your credentials
 const env = getEnv()
 const endpoint = normalizeAppwriteEndpoint(env.NEXT_PUBLIC_APPWRITE_ENDPOINT) || "https://fra.cloud.appwrite.io/v1"
@@ -735,31 +761,19 @@ export const profileService = {
         // If not found, create it
         if (error?.code === 404 || error?.code === 401 || error?.message?.includes('not found') || error?.message?.includes('missing scope') || error?.message?.includes('permissions')) {
           devLog(`[ensureProfileExists] Creating profile for user: ${userId}`)
-          const now = new Date().toISOString()
           try {
-            const profile = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId, {
-              userId: userId,
-              name: defaults.name || `User_${userId.slice(0, 6)}`,
-              email: defaults.email || "",
-              bio: "",
-              interests: [],
-              avatar: "",
-              joinedAt: now,
-              isOnline: true,
-              studyStreak: 0,
-              totalPoints: 0,
-              level: 1,
-              badges: [],
-              learningGoals: [],
-              learningPace: '',
-              preferredSessionTypes: [],
-              availability: [],
-              currentFocusAreas: [],
-              createdAt: now,
-              updatedAt: now,
+            const response = await apiJson('/api/profiles/ensure', {
+              method: 'POST',
+              body: JSON.stringify({
+                userId,
+                defaults: {
+                  name: defaults.name || `User_${userId.slice(0, 6)}`,
+                  email: defaults.email || '',
+                },
+              }),
             })
-            devLog(`[ensureProfileExists] Profile created successfully`, { id: profile.$id })
-            return profile
+            devLog(`[ensureProfileExists] Profile created successfully`, { id: response?.profile?.$id })
+            return response.profile
           } catch (createError: any) {
             // If document already exists (race condition), fetch it
             if (createError?.code === 409 || createError?.message?.includes('already exists')) {
@@ -779,7 +793,11 @@ export const profileService = {
   async getProfile(userId: string) {
     try {
       devLog(`[getProfile] Attempting to fetch profile for user: ${userId}`)
-      const profile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId)
+      const sessionResponse = await fetch('/api/auth/session', { credentials: 'include', cache: 'no-store' }).catch(() => null)
+      const sessionPayload = sessionResponse ? await sessionResponse.json().catch(() => null) : null
+      const profile = sessionPayload?.profile?.$id === userId
+        ? sessionPayload.profile
+        : await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId)
       devLog(`[getProfile] Successfully fetched profile`, {
         userId: profile.$id,
         name: profile.name,
@@ -801,14 +819,7 @@ export const profileService = {
     try {
       const normalizedUsername = normalizeUsername(username)
       
-      // Search for profile by name - fetch ALL profiles to ensure we find the user
-      const result = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTIONS.PROFILES,
-        [
-          Query.limit(5000) // Increased limit to search through all profiles
-        ]
-      )
+      const result = await this.getAllProfiles(200, 0)
       
       // Filter results to find matching name (case-insensitive)
       const matchingProfile = result.documents.find((profile: any) => {
@@ -945,7 +956,8 @@ export const profileService = {
   // Get all profiles (for search, leaderboard, etc.)
   async getAllProfiles(limit = 50, offset = 0) {
     try {
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.PROFILES, [])
+      const response = await apiJson(`/api/profiles/list?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
+      return { documents: response.profiles || [], total: response.total || 0 }
     } catch (error) {
       console.error("Get all profiles error:", error)
       throw error
@@ -1069,15 +1081,27 @@ export const podService = {
         throw new Error("Pod name too long (max 100 characters)")
       }
 
+      if (!metadata?.image) {
+        const response = await apiJson('/api/pods', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: name.trim(),
+            description: description || '',
+            userId,
+            metadata,
+          }),
+        })
+
+        return { pod: response.pod }
+      }
+
       // Upload pod image if provided
       let imageUrl = ""
-      if (metadata.image) {
-        try {
-          const response = await storage.createFile(BUCKETS.POST_IMAGES, "unique()", metadata.image)
-          imageUrl = storage.getFileView(BUCKETS.POST_IMAGES, response.$id).toString()
-        } catch (e) {
-          console.error("Failed to upload pod image:", e)
-        }
+      try {
+        const response = await storage.createFile(BUCKETS.POST_IMAGES, "unique()", metadata.image)
+        imageUrl = storage.getFileView(BUCKETS.POST_IMAGES, response.$id).toString()
+      } catch (e) {
+        console.error("Failed to upload pod image:", e)
       }
 
       // Generate a unique teamId (required by schema, but we're not using Appwrite Teams)
@@ -1085,11 +1109,11 @@ export const podService = {
 
       // Create the pod document (database-only, no Teams)
       const pod = await databases.createDocument(DATABASE_ID, COLLECTIONS.PODS, "unique()", {
-        teamId: generatedTeamId, // Required by schema
+        teamId: generatedTeamId,
         name: name.trim(),
         description: description || "",
         creatorId: userId,
-        members: [userId], // Creator is first member
+        members: [userId],
         memberCount: 1,
         image: imageUrl,
         category: metadata.category || metadata.subject || "general",
@@ -1101,44 +1125,6 @@ export const podService = {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       })
-
-      // Create a chat room for the pod
-      try {
-        await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", {
-          podId: pod.$id,
-          name: `${name} Chat`,
-          type: "pod",
-          members: [userId],
-          createdAt: new Date().toISOString(),
-          isActive: true,
-        })
-      } catch (e) {
-        console.error("Failed to create pod chat room:", e)
-      }
-
-      // Send welcome message
-      try {
-        const chatRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
-          Query.equal("podId", pod.$id),
-        ])
-
-        if (chatRooms.documents.length > 0) {
-          await databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, "unique()", {
-            roomId: chatRooms.documents[0].$id,
-            senderId: "system",
-            authorId: "system",
-            content: `🎉 Welcome to ${name}! This is your pod's group chat.`,
-            type: "text",
-            senderName: "System",
-            senderAvatar: "",
-            timestamp: new Date().toISOString(),
-            readBy: [],
-            isEdited: false,
-          })
-        }
-      } catch (e) {
-        console.error("Failed to send welcome message:", e)
-      }
 
       return { pod }
     } catch (error) {
@@ -1373,18 +1359,7 @@ export const podService = {
         throw new Error("User ID is required")
       }
 
-      const pods = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTIONS.PODS,
-        [
-          Query.contains("members", userId),
-          Query.orderDesc("createdAt"),
-          Query.limit(Math.min(limit, 100)),
-          Query.offset(Math.max(offset, 0)),
-        ]
-      )
-
-      return pods
+      return await apiJson(`/api/pods?userId=${encodeURIComponent(userId)}&limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
     } catch (error) {
       console.error("Get user pods error:", error)
       return { documents: [], total: 0 }
@@ -1396,26 +1371,17 @@ export const podService = {
    */
   async getAllPods(limit = 50, offset = 0, filters: any = {}) {
     try {
-      const queries = [
-        Query.orderDesc("createdAt"),
-        Query.limit(Math.min(limit, 100)),
-        Query.offset(Math.max(offset, 0)),
-      ]
+      const params = new URLSearchParams({
+        limit: String(limit),
+        offset: String(offset),
+      })
 
-      if (filters.isPublic !== undefined) {
-        queries.push(Query.equal('isPublic', filters.isPublic))
-      }
-      if (filters.subject) {
-        queries.push(Query.equal('subject', filters.subject))
-      }
-      if (filters.difficulty) {
-        queries.push(Query.equal('difficulty', filters.difficulty))
-      }
-      if (filters.search) {
-        queries.push(Query.search('name', filters.search))
-      }
+      if (filters.isPublic !== undefined) params.set('isPublic', String(filters.isPublic))
+      if (filters.subject) params.set('subject', String(filters.subject))
+      if (filters.difficulty) params.set('difficulty', String(filters.difficulty))
+      if (filters.search) params.set('search', String(filters.search))
 
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.PODS, queries)
+      return await apiJson(`/api/pods?${params.toString()}`)
     } catch (error) {
       console.error("Get all pods error:", error)
       return { documents: [], total: 0 }
@@ -2850,6 +2816,24 @@ export const feedService = {
         authorUsername = normalizeUsername(authorName) || `@user_${authorId.slice(0, 6)}`
       }
 
+      if (!metadata.imageFiles || metadata.imageFiles.length === 0) {
+        const response = await apiJson('/api/posts', {
+          method: 'POST',
+          body: JSON.stringify({
+            authorId,
+            content,
+            metadata: {
+              ...metadata,
+              authorName,
+              authorAvatar,
+              authorUsername,
+            },
+          }),
+        })
+
+        return response.post
+      }
+
       // Handle image uploads if provided
       let imageUrls: string[] = []
       if (metadata.imageFiles && metadata.imageFiles.length > 0) {
@@ -2934,14 +2918,7 @@ export const feedService = {
         throw new Error("User ID is required")
       }
 
-      const posts = await databases.listDocuments(DATABASE_ID, COLLECTIONS.POSTS, [
-        Query.equal("authorId", userId),
-        Query.orderDesc("timestamp"),
-        Query.limit(Math.min(limit, 100)),
-        Query.offset(Math.max(offset, 0)),
-      ])
-
-      return posts
+      return await apiJson(`/api/posts?authorId=${encodeURIComponent(userId)}&limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
     } catch (error) {
       console.error("Get user posts error:", error)
       return { documents: [], total: 0 }
@@ -2953,53 +2930,7 @@ export const feedService = {
    */
   async getFeedPosts(userId?: string, limit = 20, offset = 0) {
     try {
-      // Fetch public posts
-      const publicPosts = await databases.listDocuments(DATABASE_ID, COLLECTIONS.POSTS, [
-        Query.equal("visibility", "public"),
-        Query.orderDesc("timestamp"),
-        Query.limit(Math.min(limit, 100)),
-        Query.offset(Math.max(offset, 0)),
-      ])
-
-      let podPosts: any = { documents: [] }
-
-      // If user is provided, also fetch pod posts
-      if (userId) {
-        try {
-          // Get user's pod IDs
-          const userPodsResponse = await databases.listDocuments(DATABASE_ID, COLLECTIONS.PODS, [
-            Query.contains("members", userId),
-          ])
-
-          const podIds = userPodsResponse.documents.map((pod: any) => pod.$id)
-
-          // Get posts from user's pods
-          if (podIds.length > 0) {
-            podPosts = await databases.listDocuments(DATABASE_ID, COLLECTIONS.POSTS, [
-              Query.equal("visibility", "pod"),
-              Query.orderDesc("timestamp"),
-              Query.limit(Math.min(limit, 100)),
-              Query.offset(Math.max(offset, 0)),
-            ])
-          }
-        } catch (e) {
-          console.error("Failed to fetch pod posts:", e)
-        }
-      }
-
-      // Merge and sort by timestamp
-      const allPosts = [...(publicPosts?.documents || []), ...(podPosts?.documents || [])]
-      allPosts.sort((a: any, b: any) => {
-        const timeA = new Date(a.timestamp || "").getTime()
-        const timeB = new Date(b.timestamp || "").getTime()
-        return timeB - timeA
-      })
-
-      // Return only the limit number of posts
-      return {
-        documents: allPosts.slice(0, limit),
-        total: allPosts.length,
-      }
+      return await apiJson(`/api/posts?userId=${encodeURIComponent(userId || '')}&limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
     } catch (error) {
       console.error("Get feed posts error:", error)
       return { documents: [], total: 0 }
@@ -3580,27 +3511,18 @@ export const calendarService = {
     metadata: any = {},
   ) {
     try {
-      const event = await databases.createDocument(
-        DATABASE_ID,
-        COLLECTIONS.CALENDAR_EVENTS,
-        "unique()",
-        {
-          userId: userId,
-          title: title,
-          description: metadata.description || "",
-          startTime: startTime,
-          endTime: endTime,
-          type: metadata.type || "study",
-          podId: metadata.podId || null,
-          location: metadata.location || "",
-          meetingUrl: metadata.meetingUrl || "",
-          attendees: Array.isArray(metadata.attendees) ? metadata.attendees : [],
-          isRecurring: Boolean(metadata.isRecurring),
-          reminders: Array.isArray(metadata.reminders) ? metadata.reminders : [],
-          createdAt: new Date().toISOString(),
-          isCompleted: false,
-        }
-      )
+      const response = await apiJson('/api/calendar/events', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId,
+          title,
+          startTime,
+          endTime,
+          metadata,
+        }),
+      })
+
+      const event = response.event
 
       // Notify pod members if event is for a pod
       if (metadata.podId) {

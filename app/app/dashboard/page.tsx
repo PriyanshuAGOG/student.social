@@ -139,7 +139,7 @@ export default function DashboardPage() {
           }
         })
 
-        const podNameMap = new Map(pods.map((pod) => [pod.id, pod.name]))
+        const podNameMap = new Map<string, string>(pods.map((pod: { id: string; name: string }) => [pod.id, pod.name]))
         const today = new Date()
         const todayStr = today.toISOString().split("T")[0]
         const sessions = events

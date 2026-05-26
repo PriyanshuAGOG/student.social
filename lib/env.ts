@@ -17,6 +17,7 @@ const optionalEnvSchema = z.object({
   APPWRITE_API_KEY: z.string().min(1).optional(),
   APPWRITE_SESSION_COOKIE_SECRET: z.string().min(1).optional(),
   OPENROUTER_API_KEY: z.string().min(1).optional(),
+  OPENAI_API_KEY: z.string().min(1).optional(),
 })
 
 export type AppEnv = z.infer<typeof optionalEnvSchema>
@@ -37,6 +38,7 @@ export function getEnv(): AppEnv {
     APPWRITE_API_KEY: process.env.APPWRITE_API_KEY,
     APPWRITE_SESSION_COOKIE_SECRET: process.env.APPWRITE_SESSION_COOKIE_SECRET,
     OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   })
   parsed.NEXT_PUBLIC_APPWRITE_ENDPOINT = normalizeAppwriteEndpoint(parsed.NEXT_PUBLIC_APPWRITE_ENDPOINT)
   cachedEnv = parsed

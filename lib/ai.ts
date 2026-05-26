@@ -7,6 +7,7 @@ export type ChatMessage = {
 }
 
 const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+const OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions"
 
 // Fallback models to try if the primary model is rate-limited
 const FALLBACK_MODELS = [
@@ -17,41 +18,55 @@ const FALLBACK_MODELS = [
 ]
 
 export async function runAIChat(messages: ChatMessage[], options?: { model?: string; maxTokens?: number }) {
-  const apiKey = requireServerSecret("OPENROUTER_API_KEY")
+  const env = getEnv()
+  const openRouterKey = env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || ""
+  const openAIKey = env.OPENAI_API_KEY || process.env.OPENAI_API_KEY || ""
 
-  // Validate API key format
-  if (!apiKey.startsWith("sk-or-")) {
-    throw new Error("Invalid OPENROUTER_API_KEY format. It should start with 'sk-or-'.")
-  }
-
-  // Try models in order, with fallbacks for rate limits
-  const modelsToTry = options?.model 
-    ? [options.model, ...FALLBACK_MODELS.filter(m => m !== options.model)]
-    : FALLBACK_MODELS
-  
-  let lastError: Error | null = null
-  
-  for (const model of modelsToTry) {
-    try {
-      const result = await tryAIRequest(apiKey, messages, model, options?.maxTokens)
-      return result
-    } catch (error: any) {
-      lastError = error
-      // If rate limited (429), try next model
-      if (error?.message?.includes("429") || error?.message?.includes("rate-limited")) {
-        console.warn(`Model ${model} rate-limited, trying next...`)
-        continue
-      }
-      // For other errors, throw immediately
-      throw error
+  if (openRouterKey) {
+    if (!openRouterKey.startsWith("sk-or-")) {
+      throw new Error("Invalid OPENROUTER_API_KEY format. It should start with 'sk-or-'.")
     }
+
+    const modelsToTry = options?.model
+      ? [options.model, ...FALLBACK_MODELS.filter((model) => model !== options.model)]
+      : FALLBACK_MODELS
+
+    let lastError: Error | null = null
+
+    for (const model of modelsToTry) {
+      try {
+        return await tryAIRequest({ apiKey: openRouterKey, endpoint: OPENROUTER_ENDPOINT, model, messages, maxTokens: options?.maxTokens, provider: "openrouter" })
+      } catch (error: unknown) {
+        const aiError = error instanceof Error ? error : new Error(String(error))
+        lastError = aiError
+        if (aiError.message.includes("429") || aiError.message.includes("rate-limited")) {
+          console.warn(`Model ${model} rate-limited, trying next...`)
+          continue
+        }
+        throw aiError
+      }
+    }
+
+    throw lastError || new Error("All AI models are currently unavailable. Please try again later.")
   }
-  
-  // All models failed
-  throw lastError || new Error("All AI models are currently unavailable. Please try again later.")
+
+  if (openAIKey) {
+    return await tryAIRequest({
+      apiKey: openAIKey,
+      endpoint: OPENAI_ENDPOINT,
+      model: options?.model || "gpt-4o-mini",
+      messages,
+      maxTokens: options?.maxTokens,
+      provider: "openai",
+    })
+  }
+
+  requireServerSecret("OPENROUTER_API_KEY")
+  throw new Error("Missing AI provider configuration. Set OPENROUTER_API_KEY or OPENAI_API_KEY.")
 }
 
-async function tryAIRequest(apiKey: string, messages: ChatMessage[], model: string, maxTokens?: number): Promise<string> {
+async function tryAIRequest(options: { apiKey: string; endpoint: string; model: string; messages: ChatMessage[]; maxTokens?: number; provider: "openrouter" | "openai" }): Promise<string> {
+  const { apiKey, endpoint, model, messages, maxTokens, provider } = options
   const body = {
     model,
     messages,
@@ -59,13 +74,15 @@ async function tryAIRequest(apiKey: string, messages: ChatMessage[], model: stri
     temperature: 0.3,
   }
 
-  const resp = await fetch(OPENROUTER_ENDPOINT, {
+  const resp = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": getEnv().NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-      "X-Title": "PeerSpark",
+      ...(provider === "openrouter" ? {
+        "HTTP-Referer": getEnv().NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+        "X-Title": "PeerSpark",
+      } : {}),
     },
     body: JSON.stringify(body),
   })
@@ -83,12 +100,14 @@ async function tryAIRequest(apiKey: string, messages: ChatMessage[], model: stri
       if (errorData?.error?.code === 429) {
         throw new Error(`429: Rate limited for model ${model}`)
       }
-    } catch (parseErr) {
+    } catch {
       // Not JSON, use raw text
     }
     
     if (resp.status === 401) {
-      throw new Error("OpenRouter API key is invalid or expired. Please check your OPENROUTER_API_KEY in .env.local")
+      throw new Error(provider === "openrouter"
+        ? "OpenRouter API key is invalid or expired. Please check your OPENROUTER_API_KEY in .env.local"
+        : "OpenAI API key is invalid or expired. Please check your OPENAI_API_KEY in .env.local")
     }
     if (resp.status === 429) {
       throw new Error(`429: Rate limited for model ${model}`)
