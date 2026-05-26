@@ -195,11 +195,6 @@ export async function GET(request: NextRequest) {
     const { databases } = await createAdminClient();
     const queries: string[] = [];
 
-    // Filter for user's pods
-    if ((myPods || !!userId) && userId) {
-      queries.push(Query.contains('members', userId));
-    }
-
     // Filter by visibility
     if (isPublic !== null) {
       queries.push(Query.equal('isPublic', isPublic === 'true'));
@@ -224,13 +219,25 @@ export async function GET(request: NextRequest) {
       DATABASE_ID,
       PODS_COLLECTION_ID,
       queries
-    );
+    ).catch((err: any) => {
+      const message = String(err?.message || '').toLowerCase()
+      if (message.includes('requested item could not be found') || message.includes('invalid input') || message.includes('not found')) {
+        console.warn('[api/pods] Returning empty pod list after Appwrite lookup/query failure:', err?.message || err)
+        return { documents: [], total: 0 } as any
+      }
+      throw err
+    });
+
+    const documents = Array.isArray(result.documents) ? result.documents : [];
+    const filteredDocuments = (myPods || userId)
+      ? documents.filter((pod: any) => Array.isArray(pod.members) && userId ? pod.members.includes(userId) : true)
+      : documents;
 
     return {
       success: true,
-      documents: result.documents,
-      pods: result.documents,
-      total: result.total,
+      documents: filteredDocuments,
+      pods: filteredDocuments,
+      total: filteredDocuments.length,
       limit,
       offset,
     };

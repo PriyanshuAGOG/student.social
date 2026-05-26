@@ -223,7 +223,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Normal post listing
-    const queries: string[] = [Query.equal('isDeleted', false)];
+    const queries: string[] = [];
 
     // Filter by pod
     if (podId) {
@@ -248,7 +248,9 @@ export async function GET(request: NextRequest) {
       POSTS_COLLECTION_ID,
       queries
     ).catch((err: any) => {
-      if ((err as AppwriteException)?.code === 404) {
+      const message = String(err?.message || '').toLowerCase()
+      if ((err as AppwriteException)?.code === 404 || message.includes('requested item could not be found') || message.includes('invalid input') || message.includes('not found')) {
+        console.warn('[api/posts] Returning empty feed after Appwrite lookup/query failure:', err?.message || err)
         return { documents: [], total: 0 } as any
       }
       throw err
