@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Instructor Dashboard API
  * 
@@ -8,9 +7,11 @@
  * Includes student management, grading, analytics, and revenue tracking.
  */
 
-import { Databases } from 'node-appwrite';
+import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { courseService } from '@/lib/course-service';
+
+const DATABASE_ID = process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 
 interface InstructorDashboard {
   instructorId: string;
@@ -78,10 +79,10 @@ export async function GET(request: Request) {
       );
     }
 
-    const { databases } = createAdminClient();
+    const { databases } = await createAdminClient();
 
     // 1. Get all instructor's courses
-    const instructorCourses = await courseService.getInstructorCourses(instructorId);
+    const instructorCourses = await courseService.getInstructorCourses(databases as any, instructorId);
     const totalCourses = instructorCourses.length;
 
     let totalEnrollments = 0;
@@ -93,20 +94,12 @@ export async function GET(request: Request) {
     // 2. Get analytics for each course
     for (const course of instructorCourses) {
       try {
-        const enrollments = await databases.listDocuments(
-          (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
-          'course_enrollments',
-          [
-            {
-              method: 'equal',
-              attribute: 'courseId',
-              value: course.$id,
-            },
-          ]
-        );
+        const enrollments = await databases.listDocuments(DATABASE_ID, 'course_enrollments', [
+          Query.equal('courseId', course.$id),
+        ]);
 
-        const chapters = await courseService.getChapters(course.$id);
-        const stats = await courseService.getOrCreateStats(course.$id);
+        const chapters = await courseService.getChapters(databases as any, course.$id);
+        const stats = await courseService.getOrCreateStats(databases as any, course.$id);
 
         let completions = 0;
         let totalScore = 0;
@@ -115,6 +108,7 @@ export async function GET(request: Request) {
         // Count completions
         for (const enrollment of enrollments.documents) {
           const progress = await courseService.getOrCreateProgress(
+            databases as any,
             enrollment.userId,
             course.$id
           );
@@ -154,28 +148,22 @@ export async function GET(request: Request) {
     }
 
     // 3. Get all students across courses
-    const allEnrollments = await databases.listDocuments(
-      (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
-      'course_enrollments',
-      [
-        {
-          method: 'equal',
-          attribute: 'courseId',
-          value: coursesList[0]?.courseId || '',
-        },
-      ],
-      10000 // Fetch many
-    );
+    const allEnrollments = coursesList.length > 0
+      ? await databases.listDocuments(
+          DATABASE_ID,
+          'course_enrollments',
+          [Query.equal('courseId', coursesList.map((course) => course.courseId))]
+        )
+      : { documents: [], total: 0 };
 
     const uniqueStudents = new Set(allEnrollments.documents.map((e: any) => e.userId));
     const totalStudents = uniqueStudents.size;
 
     // 4. Get recent activity
     const submissions = await databases.listDocuments(
-      (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
+      DATABASE_ID,
       'assignment_submissions',
-      [],
-      20
+      [Query.orderDesc('$createdAt'), Query.limit(20)]
     );
 
     const recentActivity = submissions.documents
@@ -193,15 +181,9 @@ export async function GET(request: Request) {
     const topPerformers: any[] = [];
     for (const studentId of Array.from(uniqueStudents).slice(0, 5)) {
       const enrollments = await databases.listDocuments(
-        (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
+        DATABASE_ID,
         'course_enrollments',
-        [
-          {
-            method: 'equal',
-            attribute: 'userId',
-            value: studentId as string,
-          },
-        ]
+        [Query.equal('userId', studentId as string)]
       );
 
       let totalScoreSum = 0;
@@ -210,6 +192,7 @@ export async function GET(request: Request) {
 
       for (const enrollment of enrollments.documents) {
         const progress = await courseService.getOrCreateProgress(
+          databases as any,
           studentId as string,
           enrollment.courseId
         );
@@ -241,6 +224,7 @@ export async function GET(request: Request) {
       for (const course of coursesList) {
         try {
           const progress = await courseService.getOrCreateProgress(
+            databases as any,
             studentId as string,
             course.courseId
           );

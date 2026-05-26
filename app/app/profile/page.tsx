@@ -204,7 +204,11 @@ export default function ProfilePage() {
       if (!user?.$id) return
       setIsLoadingPosts(true)
       try {
-        const result = await feedService.getUserPosts(user.$id)
+        const [result, savedResult] = await Promise.all([
+          feedService.getUserPosts(user.$id),
+          feedService.getSavedPosts(user.$id),
+        ])
+        const savedIds = new Set((savedResult.documents || []).map((post: any) => post.$id))
         const posts = (result.documents || []).map((p: any) => ({
           id: p.$id,
           title: p.content?.substring(0, 50) || "Post",
@@ -213,7 +217,7 @@ export default function ProfilePage() {
           likes: p.likes || 0,
           comments: p.comments || 0,
           isLiked: (p.likedBy || []).includes(user.$id),
-          isBookmarked: false,
+          isBookmarked: savedIds.has(p.$id),
           tags: p.tags || [],
           image: p.imageUrl || null,
         }))
@@ -264,6 +268,13 @@ export default function ProfilePage() {
   })
 
   const handleFollow = () => {
+    if (isOwnProfile) {
+      toast({
+        title: "Own profile",
+        description: "You cannot follow your own profile.",
+      })
+      return
+    }
     setIsFollowing(!isFollowing)
     toast({
       title: isFollowing ? "Unfollowed" : "Following",
@@ -321,18 +332,22 @@ export default function ProfilePage() {
     router.push('/app/settings')
   }
 
-  const handleLike = (postId: string) => {
-    setUserPosts(prev => prev.map(post => {
-      if (post.id === postId) {
-        const newIsLiked = !post.isLiked
-        toast({
-          title: newIsLiked ? "Post Liked" : "Like Removed",
-          description: newIsLiked ? "Added to your liked posts" : "Removed from liked posts",
-        })
-        return { ...post, isLiked: newIsLiked, likes: post.likes + (newIsLiked ? 1 : -1) }
-      }
-      return post
-    }))
+  const handleLike = async (postId: string) => {
+    if (!user?.$id) return
+    try {
+      const updated = await feedService.toggleLike(postId, user.$id)
+      setUserPosts(prev => prev.map(post => (
+        post.id === postId
+          ? { ...post, isLiked: updated.isLiked, likes: updated.likes || 0 }
+          : post
+      )))
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to update like.",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleComment = (postId: string) => {
@@ -343,22 +358,30 @@ export default function ProfilePage() {
     })
   }
 
-  const handleBookmark = (postId: string) => {
-    setUserPosts(prev => prev.map(post => {
-      if (post.id === postId) {
-        const newIsBookmarked = !post.isBookmarked
-        toast({
-          title: newIsBookmarked ? "Post Saved" : "Bookmark Removed",
-          description: newIsBookmarked ? "Added to your saved posts" : "Removed from saved posts",
-        })
-        return { ...post, isBookmarked: newIsBookmarked }
-      }
-      return post
-    }))
+  const handleBookmark = async (postId: string) => {
+    if (!user?.$id) return
+    try {
+      const result = await feedService.toggleSavePost(postId, user.$id)
+      setUserPosts(prev => prev.map(post => (
+        post.id === postId
+          ? { ...post, isBookmarked: result.saved }
+          : post
+      )))
+      toast({
+        title: result.saved ? "Post Saved" : "Bookmark Removed",
+        description: result.saved ? "Added to your saved posts" : "Removed from saved posts",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to update bookmark.",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleShare = (postId: string) => {
-    navigator.clipboard.writeText(`https://peerspark.com/post/${postId}`)
+    navigator.clipboard.writeText(`${window.location.origin}/app/feed?post=${postId}`)
     toast({
       title: "Shared",
       description: "Post link copied to clipboard!",
@@ -531,21 +554,32 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <Button onClick={handleEditProfile} variant="outline">
-                    <Edit className="w-4 h-4 mr-2" />
-                    Edit Profile
-                  </Button>
-                  <Button onClick={handleMessage} variant="outline">
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    Message
-                  </Button>
-                  <Button
-                    onClick={handleFollow}
-                    className={isFollowing ? "bg-muted hover:bg-muted/80 text-muted-foreground" : ""}
-                  >
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    {isFollowing ? "Following" : "Follow"}
-                  </Button>
+                  {isOwnProfile ? (
+                    <>
+                      <Button onClick={handleEditProfile} variant="outline">
+                        <Edit className="w-4 h-4 mr-2" />
+                        Edit Profile
+                      </Button>
+                      <Button onClick={handleSettings}>
+                        <Settings className="w-4 h-4 mr-2" />
+                        Settings
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button onClick={handleMessage} variant="outline">
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Message
+                      </Button>
+                      <Button
+                        onClick={handleFollow}
+                        className={isFollowing ? "bg-muted hover:bg-muted/80 text-muted-foreground" : ""}
+                      >
+                        <UserPlus className="w-4 h-4 mr-2" />
+                        {isFollowing ? "Following" : "Follow"}
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

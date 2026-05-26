@@ -36,6 +36,59 @@ interface CommentsSectionProps {
   onCommentCountChange?: (count: number) => void
 }
 
+function countComments(items: Comment[]): number {
+  return items.reduce((total, item) => total + 1 + countComments(item.replies || []), 0)
+}
+
+function findCommentById(items: Comment[], commentId: string): Comment | null {
+  for (const item of items) {
+    if (item.$id === commentId) return item
+    const nested = findCommentById(item.replies || [], commentId)
+    if (nested) return nested
+  }
+  return null
+}
+
+function addReplyToTree(items: Comment[], parentId: string, reply: Comment): Comment[] {
+  return items.map((item) => {
+    if (item.$id === parentId) {
+      return {
+        ...item,
+        replies: [...(item.replies || []), reply],
+      }
+    }
+
+    if (item.replies?.length) {
+      return {
+        ...item,
+        replies: addReplyToTree(item.replies, parentId, reply),
+      }
+    }
+
+    return item
+  })
+}
+
+function buildCommentTree(items: Comment[]): Comment[] {
+  const byId = new Map<string, Comment>()
+  const roots: Comment[] = []
+
+  for (const item of items) {
+    byId.set(item.$id, { ...item, replies: [] })
+  }
+
+  for (const item of items) {
+    const normalized = byId.get(item.$id)!
+    if (item.replyTo && byId.has(item.replyTo)) {
+      byId.get(item.replyTo)!.replies!.push(normalized)
+    } else {
+      roots.push(normalized)
+    }
+  }
+
+  return roots
+}
+
 function formatTimeAgo(dateString: string): string {
   try {
     const date = new Date(dateString)
@@ -194,25 +247,7 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
       const response = await commentService.getComments(postId)
       const allComments = (response.documents || []) as unknown as Comment[]
       
-      // Organize comments into a tree structure
-      const topLevelComments = allComments.filter((c) => !c.replyTo)
-      const repliesMap = new Map<string, Comment[]>()
-      
-      allComments.forEach((c) => {
-        if (c.replyTo) {
-          const existing = repliesMap.get(c.replyTo) || []
-          existing.push(c)
-          repliesMap.set(c.replyTo, existing)
-        }
-      })
-      
-      // Attach replies to parent comments
-      const organizedComments: Comment[] = topLevelComments.map((c) => ({
-        ...c,
-        replies: repliesMap.get(c.$id) || [],
-      }))
-      
-      setComments(organizedComments)
+      setComments(buildCommentTree(allComments))
     } catch (error) {
       console.error("Failed to load comments:", error)
       toast({
@@ -229,20 +264,18 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
     
     setIsSubmitting(true)
     try {
-      const rawComment = await commentService.createComment(postId, user.$id, newComment.trim(), {})
+      const rawComment = await commentService.createComment(postId, user.$id, newComment.trim(), {
+        replyTo: replyingTo,
+      })
       const comment = rawComment as unknown as Comment
       
       if (replyingTo) {
-        // Add reply to the parent comment
-        setComments(prev => prev.map(c => {
-          if (c.$id === replyingTo) {
-            return {
-              ...c,
-              replies: [...(c.replies || []), comment],
-            }
-          }
-          return c
-        }))
+        const replyComment = {
+          ...comment,
+          replyTo: replyingTo,
+          replies: [],
+        }
+        setComments(prev => addReplyToTree(prev, replyingTo, replyComment))
       } else {
         // Add as top-level comment
         setComments(prev => [{ ...comment, replies: [] }, ...prev])
@@ -250,7 +283,8 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
       
       setNewComment("")
       setReplyingTo(null)
-      onCommentCountChange?.((initialCommentCount || 0) + 1)
+      const nextCount = countComments(replyingTo ? addReplyToTree(comments, replyingTo, { ...comment, replyTo: replyingTo, replies: [] }) : [{ ...comment, replies: [] }, ...comments])
+      onCommentCountChange?.(nextCount)
       
       toast({
         title: "Comment posted",
@@ -279,7 +313,14 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
       const updateLikes = (comments: Comment[]): Comment[] => {
         return comments.map(c => {
           if (c.$id === commentId) {
-            return { ...c, likes: updated.likes, isLiked: updated.isLiked }
+            const likedBy = Array.isArray(c.likedBy) ? c.likedBy : []
+            return {
+              ...c,
+              likes: updated.likes,
+              likedBy: updated.isLiked
+                ? Array.from(new Set([...likedBy, user.$id]))
+                : likedBy.filter(id => id !== user.$id),
+            }
           }
           if (c.replies) {
             return { ...c, replies: updateLikes(c.replies) }
@@ -311,7 +352,7 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
       }
       
       setComments(removeComment)
-      onCommentCountChange?.(Math.max(0, (initialCommentCount || 1) - 1))
+      onCommentCountChange?.(Math.max(0, countComments(removeComment(comments))))
       
       toast({ title: "Comment deleted" })
     } catch (error) {
@@ -352,7 +393,7 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
     setIsExpanded(true)
   }
 
-  const replyingToComment = replyingTo ? comments.find(c => c.$id === replyingTo) : null
+  const replyingToComment = replyingTo ? findCommentById(comments, replyingTo) : null
 
   return (
     <div className="border-t mt-4 pt-4">

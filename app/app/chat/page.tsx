@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -74,15 +74,14 @@ export default function ChatPage() {
   const searchParams = useSearchParams()
   const { user } = useAuth()
 
-  // Select room from URL parameter if provided (for DM links)
   useEffect(() => {
-    const roomId = searchParams.get('room')
-    if (roomId && rooms.length > 0 && !selectedRoom) {
-      const room = rooms.find(r => r.$id === roomId)
-      if (room) {
-        setSelectedRoom(room)
-        setShowMobileChatList(false)
-      }
+    const routeRoomId = searchParams.get("room")
+    if (!routeRoomId || selectedRoom) return
+
+    const room = rooms.find((entry) => entry.$id === routeRoomId || entry.podId === routeRoomId)
+    if (room) {
+      setSelectedRoom(room)
+      setShowMobileChatList(false)
     }
   }, [searchParams, rooms, selectedRoom])
 
@@ -151,11 +150,31 @@ export default function ChatPage() {
         const normalized = [...(podRooms || []), ...(directRooms || [])].map((room: any) => ({
           ...room,
           $id: room.$id || room.id,
-          type: room.type || (room.podId ? "pod" : "direct"),
+          type: room.type === "dm" ? "direct" : (room.type || (room.podId ? "pod" : "direct")),
           name: room.name || room.displayName || room.podName || room.$id,
         })) as ChatRoom[]
         setRooms(normalized)
-        // Don't auto-select a room - let user choose
+
+        const routeRoomId = searchParams.get("room")
+        if (routeRoomId) {
+          const matchedRoom = normalized.find((room) => room.$id === routeRoomId || room.podId === routeRoomId)
+          if (matchedRoom) {
+            setSelectedRoom(matchedRoom)
+            setShowMobileChatList(false)
+          } else {
+            const podRoom = await chatService.getOrCreatePodRoom(routeRoomId, "Pod Chat", [user.$id])
+            const nextRoom = {
+              ...podRoom,
+              $id: podRoom.$id,
+              type: "pod",
+              name: podRoom.name || "Pod Chat",
+              podId: routeRoomId,
+            } as ChatRoom
+            setRooms((prev) => [nextRoom, ...prev.filter((room) => room.$id !== nextRoom.$id)])
+            setSelectedRoom(nextRoom)
+            setShowMobileChatList(false)
+          }
+        }
       } catch (error: any) {
         console.error(error)
         toast({ title: "Failed to load chats", description: error?.message, variant: "destructive" })
@@ -167,9 +186,12 @@ export default function ChatPage() {
   }, [user?.$id])
 
   useEffect(() => {
-    const loadMessages = async () => {
+    const loadMessages = async (fromPoll = false) => {
       if (!selectedRoom) return
       try {
+        if (fromPoll) {
+          setConnectionStatus("reconnecting")
+        }
         const res = await chatService.getMessages(selectedRoom.$id, 50, 0)
         const messagesWithReplies = await Promise.all(
           (res.documents || []).map(async (msg: any) => {
@@ -187,12 +209,16 @@ export default function ChatPage() {
           })
         )
         setMessages(messagesWithReplies)
+        setConnectionStatus("connected")
       } catch (error) {
         console.error(error)
-        setMessages([])
+        setConnectionStatus("error")
       }
     }
     loadMessages()
+
+    const interval = setInterval(() => loadMessages(true), 3000)
+    return () => clearInterval(interval)
   }, [selectedRoom])
 
   const handleSendMessage = async () => {
@@ -209,6 +235,13 @@ export default function ChatPage() {
         replyToMessage: replyingTo,
       }
       setMessages((prev) => [...prev, newMessage])
+      setRooms((prev) =>
+        prev.map((room) =>
+          room.$id === selectedRoom.$id
+            ? { ...room, lastMessage: original, lastMessageTime: new Date().toISOString() }
+            : room,
+        ),
+      )
       const shouldAskAI = original.includes("@ai")
       setInputValue("")
       setReplyingTo(null)
@@ -239,6 +272,13 @@ export default function ChatPage() {
             aiMsg.authorName = "AI Assistant"
             aiMsg.authorId = "ai"
             setMessages((prev) => [...prev, aiMsg])
+            setRooms((prev) =>
+              prev.map((room) =>
+                room.$id === selectedRoom.$id
+                  ? { ...room, lastMessage: aiMsg.content, lastMessageTime: new Date().toISOString() }
+                  : room,
+              ),
+            )
             scrollToBottom()
           }
         } catch (err) {
@@ -534,7 +574,7 @@ export default function ChatPage() {
         <div className="p-4 border-b flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold">Messages</h1>
-            <Button variant="ghost" size="sm" onClick={() => setShowMobileChatList(false)}>
+            <Button variant="ghost" size="sm" onClick={() => router.back()}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </div>
@@ -802,7 +842,7 @@ export default function ChatPage() {
                 {connectionStatus === 'reconnecting' ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>Reconnecting to chat...</span>
+                    <span>Refreshing message state...</span>
                   </>
                 ) : (
                   <>
@@ -1025,8 +1065,8 @@ export default function ChatPage() {
                 </div>
 
                 <div className="hidden md:flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                  <p>Press Enter to send, Shift+Enter for new line. Type @ai to ask AI assistant</p>
-                  <p>{selectedRoom.type === "pod" ? "Pod Chat" : "Direct Message"} • End-to-end encrypted</p>
+                  <p>Press Enter to send. Use Shift+Enter for a new line. Type @ai to ask the assistant.</p>
+                  <p>{selectedRoom.type === "pod" ? "Pod chat" : "Direct message"} • Secure delivery path active</p>
                 </div>
               </div>
             </div>

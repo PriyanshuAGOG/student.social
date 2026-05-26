@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { ID } from 'node-appwrite'
+import { ID, Query } from 'node-appwrite'
 import crypto from 'crypto'
 import { cookies } from 'next/headers'
 import { Client, Account } from 'node-appwrite'
@@ -123,8 +123,7 @@ export async function GET(req: NextRequest) {
     const response = await databases.listDocuments(
       DATABASE_ID,
       'admin_broadcasts',
-      [],
-      String(limit)
+      [Query.orderDesc('createdAt'), Query.limit(Math.min(limit, 100))]
     )
 
     return NextResponse.json({

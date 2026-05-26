@@ -2,58 +2,48 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Progress } from "@/components/ui/progress"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Users, Search, Plus, Clock, TrendingUp, Filter, Calendar, Video, MessageSquare, BookOpen, Target, Globe, Award, ChevronRight } from 'lucide-react'
-import { useRouter } from "next/navigation"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { podService, profileService } from "@/lib/appwrite"
 import { rankPodsForUser } from "@/lib/pod-matching"
+import { BookOpen, Calendar, ChevronRight, Compass, Loader2, MessageSquare, Plus, Search, Sparkles, Target, TrendingUp, Users, Video } from "lucide-react"
 
-type PodDoc = {
-  $id: string
-  name: string
-  description: string
-  category?: string
-  subject?: string
-  members?: string[]
-  memberCount?: number
-  difficulty?: string
-  tags?: string[]
-  mentor?: string
-  nextSession?: string
-  progress?: number
-  streak?: number
-  cover?: string
-  isActive?: boolean
-  isPublic?: boolean
-}
+const TAB_VALUES = ["overview", "my-pods", "discover"] as const
 
 const CATEGORY_ICONS: Record<string, any> = {
   Programming: BookOpen,
-  Design: Target,
-  Medical: Award,
+  Design: Sparkles,
+  Medical: Target,
   Languages: MessageSquare,
   Business: TrendingUp,
+  Science: Compass,
 }
 
 export default function PodsPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { toast } = useToast()
+  const { user } = useAuth()
+  const [activeTab, setActiveTab] = useState("overview")
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("All")
-  const [activeTab, setActiveTab] = useState("my-pods")
+  const [isLoading, setIsLoading] = useState(true)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [myPods, setMyPods] = useState<PodDoc[]>([])
-  const [explorePods, setExplorePods] = useState<PodDoc[]>([])
-  const [podMatches, setPodMatches] = useState<Record<string, number>>({})
+  const [joiningPodId, setJoiningPodId] = useState<string | null>(null)
+  const [myPods, setMyPods] = useState<any[]>([])
+  const [allPods, setAllPods] = useState<any[]>([])
+  const [matchScores, setMatchScores] = useState<Record<string, number>>({})
   const [newPod, setNewPod] = useState({
     name: "",
     description: "",
@@ -66,72 +56,152 @@ export default function PodsPage() {
     averageSessionLength: "60",
     availability: [] as string[],
   })
-  const router = useRouter()
-  const { toast } = useToast()
-  const { user } = useAuth()
+
+  useEffect(() => {
+    const requestedTab = searchParams.get("tab")
+    const shouldOpenCreate = searchParams.get("create") === "1"
+    if (requestedTab && TAB_VALUES.includes(requestedTab as any)) {
+      setActiveTab(requestedTab)
+    }
+    if (shouldOpenCreate) {
+      setIsCreateDialogOpen(true)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     const load = async () => {
       if (!user?.$id) return
       setIsLoading(true)
       try {
-        const [myPodsRes, exploreRes, profile] = await Promise.all([
-          podService.getUserPods(user.$id),
-          podService.getAllPods(50, 0, {}),
+        const [myPodsRes, allPodsRes, profile] = await Promise.all([
+          podService.getUserPods(user.$id, 100, 0),
+          podService.getAllPods(150, 0, {}),
           profileService.getProfile(user.$id),
         ])
-        setMyPods(myPodsRes.documents || [])
-        const pods = exploreRes.documents || []
-        setExplorePods(pods)
 
-        // Compute match scores client-side for now
+        const mine = myPodsRes.documents || []
+        const everyPod = allPodsRes.documents || []
+        setMyPods(mine)
+        setAllPods(everyPod)
+
         if (profile) {
-          const ranked = rankPodsForUser(profile, pods, pods.length)
+          const ranked = rankPodsForUser(profile, everyPod, everyPod.length)
           const scoreMap: Record<string, number> = {}
           ranked.forEach(({ pod, score }) => {
-            scoreMap[pod.$id] = score
+            scoreMap[pod.$id || pod.teamId] = score
           })
-          setPodMatches(scoreMap)
+          setMatchScores(scoreMap)
         }
-      } catch (e) {
-        console.error(e)
-        toast({ title: "Failed to load pods", variant: "destructive" })
+      } catch (error: any) {
+        console.error(error)
+        toast({ title: "Failed to load pods", description: error?.message, variant: "destructive" })
       } finally {
         setIsLoading(false)
       }
     }
+
     load()
-  }, [user?.$id, toast])
+  }, [toast, user?.$id])
 
-  const handleJoinPod = (podId: string) => {
-    router.push(`/app/pods/${podId}`)
-  }
+  const myPodIds = useMemo(() => new Set(myPods.map((pod) => pod.$id || pod.teamId)), [myPods])
 
-  const handleCreatePod = () => {
-    setIsCreateDialogOpen(true)
-  }
+  const categories = useMemo(() => {
+    const counts: Record<string, number> = {}
+    allPods.forEach((pod) => {
+      const category = pod.category || pod.subject || "Other"
+      counts[category] = (counts[category] || 0) + 1
+    })
+    return ["All", ...Object.keys(counts).sort()].map((name) => ({
+      name,
+      count: name === "All" ? allPods.length : counts[name],
+    }))
+  }, [allPods])
 
-  const handleCreatePodSubmit = async () => {
-    if (!newPod.name || !newPod.description || !newPod.category) {
-      toast({
-        title: "Missing Information",
-        description: "Please fill in all required fields",
-        variant: "destructive",
+  const discoverPods = useMemo(() => {
+    return allPods
+      .filter((pod) => {
+        const matchesSearch =
+          !searchQuery ||
+          pod.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          pod.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (pod.tags || []).some((tag: string) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+
+        const matchesCategory =
+          selectedCategory === "All" ||
+          pod.category === selectedCategory ||
+          pod.subject === selectedCategory
+
+        return matchesSearch && matchesCategory
       })
+      .sort((a, b) => (matchScores[b.$id || b.teamId] || 0) - (matchScores[a.$id || a.teamId] || 0))
+  }, [allPods, matchScores, searchQuery, selectedCategory])
+
+  const recommendedPods = useMemo(
+    () => discoverPods.filter((pod) => !myPodIds.has(pod.$id || pod.teamId)).slice(0, 6),
+    [discoverPods, myPodIds],
+  )
+
+  const getDifficultyColor = (difficulty?: string) => {
+    switch (difficulty) {
+      case "Beginner":
+        return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
+      case "Intermediate":
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+      case "Advanced":
+        return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
+      default:
+        return "bg-muted text-muted-foreground"
+    }
+  }
+
+  const openPod = (podId: string) => router.push(`/app/pods/${podId}`)
+  const openPodChat = (podId: string) => router.push(`/app/chat?room=${podId}`)
+  const openCalendar = (podId: string) => router.push(`/app/calendar?pod=${podId}`)
+
+  const handleJoinPod = async (pod: any) => {
+    if (!user?.$id) return
+    const podId = pod.$id || pod.teamId
+    if (!podId) return
+
+    if (myPodIds.has(podId)) {
+      openPod(podId)
       return
     }
-    if (!user?.$id) {
-      toast({ title: "Not signed in", variant: "destructive" })
+
+    setJoiningPodId(podId)
+    try {
+      const result = await podService.joinPod(podId, user.$id, user.email)
+      if (!result.alreadyMember) {
+        setMyPods((prev) => [{ ...pod, memberCount: (pod.memberCount || pod.members?.length || 0) + 1 }, ...prev])
+        setAllPods((prev) =>
+          prev.map((item) =>
+            (item.$id || item.teamId) === podId
+              ? { ...item, memberCount: (item.memberCount || item.members?.length || 0) + 1 }
+              : item,
+          ),
+        )
+      }
+      toast({
+        title: result.alreadyMember ? "Already in pod" : "Joined pod",
+        description: result.alreadyMember ? `Opening ${pod.name}` : `${pod.name} is now in your workspace.`,
+      })
+      openPod(podId)
+    } catch (error: any) {
+      toast({ title: "Failed to join pod", description: error?.message, variant: "destructive" })
+    } finally {
+      setJoiningPodId(null)
+    }
+  }
+
+  const handleCreatePod = async () => {
+    if (!newPod.name || !newPod.description || !newPod.category || !user?.$id) {
+      toast({ title: "Incomplete pod setup", description: "Name, description, and category are required.", variant: "destructive" })
       return
     }
 
     setIsLoading(true)
     try {
-      const tagsArray = newPod.tags
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
-
+      const tagsArray = newPod.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
       const metadata = {
         subject: newPod.category,
         difficulty: newPod.difficulty || "Beginner",
@@ -145,12 +215,9 @@ export default function PodsPage() {
       }
 
       const { pod } = await podService.createPod(newPod.name, newPod.description, user.$id, metadata)
-
-      toast({
-        title: "Pod Created!",
-        description: `${newPod.name} is live. Redirecting...`,
-      })
-
+      setMyPods((prev) => [pod, ...prev])
+      setAllPods((prev) => [pod, ...prev])
+      setIsCreateDialogOpen(false)
       setNewPod({
         name: "",
         description: "",
@@ -163,361 +230,254 @@ export default function PodsPage() {
         averageSessionLength: "60",
         availability: [],
       })
-      setIsCreateDialogOpen(false)
-      setMyPods((prev) => [{ ...pod }, ...prev])
-      router.push(`/app/pods/${pod.$id}`)
+      toast({ title: "Pod created", description: `${pod.name} is ready.` })
+      openPod(pod.$id)
     } catch (error: any) {
-      console.error(error)
       toast({ title: "Failed to create pod", description: error?.message, variant: "destructive" })
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleJoinExplorePod = (podId: string, podName: string) => {
-    toast({
-      title: "Joining Pod",
-      description: `Welcome to ${podName}! Redirecting...`,
-    })
-    router.push(`/app/pods/${podId}`)
-  }
+  const stats = [
+    { label: "Pods joined", value: myPods.length, detail: "Active communities" },
+    { label: "Discoverable pods", value: allPods.length, detail: "Open across the network" },
+    { label: "Recommended now", value: recommendedPods.length, detail: "Ranked to your profile" },
+  ]
 
-  const handlePodChat = (podId: string) => {
-    router.push(`/app/chat?room=${podId}`)
-    toast({
-      title: "Opening Chat",
-      description: "Redirecting to pod chat...",
-    })
-  }
+  const renderPodCard = (pod: any, mode: "mine" | "discover") => {
+    const podId = pod.$id || pod.teamId
+    const isMember = myPodIds.has(podId)
+    const isJoining = joiningPodId === podId
+    const score = matchScores[podId]
+    const Icon = CATEGORY_ICONS[pod.category || pod.subject] || Compass
 
-  const handlePodCalendar = (podId: string) => {
-    router.push(`/app/calendar?pod=${podId}`)
-    toast({
-      title: "Opening Calendar",
-      description: "Viewing pod schedule...",
-    })
-  }
+    return (
+      <Card key={podId} className="border-border/60 shadow-sm hover:shadow-md transition-all">
+        <CardContent className="p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-2 min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-lg truncate">{pod.name}</h3>
+                  <p className="text-sm text-muted-foreground truncate">{pod.category || pod.subject || "General"}</p>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground line-clamp-2">{pod.description}</p>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              {typeof score === "number" && <Badge variant="secondary">{score}% fit</Badge>}
+              {pod.difficulty && <Badge className={getDifficultyColor(pod.difficulty)}>{pod.difficulty}</Badge>}
+            </div>
+          </div>
 
-  const filteredExplorePods = useMemo(() => {
-    return (explorePods || []).filter((pod) => {
-      const matchesSearch =
-        pod.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        pod.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (pod.tags || []).some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <span className="flex items-center gap-1"><Users className="h-4 w-4" />{pod.memberCount ?? pod.members?.length ?? 0}</span>
+            {pod.nextSession && <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{pod.nextSession}</span>}
+          </div>
 
-      const matchesCategory = selectedCategory === "All" || pod.category === selectedCategory || pod.subject === selectedCategory
+          {mode === "mine" && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">Progress</span>
+                <span className="text-muted-foreground">{typeof pod.progress === "number" ? `${pod.progress}%` : "Not tracked yet"}</span>
+              </div>
+              <Progress value={pod.progress || 0} className="h-2" />
+            </div>
+          )}
 
-      return matchesSearch && matchesCategory
-    })
-  }, [explorePods, searchQuery, selectedCategory])
+          <div className="flex flex-wrap gap-2">
+            {(pod.tags || []).slice(0, 4).map((tag: string) => (
+              <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+            ))}
+          </div>
 
-  const categories = useMemo(() => {
-    const counts: Record<string, number> = {}
-    explorePods.forEach((pod) => {
-      const cat = pod.category || pod.subject || "Other"
-      counts[cat] = (counts[cat] || 0) + 1
-    })
-    return ["All", ...Object.keys(counts)].map((name) => ({ name, count: name === "All" ? explorePods.length : counts[name] }))
-  }, [explorePods])
-
-  const getDifficultyColor = (difficulty?: string) => {
-    switch (difficulty) {
-      case "Beginner":
-        return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
-      case "Intermediate":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
-      case "Advanced":
-        return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
-      default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
-    }
+          <div className="flex gap-2">
+            {mode === "mine" ? (
+              <>
+                <Button className="flex-1" onClick={() => openPod(podId)}>
+                  <Video className="h-4 w-4 mr-2" />
+                  Enter pod
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => openPodChat(podId)}>
+                  <MessageSquare className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => openCalendar(podId)}>
+                  <Calendar className="h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button className="flex-1" onClick={() => handleJoinPod(pod)} disabled={isJoining}>
+                  {isJoining ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : isMember ? <ChevronRight className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                  {isMember ? "Open pod" : isJoining ? "Joining..." : "Join pod"}
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => openPod(podId)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Mobile Header */}
-      <div className="md:hidden p-4 border-b border-border">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-xl font-bold">My Pods</h1>
-            <p className="text-sm text-muted-foreground">Your learning communities</p>
-          </div>
-          <Button size="sm" onClick={handleCreatePod} className="bg-primary hover:bg-primary/90">
-            <Plus className="mr-2 h-4 w-4" />
-            Create
-          </Button>
-        </div>
-      </div>
-
-      {/* Desktop Header */}
-      <div className="hidden md:block p-4 md:p-8 pt-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold">Study Pods</h1>
-              <p className="text-muted-foreground">Join communities and learn together</p>
+      <div className="p-4 md:p-8 pt-6">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-2">
+              <Badge variant="secondary">Pods workspace</Badge>
+              <h1 className="text-3xl font-bold tracking-tight">Pods</h1>
+              <p className="text-muted-foreground max-w-2xl">
+                One workspace for your current pods, recommended pods, and discovery flows.
+              </p>
             </div>
-            <div className="flex items-center space-x-2">
-              <Button variant="outline">
-                <Filter className="mr-2 h-4 w-4" />
-                Filters
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setActiveTab("discover")}>
+                <Search className="h-4 w-4 mr-2" />
+                Discover pods
               </Button>
-              <Button onClick={handleCreatePod} className="bg-primary hover:bg-primary/90" disabled={isLoading}>
-                <Plus className="mr-2 h-4 w-4" />
-                Create Pod
+              <Button onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create pod
               </Button>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-4 md:px-8 pb-24 md:pb-8">
-        {/* Tabs */}
-        <div className="mb-4 md:mb-6">
-          <div className="flex space-x-1 bg-secondary/50 rounded-lg p-1 max-w-fit">
-            {[
-              { value: "my-pods", label: "My Pods", icon: Users },
-              { value: "explore", label: "Explore", icon: Search },
-            ].map((tab) => (
-              <button
-                key={tab.value}
-                onClick={() => setActiveTab(tab.value)}
-                className={`flex items-center space-x-2 px-3 md:px-4 py-2 text-xs md:text-sm font-medium rounded-md transition-all ${
-                  activeTab === tab.value
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <tab.icon className="w-4 h-4" />
-                <span>{tab.label}</span>
-              </button>
+          <div className="grid gap-4 md:grid-cols-3">
+            {stats.map((stat) => (
+              <Card key={stat.label}>
+                <CardContent className="p-5">
+                  <p className="text-sm text-muted-foreground">{stat.label}</p>
+                  <p className="text-3xl font-bold mt-1">{stat.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{stat.detail}</p>
+                </CardContent>
+              </Card>
             ))}
           </div>
-        </div>
 
-        {/* My Pods Tab */}
-        {activeTab === "my-pods" && (
-          <div className="space-y-4 md:space-y-6">
-            <div className="grid gap-3 md:gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {myPods.length === 0 && !isLoading && (
-                <div className="col-span-full text-center text-muted-foreground">No pods yet. Join or create one.</div>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <TabsList>
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="my-pods">My pods</TabsTrigger>
+              <TabsTrigger value="discover">Discover</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recommended for you</CardTitle>
+                  <CardDescription>Ranked from your profile fit, interests, availability, and pod freshness.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {isLoading ? (
+                    <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading recommendations...</div>
+                  ) : recommendedPods.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No recommendations yet. Create or join a pod to build your graph.</p>
+                  ) : (
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      {recommendedPods.map((pod) => renderPodCard(pod, "discover"))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Current pod operations</CardTitle>
+                  <CardDescription>Your active pods, schedules, and chat entry points.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {isLoading ? (
+                    <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading pod workspace...</div>
+                  ) : myPods.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">You have not joined any pods yet.</p>
+                  ) : (
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      {myPods.slice(0, 6).map((pod) => renderPodCard(pod, "mine"))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="my-pods" className="space-y-6">
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading your pods...</div>
+              ) : myPods.length === 0 ? (
+                <Card><CardContent className="p-8 text-center text-muted-foreground">No joined pods yet. Move to Discover to join one.</CardContent></Card>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {myPods.map((pod) => renderPodCard(pod, "mine"))}
+                </div>
               )}
-              {myPods.map((pod) => (
-                <Card key={pod.$id} className="hover:shadow-lg transition-all duration-200 cursor-pointer group">
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-lg group-hover:text-primary transition-colors">{pod.name}</h3>
-                          {pod.isActive === false && <Badge variant="secondary">Inactive</Badge>}
-                        </div>
-                        <p className="text-sm text-muted-foreground line-clamp-2">{pod.description}</p>
-                      </div>
-                      <Badge variant="outline">{pod.category || pod.subject || "General"}</Badge>
-                    </div>
+            </TabsContent>
 
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center space-x-4">
-                        <span className="flex items-center text-muted-foreground">
-                          <Users className="w-4 h-4 mr-1" />
-                          {pod.memberCount ?? pod.members?.length ?? 0}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {typeof podMatches[pod.$id] === "number" && (
-                          <Badge variant="secondary" className="text-xs">
-                            {podMatches[pod.$id]}% match
-                          </Badge>
-                        )}
-                        {pod.difficulty && <Badge className={getDifficultyColor(pod.difficulty)}>{pod.difficulty}</Badge>}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">Progress</span>
-                        <span className="text-muted-foreground">{typeof pod.progress === "number" ? `${pod.progress}%` : "No progress yet"}</span>
-                      </div>
-                      <Progress value={pod.progress || 0} className="h-2" />
-                    </div>
-
-                    <div className="flex items-center justify-between text-sm text-muted-foreground">
-                      {pod.nextSession && (
-                        <span className="flex items-center">
-                          <Clock className="w-4 h-4 mr-1" />
-                          {pod.nextSession}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap gap-1">
-                      {(pod.tags || []).slice(0, 3).map((tag) => (
-                        <Badge key={tag} variant="secondary" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-
-                    <div className="flex space-x-2 pt-2">
-                      <Button onClick={() => handleJoinPod(pod.$id)} className="flex-1 bg-primary hover:bg-primary/90">
-                        <Video className="w-4 h-4 mr-2" />
-                        Enter Pod
-                      </Button>
-                      <Button variant="outline" size="icon" className="bg-transparent" onClick={() => handlePodChat(pod.$id)}>
-                        <MessageSquare className="w-4 h-4" />
-                      </Button>
-                      <Button variant="outline" size="icon" className="bg-transparent" onClick={() => handlePodCalendar(pod.$id)}>
-                        <Calendar className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Explore Tab */}
-        {activeTab === "explore" && (
-          <div className="space-y-6">
-            {/* Search and Filters */}
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input
-                  placeholder="Search pods, topics, or mentors..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-
-            {/* Categories */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Categories</h3>
-              <div className="flex flex-wrap gap-2">
-                {categories.map((category) => {
-                  const Icon = CATEGORY_ICONS[category.name] || Globe
-                  return (
-                    <button
-                      key={category.name}
-                      onClick={() => setSelectedCategory(category.name)}
-                      className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
-                        selectedCategory === category.name
-                          ? "bg-primary text-primary-foreground shadow-md"
-                          : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                      }`}
-                    >
-                      <Icon className="w-4 h-4" />
-                      <span>{category.name}</span>
-                      <Badge variant="secondary" className="text-xs">
-                        {category.count}
-                      </Badge>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Explore Pods Grid */}
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {filteredExplorePods.map((pod) => (
-                <Card key={pod.$id} className="hover:shadow-lg transition-all duration-200 group">
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-lg group-hover:text-primary transition-colors">{pod.name}</h3>
-                          {pod.isPublic === false && (
-                            <Badge className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white">Private</Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground line-clamp-2">{pod.description}</p>
-                      </div>
-                      <Badge variant="outline">{pod.category || pod.subject || "General"}</Badge>
-                    </div>
-
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center space-x-4">
-                        <span className="flex items-center text-muted-foreground">
-                          <Users className="w-4 h-4 mr-1" />
-                          {pod.memberCount ?? pod.members?.length ?? 0}
-                        </span>
-                      </div>
-                      {pod.difficulty && <Badge className={getDifficultyColor(pod.difficulty)}>{pod.difficulty}</Badge>}
-                    </div>
-
-                    <div className="flex flex-wrap gap-1">
-                      {(pod.tags || []).slice(0, 3).map((tag) => (
-                        <Badge key={tag} variant="secondary" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-
-                    <div className="flex space-x-2 pt-2">
+            <TabsContent value="discover" className="space-y-6">
+              <div className="flex flex-col gap-4 lg:flex-row">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search pods, topics, or tags" className="pl-10" />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {categories.map((category) => {
+                    const Icon = CATEGORY_ICONS[category.name] || Compass
+                    return (
                       <Button
-                        onClick={() => handleJoinExplorePod(pod.$id, pod.name)}
-                        className="flex-1 bg-primary hover:bg-primary/90"
+                        key={category.name}
+                        type="button"
+                        variant={selectedCategory === category.name ? "default" : "outline"}
+                        onClick={() => setSelectedCategory(category.name)}
                       >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Join Pod
+                        <Icon className="h-4 w-4 mr-2" />
+                        {category.name}
+                        <span className="ml-2 text-xs opacity-80">{category.count}</span>
                       </Button>
-                      <Button variant="outline" size="icon" className="bg-transparent" onClick={() => handleJoinPod(pod.$id)}>
-                        <ChevronRight className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {filteredExplorePods.length === 0 && (
-              <div className="text-center py-12">
-                <Search className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-semibold mb-2">No pods found</h3>
-                <p className="text-muted-foreground">Try adjusting your search or browse different categories</p>
+                    )
+                  })}
+                </div>
               </div>
-            )}
-          </div>
-        )}
+
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading discover catalog...</div>
+              ) : discoverPods.length === 0 ? (
+                <Card><CardContent className="p-8 text-center text-muted-foreground">No pods match the current search and category filters.</CardContent></Card>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {discoverPods.map((pod) => renderPodCard(pod, "discover"))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
 
-      {/* Create Pod Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-md mx-4">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Create New Pod</DialogTitle>
-            <DialogDescription>Start a new learning community and invite others to join</DialogDescription>
+            <DialogTitle>Create a pod</DialogTitle>
+            <DialogDescription>Set up a production-grade pod with subject, difficulty, availability, and matching metadata.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="pod-name">Pod Name *</Label>
-              <Input
-                id="pod-name"
-                placeholder="e.g., Advanced React Patterns"
-                value={newPod.name}
-                onChange={(e) => setNewPod({ ...newPod, name: e.target.value })}
-              />
+              <Label htmlFor="pod-name">Pod name</Label>
+              <Input id="pod-name" value={newPod.name} onChange={(event) => setNewPod((prev) => ({ ...prev, name: event.target.value }))} />
             </div>
             <div>
-              <Label htmlFor="pod-description">Description *</Label>
-              <Textarea
-                id="pod-description"
-                placeholder="Describe what your pod is about..."
-                value={newPod.description}
-                onChange={(e) => setNewPod({ ...newPod, description: e.target.value })}
-                rows={3}
-              />
+              <Label htmlFor="pod-description">Description</Label>
+              <Textarea id="pod-description" rows={4} value={newPod.description} onChange={(event) => setNewPod((prev) => ({ ...prev, description: event.target.value }))} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label htmlFor="pod-category">Category *</Label>
-                <Select value={newPod.category} onValueChange={(value) => setNewPod({ ...newPod, category: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
+                <Label>Category</Label>
+                <Select value={newPod.category} onValueChange={(value) => setNewPod((prev) => ({ ...prev, category: value }))}>
+                  <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Programming">Programming</SelectItem>
                     <SelectItem value="Design">Design</SelectItem>
@@ -529,11 +489,9 @@ export default function PodsPage() {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="pod-difficulty">Difficulty</Label>
-                <Select value={newPod.difficulty} onValueChange={(value) => setNewPod({ ...newPod, difficulty: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select level" />
-                  </SelectTrigger>
+                <Label>Difficulty</Label>
+                <Select value={newPod.difficulty} onValueChange={(value) => setNewPod((prev) => ({ ...prev, difficulty: value }))}>
+                  <SelectTrigger><SelectValue placeholder="Select level" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Beginner">Beginner</SelectItem>
                     <SelectItem value="Intermediate">Intermediate</SelectItem>
@@ -542,13 +500,11 @@ export default function PodsPage() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <Label>Session style</Label>
-                <Select value={newPod.sessionType} onValueChange={(value) => setNewPod({ ...newPod, sessionType: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select style" />
-                  </SelectTrigger>
+                <Select value={newPod.sessionType} onValueChange={(value) => setNewPod((prev) => ({ ...prev, sessionType: value }))}>
+                  <SelectTrigger><SelectValue placeholder="Select style" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="live">Live</SelectItem>
                     <SelectItem value="async">Async</SelectItem>
@@ -558,13 +514,8 @@ export default function PodsPage() {
               </div>
               <div>
                 <Label>Ideal learner type</Label>
-                <Select
-                  value={newPod.idealLearnerType}
-                  onValueChange={(value) => setNewPod({ ...newPod, idealLearnerType: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select learner" />
-                  </SelectTrigger>
+                <Select value={newPod.idealLearnerType} onValueChange={(value) => setNewPod((prev) => ({ ...prev, idealLearnerType: value }))}>
+                  <SelectTrigger><SelectValue placeholder="Select learner" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="beginner">Beginner</SelectItem>
                     <SelectItem value="interview-prep">Interview prep</SelectItem>
@@ -575,20 +526,13 @@ export default function PodsPage() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label htmlFor="pod-length">Typical session length (minutes)</Label>
-                <Input
-                  id="pod-length"
-                  type="number"
-                  min={15}
-                  max={240}
-                  value={newPod.averageSessionLength}
-                  onChange={(e) => setNewPod({ ...newPod, averageSessionLength: e.target.value })}
-                />
+                <Label htmlFor="pod-duration">Session length (minutes)</Label>
+                <Input id="pod-duration" type="number" min={15} max={240} value={newPod.averageSessionLength} onChange={(event) => setNewPod((prev) => ({ ...prev, averageSessionLength: event.target.value }))} />
               </div>
               <div>
-                <Label>Common availability</Label>
+                <Label>Availability</Label>
                 <div className="flex flex-wrap gap-2 mt-2">
                   {[
                     { id: "weekday-morning", label: "Weekday mornings" },
@@ -597,14 +541,14 @@ export default function PodsPage() {
                   ].map((slot) => (
                     <Button
                       key={slot.id}
-                      size="sm"
                       type="button"
+                      size="sm"
                       variant={newPod.availability.includes(slot.id) ? "default" : "outline"}
                       onClick={() =>
                         setNewPod((prev) => ({
                           ...prev,
                           availability: prev.availability.includes(slot.id)
-                            ? prev.availability.filter((s) => s !== slot.id)
+                            ? prev.availability.filter((item) => item !== slot.id)
                             : [...prev.availability, slot.id],
                         }))
                       }
@@ -616,21 +560,15 @@ export default function PodsPage() {
               </div>
             </div>
             <div>
-              <Label htmlFor="pod-tags">Tags (comma separated)</Label>
-              <Input
-                id="pod-tags"
-                placeholder="e.g., React, JavaScript, Frontend"
-                value={newPod.tags}
-                onChange={(e) => setNewPod({ ...newPod, tags: e.target.value })}
-              />
+              <Label htmlFor="pod-tags">Tags</Label>
+              <Input id="pod-tags" placeholder="React, JavaScript, Frontend" value={newPod.tags} onChange={(event) => setNewPod((prev) => ({ ...prev, tags: event.target.value }))} />
             </div>
           </div>
-          <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)} disabled={isLoading}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreatePodSubmit} disabled={isLoading}>
-              {isLoading ? "Creating..." : "Create Pod"}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreatePod} disabled={isLoading}>
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+              Create pod
             </Button>
           </div>
         </DialogContent>

@@ -174,11 +174,11 @@ export default function DirectMessagePage() {
           <p className="font-semibold text-sm truncate">{targetProfile?.name || "Direct Message"}</p>
           <p className="text-xs text-muted-foreground truncate">Private conversation</p>
         </div>
-        {isSyncing && !isLoading && <Badge variant="outline" className="text-[10px]">Syncing…</Badge>}
+        {isSyncing && !isLoading && <Badge variant="outline" className="text-[10px]">Syncing...</Badge>}
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-4">
-        <Card className="h-[70vh] flex flex-col">
+      <div className="max-w-4xl mx-auto px-4 py-6">
+        <Card className="h-[74vh] flex flex-col border-border/60 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <MessageSquare className="w-4 h-4" />
@@ -203,7 +203,7 @@ export default function DirectMessagePage() {
                       const isMe = msg.authorId === user.$id
                       return (
                         <div key={msg.$id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                          <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${isMe ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                          <div className={`max-w-[78%] rounded-2xl px-4 py-3 shadow-sm ${isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted rounded-bl-md"}`}>
                             {!isMe && <p className="text-xs font-medium mb-1 opacity-70">{msg.authorName}</p>}
                             <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                             <p className="text-[10px] opacity-60 mt-1">{new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
@@ -222,8 +222,9 @@ export default function DirectMessagePage() {
                       onChange={(e) => setInputValue(e.target.value)}
                       onKeyDown={handleKeyPress}
                       disabled={isSending}
+                      className="h-11"
                     />
-                    <Button onClick={handleSend} disabled={!inputValue.trim() || isSending}>
+                    <Button onClick={handleSend} disabled={!inputValue.trim() || isSending} className="h-11 px-4">
                       {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     </Button>
                   </div>

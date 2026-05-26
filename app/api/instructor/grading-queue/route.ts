@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Instructor Grading Queue API
  * 
@@ -8,9 +7,11 @@
  * Includes low-confidence AI grades, essays, and plagiarism checks.
  */
 
-import { Databases } from 'node-appwrite';
+import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { courseService } from '@/lib/course-service';
+
+const DATABASE_ID = process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 
 interface GradingQueueItem {
   submissionId: string;
@@ -49,19 +50,18 @@ export async function GET(request: Request) {
       );
     }
 
-    const { databases } = createAdminClient();
+    const { databases } = await createAdminClient();
 
     // 1. Get instructor's courses
     const instructorCourses = courseId
       ? [courseId]
-      : (await courseService.getInstructorCourses(instructorId)).map((c: any) => c.$id);
+      : (await courseService.getInstructorCourses(databases as any, instructorId)).map((c: any) => c.$id);
 
     // 2. Fetch submissions requiring review
     const allSubmissions = await databases.listDocuments(
-      (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
+      DATABASE_ID,
       'assignment_submissions',
-      [],
-      10000
+      [Query.limit(100)]
     );
 
     // Filter for this instructor's courses and find those needing review
@@ -73,19 +73,22 @@ export async function GET(request: Request) {
       }
 
       // Check if needs review (low confidence, pending, or essay)
+      const score = submission.score ?? submission.aiGrade ?? 0;
+      const confidence = submission.confidence ?? submission.aiConfidence ?? 0;
       const needsReview =
-        submission.status === 'pending' ||
-        (submission.aiConfidence && submission.aiConfidence < 0.7) ||
-        (submission.aiGrade && submission.aiGrade >= 40 && submission.aiGrade <= 60);
+        submission.status === 'Submitted' ||
+        submission.status === 'ReviewPending' ||
+        (confidence > 0 && confidence < 0.7) ||
+        (score >= 40 && score <= 60);
 
       if (!needsReview) {
         continue;
       }
 
       try {
-        const course = await courseService.getCourse(submission.courseId);
+        const course = await courseService.getCourse(databases as any, submission.courseId);
         const assignment = await databases.getDocument(
-          (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
+          DATABASE_ID,
           'course_assignments',
           submission.assignmentId
         );
@@ -93,13 +96,13 @@ export async function GET(request: Request) {
         let flagReason = '';
         let priority: 'high' | 'medium' | 'low' = 'medium';
 
-        if (submission.aiConfidence && submission.aiConfidence < 0.7) {
+        if (confidence > 0 && confidence < 0.7) {
           flagReason = 'Low AI confidence';
           priority = 'high';
-        } else if (submission.aiGrade && submission.aiGrade >= 40 && submission.aiGrade <= 60) {
+        } else if (score >= 40 && score <= 60) {
           flagReason = 'Borderline score (40-60%)';
           priority = 'high';
-        } else if (assignment.type === 'essay') {
+        } else if (assignment.type === 'Essay') {
           flagReason = 'Essay submission - requires human grading';
           priority = 'medium';
         }
@@ -117,14 +120,14 @@ export async function GET(request: Request) {
           courseName: course?.title || 'Unknown Course',
           assignmentId: submission.assignmentId,
           assignmentType: assignment.type || 'unknown',
-          content: submission.answerText?.slice(0, 200) || submission.fileUrl || '',
-          submissionDate: submission.createdAt,
-          aiGrade: submission.aiGrade,
-          aiConfidence: submission.aiConfidence,
+          content: submission.submissionText?.slice(0, 200) || submission.submissionFile || '',
+          submissionDate: submission.submittedAt || submission.$createdAt,
+          aiGrade: score,
+          aiConfidence: confidence,
           flagReason,
           assignmentDifficulty: assignment.difficulty || 'medium',
           priority,
-          status: submission.status || 'pending',
+          status: submission.status === 'Graded' ? 'graded' : 'pending',
         });
       } catch (err) {
         console.log('Error processing submission:', err);
@@ -190,43 +193,43 @@ export async function POST(request: Request) {
       );
     }
 
-    const { databases } = createAdminClient();
+    const { databases } = await createAdminClient();
 
     // Update submission with instructor grade
     const updated = await databases.updateDocument(
-      (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
+      DATABASE_ID,
       'assignment_submissions',
       submissionId,
       {
-        instructorGrade: grade,
-        instructorFeedback: feedback || '',
-        gradedBy: instructorId,
+        manualScore: grade,
+        aiGeneratedFeedback: feedback || '',
+        reviewedBy: instructorId,
         gradedAt: new Date().toISOString(),
-        status: 'graded',
+        status: 'Graded',
         plagiarismScore: plagiarismScore || 0,
       }
     );
 
     // Notify student
     const submission = await databases.getDocument(
-      (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
+      DATABASE_ID,
       'assignment_submissions',
       submissionId
     );
 
     try {
       await databases.createDocument(
-        (process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'),
+        DATABASE_ID,
         'notifications',
         `notif-grade-${submissionId}`,
         {
+          userId: submission.userId,
           type: 'assignment_graded',
-          recipientId: submission.userId,
-          senderId: instructorId,
-          relatedSubmissionId: submissionId,
-          content: `Your assignment has been graded! Score: ${grade}%${feedback ? ` - ${feedback}` : ''}`,
+          actor: instructorId,
+          assignmentId: submission.assignmentId,
+          message: `Your assignment has been graded. Score: ${grade}%${feedback ? ` - ${feedback}` : ''}`,
           isRead: false,
-          createdAt: new Date().toISOString(),
+          timestamp: new Date().toISOString(),
         }
       );
     } catch (err) {

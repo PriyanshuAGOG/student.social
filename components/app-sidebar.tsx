@@ -7,7 +7,6 @@ import {
   Bot,
   Calendar,
   Home,
-  Search,
   Settings,
   Users,
   BarChart3,
@@ -56,19 +55,9 @@ const data = {
       isActive: true,
     },
     {
-      title: "Dashboard",
-      url: "/app/dashboard",
-      icon: BarChart3,
-    },
-    {
-      title: "My Pods",
+      title: "Pods",
       url: "/app/pods",
       icon: Users,
-    },
-    {
-      title: "Explore Pods",
-      url: "/app/explore",
-      icon: Search,
     },
     {
       title: "AI Assistant",

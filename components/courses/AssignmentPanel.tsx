@@ -21,6 +21,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/lib/auth-context';
 
 interface AssignmentPanelProps {
   chapterId: string;
@@ -36,6 +37,7 @@ export function AssignmentPanel({
   const [submitted, setSubmitted] = useState(false);
   const [grade, setGrade] = useState<any | null>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handleSubmit = async () => {
     if (!submissionText.trim()) {
@@ -46,36 +48,48 @@ export function AssignmentPanel({
       return;
     }
 
+    if (!user?.$id) {
+      toast({
+        description: 'Please sign in to submit assignments',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       setLoading(true);
+      const formData = new FormData();
+      formData.append('assignmentId', `${courseId}-${chapterId}-assignment`);
+      formData.append('courseId', courseId);
+      formData.append('chapterId', chapterId);
+      formData.append('userId', user.$id);
+      formData.append('submissionText', submissionText);
+
       const response = await fetch('/api/assignments/submit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assignmentId: 'assignment-1', // Would come from props
-          courseId,
-          chapterId,
-          userId: 'current-user', // Would come from auth
-          submissionText,
-        }),
+        body: formData,
       });
 
       if (response.ok) {
         const data = await response.json();
         setSubmitted(true);
-        toast({
-          description: 'Assignment submitted! Your response is being graded.',
-        });
-
-        // Simulate grading delay
-        setTimeout(() => {
+        if (data?.data?.submission) {
           setGrade({
-            score: 85,
-            feedback:
-              'Great response! You showed good understanding of the concepts.',
-            confidence: 0.92,
+            score: data.data.submission.score,
+            feedback: data.data.submission.aiGeneratedFeedback || 'Submission received successfully.',
+            confidence: data.data.submission.confidence,
+            flaggedForReview: data.data.submission.flaggedForReview,
           });
-        }, 2000);
+        }
+        toast({
+          description: data?.message || 'Assignment submitted successfully.',
+        });
+      } else {
+        const data = await response.json().catch(() => ({}));
+        toast({
+          description: data?.error || 'Failed to submit assignment',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       toast({

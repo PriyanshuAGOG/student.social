@@ -30,6 +30,7 @@ interface Post {
   id: string
   title?: string
   content: string
+  authorId?: string
   author: {
     name: string
     avatar: string
@@ -87,11 +88,13 @@ export default function FeedPage() {
       if (!user?.$id) return
       setIsLoading(true)
       try {
-        const [res, podsRes, profilesRes] = await Promise.all([
+        const [res, podsRes, profilesRes, savedRes] = await Promise.all([
           feedService.getFeedPosts(user.$id),
           podService.getUserPods(user.$id),
           profileService.getAllProfiles(200, 0),
+          feedService.getSavedPosts(user.$id),
         ])
+        const savedIds = new Set((savedRes.documents || []).map((post: any) => post.$id))
         const profileMap = new Map<string, any>()
         ;(profilesRes.documents || []).forEach((prof: any) => {
           profileMap.set(prof.$id, prof)
@@ -108,6 +111,7 @@ export default function FeedPage() {
           return {
             id: d.$id,
             content: d.content || "",
+            authorId: d.authorId || d.author?.id,
             author: {
               name: authorName,
               avatar: authorAvatar,
@@ -119,7 +123,7 @@ export default function FeedPage() {
             shares: d.shares || 0,
             tags: d.tags || [],
             isLiked: likedBy.includes(user.$id),
-            isBookmarked: false,
+            isBookmarked: savedIds.has(d.$id),
             kind: d.type === "achievement" ? "achievement" : "post",
             visibility: d.visibility || "public",
           }
@@ -243,14 +247,24 @@ export default function FeedPage() {
     }
   }
 
-  const handleBookmark = (postId: string) => {
-    setPosts(posts.map((post) => (post.id === postId ? { ...post, isBookmarked: !post.isBookmarked } : post)))
+  const handleBookmark = async (postId: string) => {
+    if (!user?.$id) return
+    try {
+      const result = await feedService.toggleSavePost(postId, user.$id)
+      setPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId ? { ...post, isBookmarked: result.saved } : post,
+        ),
+      )
 
-    const post = posts.find((p) => p.id === postId)
-    toast({
-      title: post?.isBookmarked ? "Removed from bookmarks" : "Added to bookmarks",
-      description: post?.isBookmarked ? "Post removed from your saved items" : "Post saved to your bookmarks",
-    })
+      toast({
+        title: result.saved ? "Added to bookmarks" : "Removed from bookmarks",
+        description: result.saved ? "Post saved to your bookmarks" : "Post removed from your saved items",
+      })
+    } catch (error: any) {
+      console.error(error)
+      toast({ title: "Failed to update bookmark", description: error?.message, variant: "destructive" })
+    }
   }
 
   const handleShare = (postId: string) => {
@@ -346,6 +360,7 @@ export default function FeedPage() {
     }
   }
 
+  const followingIds = new Set(Array.isArray(profile?.following) ? profile.following : [])
   const filteredPosts = posts.filter((post) => {
     const matchesSearch =
       searchQuery === "" ||
@@ -356,7 +371,7 @@ export default function FeedPage() {
 
     const matchesTab =
       activeTab === "all" ||
-      (activeTab === "following" && Math.random() > 0.5) || // Simulate following
+      (activeTab === "following" && Boolean(post.authorId && followingIds.has(post.authorId))) ||
       (activeTab === "pods" && post.pod)
 
     return matchesSearch && matchesTab

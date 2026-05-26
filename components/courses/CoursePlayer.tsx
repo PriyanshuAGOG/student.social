@@ -51,6 +51,33 @@ export function CoursePlayer({
   const [activeTab, setActiveTab] = useState<'video' | 'assignment'>('video');
   const currentChapter = chapters[currentChapterIndex];
 
+  const getEmbedUrl = () => {
+    const source = course.youtubeLink;
+    if (!source) return null;
+
+    try {
+      const url = new URL(source);
+      const videoId =
+        url.hostname.includes('youtu.be')
+          ? url.pathname.replace('/', '')
+          : url.searchParams.get('v');
+
+      if (!videoId) return null;
+
+      const start = Number(currentChapter?.videoStartTime || 0);
+      const end = Number(currentChapter?.videoEndTime || 0);
+      const params = new URLSearchParams({
+        start: String(Math.max(0, start)),
+      });
+      if (end > start) params.set('end', String(end));
+      return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
+    } catch {
+      return null;
+    }
+  };
+
+  const embedUrl = getEmbedUrl();
+
   const handlePrevChapter = () => {
     if (currentChapterIndex > 0) {
       onChapterChange(currentChapterIndex - 1);
@@ -121,18 +148,29 @@ export function CoursePlayer({
 
               {/* Video Tab */}
               <TabsContent value="video" className="space-y-4">
-                {/* Video Player Placeholder */}
-                <div className="bg-black rounded-lg aspect-video flex items-center justify-center">
-                  <div className="text-center text-white">
-                    <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <div className="w-0 h-0 border-l-12 border-r-0 border-t-8 border-b-8 border-l-white border-r-transparent border-t-transparent border-b-transparent ml-2" />
-                    </div>
-                    <p>Video Player</p>
-                    <p className="text-sm text-gray-400 mt-2">
-                      {currentChapter.duration} min
-                    </p>
+                {embedUrl ? (
+                  <div className="rounded-lg overflow-hidden border bg-black aspect-video">
+                    <iframe
+                      src={embedUrl}
+                      title={`${course.title} - ${currentChapter.title}`}
+                      className="w-full h-full"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-white rounded-lg border p-6 space-y-4">
+                    <div>
+                      <h3 className="font-semibold text-lg">Lecture Content</h3>
+                      <p className="text-sm text-gray-500">
+                        {currentChapter.duration} min · {currentChapter.contentType}
+                      </p>
+                    </div>
+                    <div className="prose max-w-none text-sm whitespace-pre-wrap">
+                      {currentChapter.transcriptCleaned || currentChapter.transcript || currentChapter.description}
+                    </div>
+                  </div>
+                )}
 
                 {/* Learning Objectives */}
                 {currentChapter.learningObjectives &&
@@ -218,6 +256,7 @@ export function CoursePlayer({
             <NotesPanel
               chapterId={currentChapter.$id}
               chapterTitle={currentChapter.title}
+              chapterData={currentChapter}
             />
           </div>
         )}

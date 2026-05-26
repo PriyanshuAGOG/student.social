@@ -9,6 +9,7 @@ import { getEnv } from '@/lib/env'
 
 const env = getEnv()
 const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
+const NOTIFICATIONS_COLLECTION_ID = env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications'
 
 export async function DELETE(
   req: NextRequest,
@@ -24,11 +25,12 @@ export async function DELETE(
     const { id } = await params
     const notificationId = id
 
-    await databases.deleteDocument(
-      DATABASE_ID,
-      'in_app_notifications',
-      notificationId
-    )
+    const notification = await databases.getDocument(DATABASE_ID, NOTIFICATIONS_COLLECTION_ID, notificationId)
+    if (notification.userId !== userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    await databases.deleteDocument(DATABASE_ID, NOTIFICATIONS_COLLECTION_ID, notificationId)
 
     return NextResponse.json({
       success: true,

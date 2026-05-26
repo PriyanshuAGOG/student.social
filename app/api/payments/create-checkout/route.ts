@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import { ApiError, enforceRateLimit, enforceSameOrigin, jsonError, jsonOk, parseJsonBody, requireOwnership, requireUser } from '@/lib/api-security'
+import Stripe from 'stripe'
+import { courseService } from '@/lib/course-service'
 
 const checkoutSchema = z.object({
   courseId: z.string().min(1),
@@ -31,24 +33,67 @@ export async function POST(request: Request) {
       throw new ApiError(400, 'MISSING_IDEMPOTENCY_KEY', 'x-idempotency-key header is required')
     }
 
-    const sessionId = `cs_test_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-    const amount = 9900
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY
+    if (!stripeSecretKey) {
+      throw new ApiError(503, 'PAYMENTS_UNCONFIGURED', 'Stripe is not configured on this deployment')
+    }
+
+    const db = courseService.getCourseDatabase()
+    if (!db) {
+      throw new ApiError(500, 'DATABASE_UNAVAILABLE', 'Database connection failed')
+    }
+
+    const course = await courseService.getCourse(db as any, payload.courseId)
+    const stripe = new Stripe(stripeSecretKey)
+    const amount = Math.max(0, Math.round(Number(course.price || 0) * 100))
     const discount = payload.discountCode ? 0.2 : 0
     const finalAmount = Math.round(amount * (1 - discount))
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        customer_email: payload.userEmail,
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: course.title,
+                description: course.description,
+              },
+              unit_amount: finalAmount,
+            },
+            quantity: 1,
+          },
+        ],
+        success_url: `${baseUrl}/courses/${payload.courseId}?checkout=success`,
+        cancel_url: `${baseUrl}/courses/${payload.courseId}?checkout=cancelled`,
+        metadata: {
+          courseId: payload.courseId,
+          userId: payload.userId,
+          discountCode: payload.discountCode || '',
+          idempotencyKey,
+        },
+      },
+      {
+        idempotencyKey,
+      },
+    )
 
     return jsonOk({
       session: {
-        sessionId,
-        checkoutUrl: `https://checkout.stripe.com/pay/${sessionId}`,
+        sessionId: session.id,
+        checkoutUrl: session.url,
         courseId: payload.courseId,
         userId: payload.userId,
         amount: finalAmount / 100,
         currency: 'USD',
         originalAmount: amount / 100,
         discountApplied: discount * 100,
-        status: 'pending',
+        status: session.status || 'open',
       },
-      message: 'Checkout session created. Complete payment to enroll.',
+      message: 'Checkout session created.',
       idempotencyKey,
     }, 201, correlationId)
   } catch (error) {

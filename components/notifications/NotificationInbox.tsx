@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { toast } from 'sonner'
 import { formatDistanceToNow } from 'date-fns'
 import { Trash2, CheckCircle2, AlertCircle, CheckCircleIcon, Bell } from 'lucide-react'
+import { useAuth } from '@/lib/auth-context'
 
 interface Notification {
   $id: string
@@ -49,18 +50,21 @@ export function NotificationInbox() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('all')
   const [unreadCount, setUnreadCount] = useState(0)
+  const { user } = useAuth()
 
   useEffect(() => {
+    if (!user?.$id) return
     loadNotifications()
     const interval = setInterval(loadNotifications, 30000) // Refresh every 30 seconds
     return () => clearInterval(interval)
-  }, [])
+  }, [user?.$id])
 
   const loadNotifications = async () => {
+    if (!user?.$id) return
     try {
       const response = await fetch('/api/notifications/inbox', {
         headers: {
-          'x-user-id': 'current-user-id', // Replace with actual user ID
+          'x-user-id': user.$id,
         },
       })
       const data = await response.json()
@@ -77,11 +81,12 @@ export function NotificationInbox() {
   }
 
   const handleMarkAsRead = async (notificationId: string) => {
+    if (!user?.$id) return
     try {
       const response = await fetch(`/api/notifications/${notificationId}/read`, {
         method: 'PATCH',
         headers: {
-          'x-user-id': 'current-user-id',
+          'x-user-id': user.$id,
         },
       })
 
@@ -102,11 +107,12 @@ export function NotificationInbox() {
   }
 
   const handleDelete = async (notificationId: string) => {
+    if (!user?.$id) return
     try {
       const response = await fetch(`/api/notifications/${notificationId}`, {
         method: 'DELETE',
         headers: {
-          'x-user-id': 'current-user-id',
+          'x-user-id': user.$id,
         },
       })
 

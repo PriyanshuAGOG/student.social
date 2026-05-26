@@ -67,6 +67,15 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState("all")
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [preferenceState, setPreferenceState] = useState({
+    sessionReminders: true,
+    podInvites: true,
+    newResources: true,
+    comments: true,
+    likes: true,
+    followers: false,
+  })
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false)
   const { toast } = useToast()
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
@@ -121,6 +130,34 @@ export default function NotificationsPage() {
     }
   }, [user, authLoading, loadNotifications, router])
 
+  useEffect(() => {
+    const loadPreferences = async () => {
+      if (!user?.$id) return
+      try {
+        const response = await fetch('/api/notifications/preferences', {
+          headers: {
+            'x-user-id': user.$id,
+          },
+        })
+        const data = await response.json()
+        if (data?.data) {
+          setPreferenceState({
+            sessionReminders: data.data.calendarPush !== false,
+            podInvites: data.data.socialPush !== false,
+            newResources: data.data.studyPush !== false,
+            comments: data.data.socialEmail !== false,
+            likes: data.data.socialPush !== false,
+            followers: data.data.marketingEmail === true,
+          })
+        }
+      } catch (error) {
+        console.error("Failed to load notification preferences:", error)
+      }
+    }
+
+    loadPreferences()
+  }, [user?.$id])
+
   const handleMarkAsRead = async (id: string) => {
     try {
       await notificationService.markAsRead(id)
@@ -160,7 +197,7 @@ export default function NotificationsPage() {
   }
 
   const handleAcceptInvite = async (notification: Notification) => {
-    if (!notification.podId) {
+    if (!notification.podId || !user?.$id) {
       toast({
         title: "Error",
         description: "Invalid pod invitation",
@@ -170,7 +207,14 @@ export default function NotificationsPage() {
     }
 
     try {
-      await podService.joinPod(notification.podId)
+      const email =
+        typeof user.email === "string"
+          ? user.email
+          : typeof (user.prefs as Record<string, unknown> | undefined)?.email === "string"
+            ? ((user.prefs as Record<string, unknown>).email as string)
+            : undefined
+
+      await podService.joinPod(notification.podId, user.$id, email)
       await handleMarkAsRead(notification.$id)
       toast({
         title: "Invitation Accepted",
@@ -205,6 +249,46 @@ export default function NotificationsPage() {
       title: "Joining Session",
       description: `Connecting you to ${notification.podName || "the"} session...`,
     })
+  }
+
+  const handleSavePreferences = async () => {
+    if (!user?.$id) return
+    setIsSavingPreferences(true)
+    try {
+      const payload = {
+        calendarPush: preferenceState.sessionReminders,
+        socialPush: preferenceState.podInvites || preferenceState.likes,
+        studyPush: preferenceState.newResources,
+        socialEmail: preferenceState.comments,
+        marketingEmail: preferenceState.followers,
+      }
+
+      const response = await fetch('/api/notifications/preferences', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.$id,
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save preferences')
+      }
+
+      toast({
+        title: "Preferences Saved",
+        description: "Your notification settings have been updated.",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to save notification preferences",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSavingPreferences(false)
+    }
   }
 
   const getNotificationIcon = (type: string) => {
@@ -473,15 +557,15 @@ export default function NotificationsPage() {
                   <h4 className="font-semibold">Pod Notifications</h4>
                   <div className="space-y-2 text-sm">
                     <label className="flex items-center space-x-2">
-                      <input type="checkbox" defaultChecked className="rounded" />
+                      <input type="checkbox" checked={preferenceState.sessionReminders} onChange={(e) => setPreferenceState(prev => ({ ...prev, sessionReminders: e.target.checked }))} className="rounded" />
                       <span>Session reminders</span>
                     </label>
                     <label className="flex items-center space-x-2">
-                      <input type="checkbox" defaultChecked className="rounded" />
+                      <input type="checkbox" checked={preferenceState.podInvites} onChange={(e) => setPreferenceState(prev => ({ ...prev, podInvites: e.target.checked }))} className="rounded" />
                       <span>Pod invitations</span>
                     </label>
                     <label className="flex items-center space-x-2">
-                      <input type="checkbox" defaultChecked className="rounded" />
+                      <input type="checkbox" checked={preferenceState.newResources} onChange={(e) => setPreferenceState(prev => ({ ...prev, newResources: e.target.checked }))} className="rounded" />
                       <span>New resources shared</span>
                     </label>
                   </div>
@@ -490,22 +574,24 @@ export default function NotificationsPage() {
                   <h4 className="font-semibold">Social Notifications</h4>
                   <div className="space-y-2 text-sm">
                     <label className="flex items-center space-x-2">
-                      <input type="checkbox" defaultChecked className="rounded" />
+                      <input type="checkbox" checked={preferenceState.comments} onChange={(e) => setPreferenceState(prev => ({ ...prev, comments: e.target.checked }))} className="rounded" />
                       <span>Comments on posts</span>
                     </label>
                     <label className="flex items-center space-x-2">
-                      <input type="checkbox" defaultChecked className="rounded" />
+                      <input type="checkbox" checked={preferenceState.likes} onChange={(e) => setPreferenceState(prev => ({ ...prev, likes: e.target.checked }))} className="rounded" />
                       <span>Likes and reactions</span>
                     </label>
                     <label className="flex items-center space-x-2">
-                      <input type="checkbox" className="rounded" />
+                      <input type="checkbox" checked={preferenceState.followers} onChange={(e) => setPreferenceState(prev => ({ ...prev, followers: e.target.checked }))} className="rounded" />
                       <span>New followers</span>
                     </label>
                   </div>
                 </div>
               </div>
               <div className="flex justify-end mt-6">
-                <Button className="bg-primary hover:bg-primary/90">Save Preferences</Button>
+                <Button className="bg-primary hover:bg-primary/90" onClick={handleSavePreferences} disabled={isSavingPreferences}>
+                  {isSavingPreferences ? "Saving..." : "Save Preferences"}
+                </Button>
               </div>
             </CardContent>
           </Card>

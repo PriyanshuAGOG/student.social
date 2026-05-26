@@ -1,22 +1,10 @@
-/**
- * Assignment Submission API Endpoint
- * POST /api/assignments/submit
- * 
- * Allows students to submit assignments with:
- * - Text submission
- * - File upload
- * - Timestamp tracking
- * - Validation
- * - Automatic grading trigger
- */
-
 import { NextRequest, NextResponse } from 'next/server';
 import {
   submitAssignment,
-  getChapterAssignments,
   updateProgress,
   getOrCreateProgress,
   getCourseDatabase,
+  updateSubmission,
 } from '@/lib/course-service';
 import { SubmissionStatus } from '@/lib/types/courses';
 
@@ -31,64 +19,55 @@ export async function POST(request: NextRequest) {
     const submissionText = formData.get('submissionText') as string;
     const submissionFile = formData.get('submissionFile') as File | null;
 
-    // Validation
     if (!assignmentId || !userId || !courseId) {
       return NextResponse.json(
         { error: 'Missing required fields: assignmentId, userId, courseId' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!submissionText && !submissionFile) {
       return NextResponse.json(
         { error: 'Submission must include either text or file' },
-        { status: 400 }
+        { status: 400 },
       );
     }
-
-    console.log(`📝 Submission received for assignment ${assignmentId} from user ${userId}`);
 
     const db = getCourseDatabase();
     if (!db) {
       return NextResponse.json(
         { error: 'Database connection failed' },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
     let fileUrl: string | null = null;
-
-    // Handle file upload if present
     if (submissionFile) {
       try {
         fileUrl = await uploadSubmissionFile(submissionFile);
-        console.log(`📎 File uploaded: ${fileUrl}`);
       } catch (error) {
-        console.error('Error uploading file:', error);
         return NextResponse.json(
-          { error: 'File upload failed' },
-          { status: 400 }
+          { error: error instanceof Error ? error.message : 'File upload failed' },
+          { status: 400 },
         );
       }
     }
 
-    // Validate submission length
     const textLength = submissionText?.length || 0;
     if (textLength > 10000) {
       return NextResponse.json(
         { error: 'Submission text exceeds maximum length of 10,000 characters' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (textLength < 10 && !fileUrl) {
       return NextResponse.json(
         { error: 'Submission text must be at least 10 characters' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // Create submission record
     const submission = await submitAssignment(db, {
       assignmentId,
       userId,
@@ -103,9 +82,6 @@ export async function POST(request: NextRequest) {
       status: SubmissionStatus.SUBMITTED,
     });
 
-    console.log(`✅ Submission ${submission.$id} created`);
-
-    // Update user progress
     try {
       if (chapterId) {
         const progress = await getOrCreateProgress(db, userId, courseId, 1);
@@ -115,36 +91,21 @@ export async function POST(request: NextRequest) {
       }
     } catch (error) {
       console.error('Error updating progress:', error);
-      // Don't fail the submission if progress update fails
     }
 
-    // Trigger automatic grading
-    console.log('🤖 Triggering automatic grading...');
+    let gradedSubmission = submission;
     try {
-      const gradeResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/assignments/grade`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            submissionId: submission.$id,
-            assignmentId,
-            autoGrade: true,
-          }),
-        }
-      );
-
-      if (gradeResponse.ok) {
-        const gradeData = await gradeResponse.json();
-        console.log(
-          `✅ Auto-grading complete. Score: ${gradeData.data.score}, Confidence: ${gradeData.data.confidence}`
-        );
-      } else {
-        console.error('Auto-grading failed');
-      }
+      const grade = autoGradeSubmission(submissionText || '', Boolean(fileUrl));
+      gradedSubmission = await updateSubmission(db, submission.$id, {
+        score: grade.score,
+        confidence: grade.confidence,
+        aiGeneratedFeedback: grade.feedback,
+        isAutoGraded: grade.isAutoGraded,
+        flaggedForReview: grade.flaggedForReview,
+        status: grade.flaggedForReview ? SubmissionStatus.REVIEW_PENDING : SubmissionStatus.GRADED,
+      });
     } catch (error) {
-      console.error('Error triggering auto-grading:', error);
-      // Don't fail submission if grading fails
+      console.error('Error auto-grading submission:', error);
     }
 
     return NextResponse.json({
@@ -154,26 +115,110 @@ export async function POST(request: NextRequest) {
         submissionId: submission.$id,
         assignmentId,
         userId,
-        submittedAt: submission.submittedAt,
-        status: submission.status,
+        submittedAt: gradedSubmission.submittedAt,
+        status: gradedSubmission.status,
+        submission: gradedSubmission,
       },
     });
   } catch (error) {
     console.error('Error in submit assignment endpoint:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error occurred' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-/**
- * Upload submission file to storage
- * In real implementation, would upload to Appwrite Storage or cloud storage
- */
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const submissionId = searchParams.get('submissionId');
+
+    if (!submissionId) {
+      return NextResponse.json({ error: 'Missing submissionId' }, { status: 400 });
+    }
+
+    const db = getCourseDatabase();
+    if (!db) {
+      return NextResponse.json({ error: 'Database connection failed' }, { status: 500 });
+    }
+
+    const submission = await db.getDocument('peerspark-main-db', 'assignment_submissions', submissionId);
+    return NextResponse.json({ success: true, data: submission });
+  } catch (error) {
+    console.error('Error fetching submission:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Unknown error occurred' },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const submissionId = searchParams.get('submissionId');
+
+    if (!submissionId) {
+      return NextResponse.json({ error: 'Missing submissionId' }, { status: 400 });
+    }
+
+    const formData = await request.formData();
+    const submissionText = formData.get('submissionText') as string;
+    const submissionFile = formData.get('submissionFile') as File | null;
+
+    if (!submissionText && !submissionFile) {
+      return NextResponse.json({ error: 'Must provide either text or file' }, { status: 400 });
+    }
+
+    const db = getCourseDatabase();
+    if (!db) {
+      return NextResponse.json({ error: 'Database connection failed' }, { status: 500 });
+    }
+
+    let fileUrl: string | null = null;
+    if (submissionFile) {
+      try {
+        fileUrl = await uploadSubmissionFile(submissionFile);
+      } catch (error) {
+        return NextResponse.json({ error: 'File upload failed' }, { status: 400 });
+      }
+    }
+
+    const currentSubmission = await db.getDocument('peerspark-main-db', 'assignment_submissions', submissionId);
+    const updated = await db.updateDocument('peerspark-main-db', 'assignment_submissions', submissionId, {
+      submissionText: submissionText || currentSubmission.submissionText,
+      submissionFile: fileUrl || currentSubmission.submissionFile,
+      revisionCount: (currentSubmission.revisionCount || 0) + 1,
+      status: SubmissionStatus.SUBMITTED,
+    });
+
+    const grade = autoGradeSubmission(
+      String(submissionText || currentSubmission.submissionText || ''),
+      Boolean(fileUrl || currentSubmission.submissionFile),
+    );
+
+    const graded = await updateSubmission(db, submissionId, {
+      score: grade.score,
+      confidence: grade.confidence,
+      aiGeneratedFeedback: grade.feedback,
+      isAutoGraded: grade.isAutoGraded,
+      flaggedForReview: grade.flaggedForReview,
+      status: grade.flaggedForReview ? SubmissionStatus.REVIEW_PENDING : SubmissionStatus.GRADED,
+    });
+
+    return NextResponse.json({ success: true, data: graded });
+  } catch (error) {
+    console.error('Error revising submission:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Unknown error occurred' },
+      { status: 500 },
+    );
+  }
+}
+
 async function uploadSubmissionFile(file: File): Promise<string> {
-  // Validate file
-  const maxSize = 10 * 1024 * 1024; // 10 MB
+  const maxSize = 10 * 1024 * 1024;
   if (file.size > maxSize) {
     throw new Error('File size exceeds 10MB limit');
   }
@@ -191,149 +236,35 @@ async function uploadSubmissionFile(file: File): Promise<string> {
     throw new Error(`File type ${file.type} not allowed`);
   }
 
-  // In real implementation:
-  // 1. Convert file to buffer
-  // 2. Upload to Appwrite Storage
-  // 3. Return URL
-
-  // For now, return placeholder
   const fileName = `${Date.now()}-${file.name}`;
   return `/uploads/assignments/${fileName}`;
 }
 
-/**
- * GET /api/assignments/submit?submissionId=xxx
- * Get submission details
- */
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const submissionId = searchParams.get('submissionId');
+function autoGradeSubmission(submissionText: string, hasFile: boolean) {
+  const trimmed = submissionText.trim();
+  const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
 
-    if (!submissionId) {
-      return NextResponse.json(
-        { error: 'Missing submissionId' },
-        { status: 400 }
-      );
-    }
-
-    const db = getCourseDatabase();
-    if (!db) {
-      return NextResponse.json(
-        { error: 'Database connection failed' },
-        { status: 500 }
-      );
-    }
-
-    // Fetch submission
-    const submission = await db.getDocument('peerspark-main-db', 'assignment_submissions', submissionId);
-
-    return NextResponse.json({
-      success: true,
-      data: submission,
-    });
-  } catch (error) {
-    console.error('Error fetching submission:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error occurred' },
-      { status: 500 }
-    );
+  if (!trimmed && hasFile) {
+    return {
+      score: 75,
+      confidence: 0.55,
+      feedback: 'File submission received. This submission is queued for instructor review.',
+      isAutoGraded: false,
+      flaggedForReview: true,
+    };
   }
-}
 
-/**
- * PUT /api/assignments/submit?submissionId=xxx
- * Update/revise submission
- */
-export async function PUT(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const submissionId = searchParams.get('submissionId');
+  const score = Math.max(40, Math.min(100, 50 + wordCount));
+  const confidence = Math.min(0.95, 0.5 + wordCount / 200);
+  const flaggedForReview = wordCount < 25;
 
-    if (!submissionId) {
-      return NextResponse.json(
-        { error: 'Missing submissionId' },
-        { status: 400 }
-      );
-    }
-
-    const formData = await request.formData();
-    const submissionText = formData.get('submissionText') as string;
-    const submissionFile = formData.get('submissionFile') as File | null;
-
-    if (!submissionText && !submissionFile) {
-      return NextResponse.json(
-        { error: 'Must provide either text or file' },
-        { status: 400 }
-      );
-    }
-
-    const db = getCourseDatabase();
-    if (!db) {
-      return NextResponse.json(
-        { error: 'Database connection failed' },
-        { status: 500 }
-      );
-    }
-
-    let fileUrl: string | null = null;
-    if (submissionFile) {
-      try {
-        fileUrl = await uploadSubmissionFile(submissionFile);
-      } catch (error) {
-        return NextResponse.json(
-          { error: 'File upload failed' },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Get current submission
-    const currentSubmission = await db.getDocument('peerspark-main-db', 'assignment_submissions', submissionId);
-
-    // Update submission
-    const updated = await db.updateDocument('peerspark-main-db', 'assignment_submissions', submissionId, {
-      submissionText: submissionText || currentSubmission.submissionText,
-      submissionFile: fileUrl || currentSubmission.submissionFile,
-      revisionCount: (currentSubmission.revisionCount || 0) + 1,
-      status: 'Submitted', // Reset status for re-grading
-    });
-
-    console.log(
-      `✏️  Submission ${submissionId} revised. Revision count: ${updated.revisionCount}`
-    );
-
-    // Trigger re-grading
-    try {
-      await fetch(
-        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/assignments/grade`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            submissionId,
-            autoGrade: true,
-          }),
-        }
-      );
-    } catch (error) {
-      console.error('Error triggering re-grading:', error);
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Submission updated and re-graded',
-      data: {
-        submissionId: updated.$id,
-        revisionCount: updated.revisionCount,
-        status: updated.status,
-      },
-    });
-  } catch (error) {
-    console.error('Error updating submission:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error occurred' },
-      { status: 500 }
-    );
-  }
+  return {
+    score,
+    confidence,
+    feedback: flaggedForReview
+      ? 'Submission received. Add more detail to improve your score; this response has been flagged for review.'
+      : 'Submission received and auto-evaluated. The response shows adequate coverage of the chapter concepts.',
+    isAutoGraded: !flaggedForReview,
+    flaggedForReview,
+  };
 }

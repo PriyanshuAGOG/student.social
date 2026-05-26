@@ -84,26 +84,48 @@ export default function SavedPage() {
     loadSavedPosts()
   }, [user?.$id])
 
-  const handleUnsave = (postId: string) => {
-    setSavedPosts(savedPosts.filter(post => post.id !== postId))
-    toast({
-      title: "Post Removed",
-      description: "Post removed from your saved items",
-    })
+  const handleUnsave = async (postId: string) => {
+    if (!user?.$id) return
+    try {
+      await feedService.toggleSavePost(postId, user.$id)
+      setSavedPosts((prev) => prev.filter(post => post.id !== postId))
+      toast({
+        title: "Post Removed",
+        description: "Post removed from your saved items",
+      })
+    } catch (error: any) {
+      console.error(error)
+      toast({
+        title: "Failed to remove saved post",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleLike = (postId: string) => {
-    setSavedPosts(
-      savedPosts.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              isLiked: !post.isLiked,
-              likes: post.isLiked ? post.likes - 1 : post.likes + 1,
-            }
-          : post,
-      ),
-    )
+  const handleLike = async (postId: string) => {
+    if (!user?.$id) return
+    try {
+      const updated = await feedService.toggleLike(postId, user.$id)
+      setSavedPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId
+            ? {
+                ...post,
+                isLiked: updated.isLiked,
+                likes: updated.likes || 0,
+              }
+            : post,
+        ),
+      )
+    } catch (error: any) {
+      console.error(error)
+      toast({
+        title: "Failed to like post",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleShare = (postId: string) => {

@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
+import { useAuth } from '@/lib/auth-context'
 
 interface PreferencesData {
   $id?: string
@@ -58,16 +59,20 @@ export function NotificationPreferences() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [preferences, setPreferences] = useState<PreferencesData | null>(null)
+  const { user } = useAuth()
 
   useEffect(() => {
-    loadPreferences()
-  }, [])
+    if (user?.$id) {
+      loadPreferences()
+    }
+  }, [user?.$id])
 
   const loadPreferences = async () => {
+    if (!user?.$id) return
     try {
       const response = await fetch('/api/notifications/preferences', {
         headers: {
-          'x-user-id': 'current-user-id', // Replace with actual user ID from auth
+          'x-user-id': user.$id,
         },
       })
       const data = await response.json()
@@ -125,13 +130,14 @@ export function NotificationPreferences() {
   }
 
   const handleSave = async () => {
+    if (!user?.$id) return
     setSaving(true)
     try {
       const response = await fetch('/api/notifications/preferences', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': 'current-user-id', // Replace with actual user ID
+          'x-user-id': user.$id,
         },
         body: JSON.stringify(preferences),
       })

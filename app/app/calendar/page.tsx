@@ -295,7 +295,14 @@ function CalendarContent() {
 
       // If it's a meeting, create Jitsi room
       if (formData.type === "meeting" && formData.podId) {
-        const meeting = await jitsiService.createPodMeeting(formData.podId, user.$id, formData.title)
+        const meeting = await jitsiService.createPodMeeting(formData.podId, user.$id, formData.title, {
+          startTime: startDateTime.toISOString(),
+          endTime: endDateTime.toISOString(),
+          createCalendarEvent: false,
+        })
+        await calendarService.updateEvent(created.$id, {
+          meetingUrl: meeting.url,
+        })
         newEvent.meetingUrl = meeting.url
       }
 

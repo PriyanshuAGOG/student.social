@@ -19,6 +19,7 @@ export default function CoursePage() {
   const [course, setCourse] = useState<any>(null);
   const [chapters, setChapters] = useState<any[]>([]);
   const [enrolled, setEnrolled] = useState(false);
+  const [isEnrolling, setIsEnrolling] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedChapterIndex, setSelectedChapterIndex] = useState(0);
 
@@ -51,8 +52,11 @@ export default function CoursePage() {
 
       // Check enrollment status based on user auth
       if (user?.$id) {
-        // TODO: Fetch actual enrollment status from API
-        setEnrolled(false);
+        const enrollmentRes = await fetch(`/api/courses/enroll?userId=${encodeURIComponent(user.$id)}&courseId=${encodeURIComponent(courseId)}`);
+        if (enrollmentRes.ok) {
+          const enrollmentData = await enrollmentRes.json();
+          setEnrolled(Boolean(enrollmentData.enrolled));
+        }
       }
     } catch (error) {
       console.error('Error fetching course:', error);
@@ -69,6 +73,7 @@ export default function CoursePage() {
     }
     
     try {
+      setIsEnrolling(true);
       const response = await fetch('/api/courses/enroll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -89,6 +94,8 @@ export default function CoursePage() {
     } catch (error) {
       console.error('Error enrolling:', error);
       toast({ title: 'Error', description: 'Failed to enroll in course. Please try again.', variant: 'destructive' });
+    } finally {
+      setIsEnrolling(false);
     }
   };
 
@@ -145,7 +152,8 @@ export default function CoursePage() {
             </div>
 
             <div className="flex gap-4">
-              <Button onClick={handleEnroll} size="lg">
+              <Button onClick={handleEnroll} size="lg" disabled={isEnrolling}>
+                {isEnrolling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Enroll Now {course.price > 0 ? `- $${course.price}` : '- Free'}
               </Button>
               <Button variant="outline" size="lg">

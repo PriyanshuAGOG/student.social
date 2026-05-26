@@ -155,13 +155,14 @@ export default function VaultPage() {
         views: doc.views || 0,
         likes: doc.likes || 0,
         downloads: doc.downloads || 0,
-        isBookmarked: false, // TODO: Implement bookmarks
-        isLiked: false, // TODO: Implement likes
+        isBookmarked: Array.isArray(doc.bookmarkedBy) ? doc.bookmarkedBy.includes(user.$id) : false,
+        isLiked: Array.isArray(doc.likedBy) ? doc.likedBy.includes(user.$id) : false,
         visibility: doc.visibility || "public",
       }))
 
       setResources(transformedResources)
       setMyResourcesCount(myResult.documents.length)
+      setBookmarkedCount(transformedResources.filter((resource) => resource.isBookmarked).length)
     } catch (error) {
       console.error("Failed to load resources:", error)
       toast({
@@ -188,13 +189,11 @@ export default function VaultPage() {
 
     setIsUploading(true)
     try {
-      await resourceService.uploadResource(file, {
+      await resourceService.uploadResource(user.$id, file, {
         title: file.name,
         description: "",
         tags: [],
-        authorId: user.$id,
         visibility: "public",
-        category: getCategoryFromFileType(file.type),
       })
 
       toast({
@@ -219,14 +218,6 @@ export default function VaultPage() {
     }
   }
 
-  const getCategoryFromFileType = (fileType: string): string => {
-    if (fileType.includes("image")) return "images"
-    if (fileType.includes("video")) return "videos"
-    if (fileType.includes("pdf") || fileType.includes("document")) return "notes"
-    if (fileType.includes("javascript") || fileType.includes("typescript") || fileType.includes("text/plain")) return "code"
-    return "other"
-  }
-
   const handleDownload = async (resourceId: string) => {
     const resource = resources.find(r => r.$id === resourceId)
     if (resource) {
@@ -236,8 +227,11 @@ export default function VaultPage() {
       })
       
       try {
-        const downloadUrl = await resourceService.downloadResource(resourceId)
-        window.open(downloadUrl.toString(), "_blank")
+        const download = await resourceService.downloadResource(resourceId)
+        if (!download?.url) {
+          throw new Error("Download URL missing")
+        }
+        window.open(download.url, "_blank")
         
         // Update local state
         setResources(prev => 
@@ -258,44 +252,66 @@ export default function VaultPage() {
     }
   }
 
-  const handleLike = (resourceId: string) => {
-    setResources(prev => 
-      prev.map(resource => 
-        resource.$id === resourceId 
-          ? { 
-              ...resource, 
-              isLiked: !resource.isLiked,
-              likes: resource.isLiked ? resource.likes - 1 : resource.likes + 1
-            }
-          : resource
+  const handleLike = async (resourceId: string) => {
+    if (!user?.$id) return
+
+    try {
+      const result = await resourceService.toggleLikeResource(resourceId, user.$id)
+      setResources(prev =>
+        prev.map(resource =>
+          resource.$id === resourceId
+            ? { ...resource, isLiked: result.isLiked, likes: result.likes }
+            : resource
+        )
       )
-    )
-    
-    const resource = resources.find(r => r.$id === resourceId)
-    if (resource) {
+
+      const resource = resources.find(r => r.$id === resourceId)
+      if (resource) {
+        toast({
+          title: result.isLiked ? "Resource Liked" : "Like Removed",
+          description: result.isLiked ? `Added ${resource.title} to your liked resources` : "Removed from liked resources",
+        })
+      }
+    } catch (error) {
+      console.error("Like failed:", error)
       toast({
-        title: resource.isLiked ? "Like Removed" : "Resource Liked",
-        description: resource.isLiked ? "Removed from liked resources" : `Added ${resource.title} to your liked resources`,
+        title: "Like Failed",
+        description: "Failed to update like. Please try again.",
+        variant: "destructive",
       })
     }
   }
 
-  const handleBookmark = (resourceId: string) => {
-    setResources(prev => 
-      prev.map(resource => 
-        resource.$id === resourceId 
-          ? { ...resource, isBookmarked: !resource.isBookmarked }
-          : resource
+  const handleBookmark = async (resourceId: string) => {
+    if (!user?.$id) return
+
+    try {
+      const result = await resourceService.toggleBookmarkResource(resourceId, user.$id)
+      setResources(prev => 
+        prev.map(resource => 
+          resource.$id === resourceId 
+            ? { ...resource, isBookmarked: result.bookmarked }
+            : resource
+        )
       )
-    )
-    
-    const resource = resources.find(r => r.$id === resourceId)
-    if (resource) {
+      setBookmarkedCount((prev) => Math.max(0, prev + (result.bookmarked ? 1 : -1)))
+
       toast({
-        title: resource.isBookmarked ? "Bookmark Removed" : "Resource Bookmarked",
-        description: resource.isBookmarked ? "Removed from bookmarks" : `Saved ${resource.title} to your bookmarks`,
+        title: result.bookmarked ? "Resource Bookmarked" : "Bookmark Removed",
+        description: result.bookmarked ? "Saved to your bookmarks" : "Removed from bookmarks",
+      })
+    } catch (error) {
+      console.error("Bookmark failed:", error)
+      toast({
+        title: "Bookmark Failed",
+        description: "Failed to update bookmark. Please try again.",
+        variant: "destructive",
       })
     }
+  }
+
+  const openFilePicker = () => {
+    fileInputRef.current?.click()
   }
 
   const handleView = (resourceId: string) => {
@@ -741,7 +757,7 @@ export default function VaultPage() {
                   <Star className="w-4 h-4 mr-3" />
                   <span className="flex-1 text-left">Bookmarked</span>
                   <Badge variant="secondary" className="text-xs">
-                    {resources.filter(r => r.isBookmarked).length}
+                    {bookmarkedCount}
                   </Badge>
                 </Button>
                 <Button variant="ghost" className="w-full justify-start">
@@ -894,7 +910,7 @@ export default function VaultPage() {
                     <p className="text-muted-foreground text-center mb-4">
                       Start sharing your knowledge with the community
                     </p>
-                    <Button onClick={handleUpload} className="bg-primary hover:bg-primary/90">
+                    <Button onClick={openFilePicker} className="bg-primary hover:bg-primary/90">
                       <Upload className="w-4 h-4 mr-2" />
                       Upload Your First Resource
                     </Button>
@@ -915,20 +931,24 @@ export default function VaultPage() {
                     <CardDescription>Resources you&apos;ve accessed in the last 7 days</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {filteredResources.slice(0, 5).map((resource) => (
-                      <div key={resource.id} className="flex items-center space-x-3 p-3 rounded-lg bg-secondary/50">
+                    {filteredResources
+                      .slice()
+                      .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
+                      .slice(0, 5)
+                      .map((resource) => (
+                      <div key={resource.$id} className="flex items-center space-x-3 p-3 rounded-lg bg-secondary/50">
                         <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-                          {getTypeIcon(resource.type)}
+                          {getTypeIcon(resource.category)}
                         </div>
                         <div className="flex-1">
                           <h4 className="font-semibold text-sm">{resource.title}</h4>
                           <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-                            <span>Viewed {resource.uploadDate}</span>
+                            <span>Uploaded {formatRelativeTime(resource.uploadedAt)}</span>
                             <span>•</span>
-                            <span>{resource.size}</span>
+                            <span>{formatFileSize(resource.fileSize)}</span>
                           </div>
                         </div>
-                        <Button size="sm" variant="outline" onClick={() => handleView(resource.id)}>
+                        <Button size="sm" variant="outline" onClick={() => handleView(resource.$id)}>
                           <Eye className="w-3 h-3 mr-1" />
                           View
                         </Button>

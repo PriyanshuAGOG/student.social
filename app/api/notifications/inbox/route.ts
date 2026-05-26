@@ -10,6 +10,7 @@ import { getEnv } from '@/lib/env'
 
 const env = getEnv()
 const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
+const NOTIFICATIONS_COLLECTION_ID = env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications'
 
 export async function GET(req: NextRequest) {
   try {
@@ -34,15 +35,27 @@ export async function GET(req: NextRequest) {
     queries.push(Query.limit(Math.min(limit, 100)))
     queries.push(Query.offset(Math.max(offset, 0)))
 
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      'in_app_notifications',
-      queries
-    )
+    const response = await databases.listDocuments(DATABASE_ID, NOTIFICATIONS_COLLECTION_ID, queries)
+
+    const data = response.documents.map((doc: any) => ({
+      $id: doc.$id,
+      title: doc.title || doc.type || 'Notification',
+      body: doc.message || '',
+      category: doc.category || doc.type || 'system',
+      priority: doc.priority || 'normal',
+      icon: doc.icon,
+      imageUrl: doc.imageUrl,
+      ctaLabel: doc.actionText,
+      ctaUrl: doc.actionUrl,
+      isRead: doc.isRead ?? doc.read ?? false,
+      readAt: doc.readAt,
+      expiresAt: doc.expiresAt,
+      createdAt: doc.createdAt || doc.timestamp || doc.$createdAt,
+    }))
 
     return NextResponse.json({
       success: true,
-      data: response.documents,
+      data,
       total: response.total,
       limit,
       offset,

@@ -2096,6 +2096,33 @@ export const studyPlanService = {
 
 // Chat/Messaging Functions
 export const chatService = {
+  async getOrCreatePodRoom(podId: string, podName?: string, initialMemberIds: string[] = []) {
+    if (!podId) throw new Error("Pod ID is required")
+
+    try {
+      const existing = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
+        Query.equal("podId", podId),
+        Query.limit(1),
+      ])
+
+      if (existing.documents?.length) {
+        return existing.documents[0]
+      }
+    } catch (err) {
+      console.warn("Pod room lookup failed, will attempt to create", err)
+    }
+
+    return await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", {
+      podId,
+      name: podName?.trim() || "Pod Chat",
+      type: "pod",
+      members: Array.from(new Set(initialMemberIds.filter(Boolean))),
+      createdAt: new Date().toISOString(),
+      lastMessageTime: new Date().toISOString(),
+      isActive: true,
+    })
+  },
+
   /**
    * Get or create a direct message room between two users
    */
@@ -2107,7 +2134,7 @@ export const chatService = {
     // Try to find an existing DM room
     try {
       const existing = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
-        Query.equal("type", "dm"),
+        Query.equal("type", ["direct", "dm"]),
         Query.contains("members", members[0]),
         Query.contains("members", members[1]),
       ])
@@ -2122,7 +2149,7 @@ export const chatService = {
     // Create the room with auto-generated ID (stays under 36 chars Appwrite limit)
     const room = await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", {
       name: "Direct Messages",
-      type: "dm",
+      type: "direct",
       members,
       createdAt: new Date().toISOString(),
       lastMessageTime: new Date().toISOString(),
@@ -2315,7 +2342,12 @@ export const chatService = {
       const podRooms = await Promise.all(
         podDocuments.map(async (pod: any) => {
           try {
-            return await databases.getDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, `${pod.teamId}_general`)
+            const room = await this.getOrCreatePodRoom(
+              pod.$id || pod.id || pod.podId || pod.teamId,
+              pod.name,
+              Array.isArray(pod.members) ? pod.members : [userId],
+            )
+            return room
           } catch (e) {
             return null
           }
@@ -2327,11 +2359,14 @@ export const chatService = {
       let directRooms: any[] = []
       try {
         const allDirectRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
-          Query.equal("type", "direct"),
+          Query.equal("type", ["direct", "dm"]),
         ])
         // Filter rooms where user is a participant (handle both array and string formats)
         directRooms = (allDirectRooms.documents || []).filter((room: any) => {
-          const participants = room.participants || []
+          const participants = Array.isArray(room.members)
+            ? room.members
+            : (room.participants || [])
+
           if (Array.isArray(participants)) {
             return participants.includes(userId)
           }
@@ -2390,40 +2425,7 @@ export const chatService = {
    * Create a direct chat room between two users
    */
   async createDirectChat(userId1: string, userId2: string) {
-    try {
-      if (!userId1 || !userId2) {
-        throw new Error("Both user IDs are required")
-      }
-
-      // Check if chat already exists
-      const existing = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
-        Query.equal("type", "direct"),
-      ])
-
-      const existingChat = existing.documents.find(
-        (room: any) =>
-          room.members &&
-          room.members.length === 2 &&
-          room.members.includes(userId1) &&
-          room.members.includes(userId2)
-      )
-
-      if (existingChat) {
-        return existingChat
-      }
-
-      // Create new direct chat
-      const chatRoom = await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", {
-        type: "direct",
-        members: [userId1, userId2],
-        createdAt: new Date().toISOString(),
-      })
-
-      return chatRoom
-    } catch (error) {
-      console.error("Create direct chat error:", error)
-      throw error
-    }
+    return await this.getOrCreateDirectRoom(userId1, userId2)
   },
 }
 
@@ -2679,6 +2681,45 @@ export const resourceService = {
       }
     } catch (error) {
       console.error("Toggle bookmark resource error:", error)
+      throw error
+    }
+  },
+
+  /**
+   * Toggle like on resource
+   */
+  async toggleLikeResource(resourceId: string, userId: string) {
+    try {
+      if (!resourceId || !userId) {
+        throw new Error("Resource ID and User ID are required")
+      }
+
+      const resource = await databases.getDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId)
+      const likedBy = Array.isArray(resource.likedBy) ? resource.likedBy : []
+      const isLiked = likedBy.includes(userId)
+      const newLikedBy = isLiked
+        ? likedBy.filter((id: string) => id !== userId)
+        : [...likedBy, userId]
+
+      const updated = await databases.updateDocument(
+        DATABASE_ID,
+        COLLECTIONS.RESOURCES,
+        resourceId,
+        {
+          likedBy: newLikedBy,
+          likes: newLikedBy.length,
+          updatedAt: new Date().toISOString(),
+        }
+      )
+
+      return {
+        success: true,
+        isLiked: !isLiked,
+        likes: newLikedBy.length,
+        resource: updated,
+      }
+    } catch (error) {
+      console.error("Toggle like resource error:", error)
       throw error
     }
   },
@@ -3262,6 +3303,7 @@ export const commentService = {
       authorName?: string
       authorAvatar?: string
       authorUsername?: string
+      replyTo?: string | null
     } = {}
   ) {
     try {
@@ -3321,6 +3363,8 @@ export const commentService = {
           authorName: authorName,
           authorAvatar: authorAvatar,
           authorUsername: authorUsername,
+          replyTo: metadata.replyTo || null,
+          parentCommentId: metadata.replyTo || null,
         }
       )
 
@@ -3346,6 +3390,29 @@ export const commentService = {
           })
         } catch (e) {
           console.error("Failed to create notification:", e)
+        }
+      }
+
+      if (metadata.replyTo) {
+        try {
+          const parentComment = await databases.getDocument(DATABASE_ID, COLLECTIONS.COMMENTS, metadata.replyTo)
+          if (parentComment.authorId && parentComment.authorId !== authorId) {
+            await databases.createDocument(DATABASE_ID, COLLECTIONS.NOTIFICATIONS, "unique()", {
+              userId: parentComment.authorId,
+              type: "comment_reply",
+              actor: authorId,
+              actorName: authorName,
+              actorAvatar: authorAvatar,
+              postId: postId,
+              commentId: comment.$id,
+              parentCommentId: metadata.replyTo,
+              message: `${authorName} replied to your comment`,
+              read: false,
+              createdAt: new Date().toISOString(),
+            })
+          }
+        } catch (e) {
+          console.error("Failed to create reply notification:", e)
         }
       }
 
@@ -4095,7 +4162,16 @@ export const jitsiService = {
   },
 
   // Create meeting for pod
-  async createPodMeeting(podId: string, userId: string, title: string) {
+  async createPodMeeting(
+    podId: string,
+    userId: string,
+    title: string,
+    options: {
+      startTime?: string
+      endTime?: string
+      createCalendarEvent?: boolean
+    } = {},
+  ) {
     try {
       const pod = await podService.getPodDetails(podId)
       const user = await profileService.getProfile(userId)
@@ -4110,18 +4186,19 @@ export const jitsiService = {
         startVideoMuted: false,
       })
 
-      // Create calendar event for the meeting
-      await calendarService.createEvent(
-        userId,
-        `${title} - ${pod.name}`,
-        new Date().toISOString(),
-        new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour duration
-        {
-          podId: podId,
-          meetingUrl: meeting.url,
-          type: "meeting",
-        }
-      )
+      if (options.createCalendarEvent !== false) {
+        await calendarService.createEvent(
+          userId,
+          `${title} - ${pod.name}`,
+          options.startTime || new Date().toISOString(),
+          options.endTime || new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+          {
+            podId: podId,
+            meetingUrl: meeting.url,
+            type: "meeting",
+          }
+        )
+      }
 
       // Notify pod members
       await Promise.all(

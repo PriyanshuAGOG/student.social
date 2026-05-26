@@ -125,7 +125,11 @@ export default function UserProfilePage() {
 
     setIsLoadingPosts(true)
     try {
-      const result = await feedService.getUserPosts(userProfile.userId)
+      const [result, savedResult] = await Promise.all([
+        feedService.getUserPosts(userProfile.userId),
+        user?.$id ? feedService.getSavedPosts(user.$id) : Promise.resolve({ documents: [] }),
+      ])
+      const savedIds = new Set((savedResult.documents || []).map((post: any) => post.$id))
       const posts = (result.documents || []).map((p: any) => ({
         id: p.$id,
         title: p.content?.substring(0, 50) || "Post",
@@ -136,7 +140,7 @@ export default function UserProfilePage() {
         shares: 0,
         tags: p.tags || [],
         isLiked: user?.$id ? (p.likedBy || []).includes(user.$id) : false,
-        isBookmarked: false,
+        isBookmarked: savedIds.has(p.$id),
       }))
       setUserPosts(posts)
     } catch (error) {
@@ -156,13 +160,52 @@ export default function UserProfilePage() {
     }
   }, [userProfile, loadPosts])
 
-  const handleFollow = () => {
-    if (!userProfile) return
-    setIsFollowing(!isFollowing)
-    toast({
-      title: isFollowing ? "Unfollowed" : "Following",
-      description: isFollowing ? `You unfollowed ${userProfile.name}` : `You are now following ${userProfile.name}`,
-    })
+  useEffect(() => {
+    const checkFollow = async () => {
+      if (!user?.$id || !userProfile?.userId) return
+      try {
+        const following = await profileService.isFollowing(user.$id, userProfile.userId)
+        setIsFollowing(following)
+      } catch (error) {
+        console.error("Failed to check follow state:", error)
+      }
+    }
+
+    checkFollow()
+  }, [user?.$id, userProfile?.userId])
+
+  const handleFollow = async () => {
+    if (!user?.$id || !userProfile) return
+
+    try {
+      const response = await fetch(`/api/users/${userProfile.userId}/follow`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.$id }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to update follow state")
+      }
+
+      const nextFollowing = Boolean(data.isFollowing)
+      setIsFollowing(nextFollowing)
+      setUserProfile(prev => prev ? ({
+        ...prev,
+        followers: Math.max(0, prev.followers + (nextFollowing ? 1 : -1)),
+      }) : prev)
+
+      toast({
+        title: nextFollowing ? "Following" : "Unfollowed",
+        description: data.message || (nextFollowing ? `You are now following ${userProfile.name}` : `You unfollowed ${userProfile.name}`),
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to update follow state",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleMessage = () => {
@@ -174,11 +217,24 @@ export default function UserProfilePage() {
     })
   }
 
-  const handleLike = (postId: string) => {
-    toast({
-      title: "Liked",
-      description: "Post liked successfully!",
-    })
+  const handleLike = async (postId: string) => {
+    if (!user?.$id) return
+    try {
+      const updated = await feedService.toggleLike(postId, user.$id)
+      setUserPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId
+            ? { ...post, isLiked: updated.isLiked, likes: updated.likes || 0 }
+            : post,
+        ),
+      )
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to update like state.",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleShare = (postId: string) => {

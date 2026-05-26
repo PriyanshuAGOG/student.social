@@ -1,155 +1,155 @@
-/**
- * Certificate Download & Management API
- * 
- * Endpoint: GET /api/certificates/download
- * 
- * Allows users to download certificates as PDF/PNG and integrates with LinkedIn.
- */
+import { NextRequest, NextResponse } from 'next/server'
+import PDFDocument from 'pdfkit'
+import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { generateCertificateHTML } from '@/lib/certificates'
 
-interface CertificateData {
-  certificateId: string;
-  userId: string;
-  userName: string;
-  courseId: string;
-  courseName: string;
-  instructorName: string;
-  score: number;
-  completionDate: string;
-  qrCode: string;
-  verificationUrl: string;
-}
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || 'peerspark-main-db'
 
-/**
- * GET /api/certificates/download?certificateId=xxx&format=pdf|png
- * 
- * Download certificate in PDF or PNG format
- */
-export async function GET(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const certificateId = searchParams.get('certificateId');
-    const format = searchParams.get('format') || 'pdf'; // pdf or png
+async function getCertificateBundle(certificateId: string) {
+  const { databases } = await createAdminClient()
+  const certificate = await databases.getDocument(DATABASE_ID, 'certificates', certificateId)
+  const course = await databases.getDocument(DATABASE_ID, 'courses', certificate.courseId)
+  const profile = await databases.getDocument(DATABASE_ID, 'profiles', certificate.userId)
 
-    if (!certificateId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing certificateId parameter' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!['pdf', 'png'].includes(format)) {
-      return new Response(
-        JSON.stringify({ error: 'Format must be pdf or png' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Note: This is a skeleton. Full implementation requires:
-    // 1. npm install pdfkit qrcode
-    // 2. Fetch certificate data from Appwrite
-    // 3. Generate PDF/PNG using certificate template
-    // 4. Return binary file with appropriate headers
-
-    // Placeholder response
-    const filename = `Certificate_${certificateId}.${format}`;
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: `Certificate download initiated: ${filename}`,
-        downloadUrl: `/api/certificates/download?certificateId=${certificateId}&format=${format}`,
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
-  } catch (error: any) {
-    console.error('Error downloading certificate:', error);
-    return new Response(
-      JSON.stringify({ error: error.message || 'Failed to download certificate' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+  return {
+    certificate,
+    course,
+    profile,
   }
 }
 
-/**
- * POST /api/certificates/linkedin-share
- * 
- * Share certificate credential on LinkedIn
- */
-export async function POST(request: Request) {
+function renderCertificatePdf(data: {
+  certificate: any
+  course: any
+  profile: any
+}) {
+  return new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 50 })
+    const chunks: Buffer[] = []
+
+    doc.on('data', (chunk) => chunks.push(chunk))
+    doc.on('end', () => resolve(Buffer.concat(chunks)))
+    doc.on('error', reject)
+
+    doc.fontSize(26).text('Certificate of Completion', { align: 'center' })
+    doc.moveDown()
+    doc.fontSize(14).text('This certifies that', { align: 'center' })
+    doc.moveDown(0.5)
+    doc.fontSize(22).text(data.profile.name || 'Learner', { align: 'center', underline: true })
+    doc.moveDown()
+    doc.fontSize(14).text('has successfully completed the course', { align: 'center' })
+    doc.moveDown(0.5)
+    doc.fontSize(18).text(data.course.title || 'Course', { align: 'center' })
+    doc.moveDown()
+    doc.fontSize(12).text(`Score: ${data.certificate.score || 0}%`, { align: 'center' })
+    doc.text(`Completion Date: ${new Date(data.certificate.completionDate || data.certificate.createdAt).toLocaleDateString()}`, { align: 'center' })
+    doc.moveDown(2)
+    doc.text(`Instructor: ${data.certificate.instructorName || 'Instructor'}`, { align: 'left' })
+    doc.text(`Certificate ID: ${data.certificate.certificateId || data.certificate.$id}`, { align: 'left' })
+    doc.text(`Verification URL: ${data.certificate.verificationUrl || ''}`, { align: 'left' })
+    doc.end()
+  })
+}
+
+export async function GET(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { certificateId, userId, linkedinAccessToken } = body;
+    const { searchParams } = new URL(request.url)
+    const certificateId = searchParams.get('certificateId')
+    const format = searchParams.get('format') || 'pdf'
+
+    if (!certificateId) {
+      return NextResponse.json({ error: 'Missing certificateId parameter' }, { status: 400 })
+    }
+
+    if (!['pdf', 'html'].includes(format)) {
+      return NextResponse.json({ error: 'Format must be pdf or html' }, { status: 400 })
+    }
+
+    const bundle = await getCertificateBundle(certificateId)
+
+    if (format === 'html') {
+      const html = generateCertificateHTML(
+        bundle.certificate.certificateId || bundle.certificate.$id,
+        bundle.profile.name || 'Learner',
+        bundle.course.title || 'Course',
+        bundle.certificate.completionDate || bundle.certificate.createdAt,
+        bundle.certificate.instructorName || 'Instructor',
+        bundle.certificate.score || 0,
+        bundle.certificate.qrCodeUrl || '',
+      )
+
+      return new Response(html, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      })
+    }
+
+    const pdf = await renderCertificatePdf(bundle)
+    const filename = `Certificate_${bundle.certificate.certificateId || certificateId}.pdf`
+
+    return new Response(pdf, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      },
+    })
+  } catch (error: any) {
+    console.error('Error downloading certificate:', error)
+    return NextResponse.json({ error: error.message || 'Failed to download certificate' }, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { certificateId, userId } = body
 
     if (!certificateId || !userId) {
-      return new Response(
-        JSON.stringify({
-          error: 'Missing required fields: certificateId, userId',
-        }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
+      return NextResponse.json({ error: 'Missing required fields: certificateId, userId' }, { status: 400 })
     }
 
-    // Note: This requires LinkedIn API integration
-    // Full implementation would:
-    // 1. Fetch certificate details from Appwrite
-    // 2. Use LinkedIn API to create credential
-    // 3. Return LinkedIn credential URL
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: 'Certificate shared to LinkedIn',
-        linkedinUrl: `https://www.linkedin.com/in/profile/add?credentialId=${certificateId}`,
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+    const { certificate } = await getCertificateBundle(certificateId)
+    return NextResponse.json({
+      success: true,
+      message: 'Certificate share metadata generated',
+      linkedinUrl: `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME&name=${encodeURIComponent(certificate.certificateId || certificateId)}`,
+      verificationUrl: certificate.verificationUrl,
+    })
   } catch (error: any) {
-    console.error('Error sharing certificate:', error);
-    return new Response(
-      JSON.stringify({ error: error.message || 'Failed to share certificate' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    console.error('Error sharing certificate:', error)
+    return NextResponse.json({ error: error.message || 'Failed to share certificate' }, { status: 500 })
   }
 }
 
-/**
- * GET /api/certificates/verify?certificateId=xxx
- * 
- * Verify certificate authenticity
- */
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { certificateId } = body;
+    const body = await request.json()
+    const { certificateId } = body
 
     if (!certificateId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing certificateId' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
+      return NextResponse.json({ error: 'Missing certificateId' }, { status: 400 })
     }
 
-    // This would verify the certificate against the database
-    // For now, return success
-    return new Response(
-      JSON.stringify({
-        success: true,
-        verified: true,
-        message: 'Certificate is authentic',
-        certificateDetails: {
-          certificateId,
-          status: 'valid',
-          issueDate: new Date().toISOString(),
-          expiryDate: null,
-        },
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+    const { certificate, course, profile } = await getCertificateBundle(certificateId)
+    return NextResponse.json({
+      success: true,
+      verified: true,
+      message: 'Certificate is authentic',
+      certificateDetails: {
+        certificateId: certificate.certificateId || certificate.$id,
+        userId: certificate.userId,
+        userName: profile.name || 'Learner',
+        courseId: course.$id,
+        courseName: course.title || 'Course',
+        score: certificate.score || 0,
+        completionDate: certificate.completionDate || certificate.createdAt,
+        verificationUrl: certificate.verificationUrl,
+        status: 'valid',
+      },
+    })
   } catch (error: any) {
-    console.error('Error verifying certificate:', error);
-    return new Response(
-      JSON.stringify({ error: error.message || 'Failed to verify certificate' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    console.error('Error verifying certificate:', error)
+    return NextResponse.json({ error: error.message || 'Failed to verify certificate' }, { status: 500 })
   }
 }

@@ -11,7 +11,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { CourseContent } from '@/lib/types/courses';
+import { CourseContent, CourseChapter } from '@/lib/types/courses';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Lightbulb, BookmarkIcon, Copy, Check } from 'lucide-react';
@@ -21,9 +21,10 @@ import { useToast } from '@/hooks/use-toast';
 interface NotesPanelProps {
   chapterId: string;
   chapterTitle: string;
+  chapterData?: CourseChapter;
 }
 
-export function NotesPanel({ chapterId, chapterTitle }: NotesPanelProps) {
+export function NotesPanel({ chapterId, chapterTitle, chapterData }: NotesPanelProps) {
   const [content, setContent] = useState<CourseContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,50 +33,34 @@ export function NotesPanel({ chapterId, chapterTitle }: NotesPanelProps) {
 
   useEffect(() => {
     loadContent();
-  }, [chapterId]);
+  }, [chapterId, chapterData, chapterTitle]);
 
   const loadContent = async () => {
     try {
       setLoading(true);
-      // In real app, would fetch from API
-      // const response = await fetch(`/api/courses/content/${chapterId}`);
-      // const data = await response.json();
-      // setContent(data);
+      const transcript = chapterData?.transcriptCleaned || chapterData?.transcript || '';
+      const transcriptParagraphs = transcript
+        .split(/\n+/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const summaries = transcriptParagraphs.slice(0, 2);
 
-      // Mock data for now
       setContent({
         $id: chapterId,
         chapterId,
-        summaries: [
-          'This chapter covers the fundamentals of the topic.',
-          'We explore key concepts and practical applications.',
-        ],
-        keyTakeaways: [
-          'Understand core principles',
-          'Apply to real-world scenarios',
-          'Build practical skills',
-        ],
-        detailedNotes: '# Chapter Notes\n\n## Overview\n\nKey details here.',
-        concepts: [
-          {
-            name: 'Core Concept 1',
-            definition: 'Definition of the core concept',
-            importance: 'critical',
-          },
-          {
-            name: 'Core Concept 2',
-            definition: 'Definition of second concept',
-            importance: 'important',
-          },
-        ],
-        formulas: ['Formula 1 = x + y', 'Formula 2 = a * b'],
-        realWorldApplications: [
-          'Application in industry',
-          'Practical use cases',
-        ],
+        summaries: summaries.length > 0 ? summaries : [`Overview for ${chapterTitle}`],
+        keyTakeaways: chapterData?.learningObjectives || [],
+        detailedNotes: transcriptParagraphs.length > 0 ? transcriptParagraphs.join('\n\n') : `Notes are not yet available for ${chapterTitle}.`,
+        concepts: (chapterData?.learningObjectives || []).map((objective, index) => ({
+          name: `Concept ${index + 1}`,
+          definition: objective,
+          importance: index === 0 ? 'critical' : 'important',
+        })),
+        formulas: transcriptParagraphs.filter((line) => /[=+\-*/]/.test(line)).slice(0, 5),
+        realWorldApplications: transcriptParagraphs.filter((line) => /(example|application|use case|industry)/i.test(line)).slice(0, 5),
         generatedAt: new Date().toISOString(),
-        llmModel: 'mistral-7b',
-        promptHash: 'abc123',
+        llmModel: 'derived-from-chapter-data',
+        promptHash: chapterId,
       });
       setError(null);
     } catch (err) {

@@ -38,6 +38,7 @@ interface PodChatTabProps {
 
 export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
   const [messages, setMessages] = useState<Message[]>([])
+  const [chatRoomId, setChatRoomId] = useState("")
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
@@ -46,8 +47,6 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { user } = useAuth()
   const { toast } = useToast()
-
-  const chatRoomId = `${podId}_general`
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -59,13 +58,22 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
 
   // Load messages
   useEffect(() => {
-    let initialized = false
+    let cancelled = false
 
-    const loadMessages = async (showSpinner = false) => {
+    const ensureRoomAndLoadMessages = async (showSpinner = false) => {
       if (showSpinner) setIsLoading(true)
       else setIsSyncing(true)
       try {
-        const res = await chatService.getMessages(chatRoomId, 100, 0)
+        const room = await chatService.getOrCreatePodRoom(
+          podId,
+          podName,
+          members.map((member) => member.id),
+        )
+        if (cancelled) return
+
+        setChatRoomId(room.$id)
+
+        const res = await chatService.getMessages(room.$id, 100, 0)
         const messagesData = res.documents || []
         
         // Enrich messages with author info from members
@@ -87,21 +95,28 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
           return msg
         })
         
-        setMessages(messagesWithReplies)
+        if (!cancelled) {
+          setMessages(messagesWithReplies)
+        }
       } catch (error) {
         console.error("Failed to load messages:", error)
       } finally {
-        setIsLoading(false)
-        setIsSyncing(false)
+        if (!cancelled) {
+          setIsLoading(false)
+          setIsSyncing(false)
+        }
       }
     }
     
-    loadMessages(true)
+    ensureRoomAndLoadMessages(true)
     
     // Poll for new messages every 3 seconds without flicker
-    const interval = setInterval(() => loadMessages(false), 3000)
-    return () => clearInterval(interval)
-  }, [chatRoomId, members])
+    const interval = setInterval(() => ensureRoomAndLoadMessages(false), 3000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [members, podId, podName])
 
   const handleSend = async () => {
     if (!inputValue.trim() || !user?.$id) return
@@ -121,9 +136,14 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
         console.debug('[PodChatTab] Profile fetch failed, using defaults:', profileError)
       }
 
+      if (!chatRoomId) {
+        throw new Error("Chat room is not ready yet")
+      }
+
       const msg = await chatService.sendMessage(chatRoomId, user.$id, inputValue.trim(), {
         senderName: authorName,
         senderAvatar: authorAvatar,
+        replyTo: replyingTo?.$id || null,
       })
       
       const newMessage: Message = {
@@ -134,6 +154,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
         type: "text",
         authorName,
         authorAvatar,
+        replyTo: replyingTo?.$id || null,
         replyToMessage: replyingTo,
       }
       
