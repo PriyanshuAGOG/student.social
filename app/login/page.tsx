@@ -16,6 +16,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { authService } from "@/lib/appwrite"
+import { signInWithGoogle, signInWithGitHub } from "@/lib/server/oauth"
 
 function LoginPageContent() {
   const [showPassword, setShowPassword] = useState(false)
@@ -187,24 +188,6 @@ function LoginPageContent() {
     }
   }
 
-  const handleOAuthLogin = async (provider: string) => {
-    setIsLoading(true)
-    try {
-      toast({
-        title: `${provider} Login`,
-        description: `Redirecting to ${provider} authentication...`,
-      })
-      await authService.loginWithOAuth(provider)
-    } catch (error: any) {
-      toast({
-        title: `${provider} Login Failed`,
-        description: error?.message || `Unable to start ${provider} login. Please try again.`,
-        variant: "destructive",
-      })
-      setIsLoading(false)
-    }
-  }
-
   // Show loading while checking for existing session
   if (isCheckingSession || authLoading) {
     return (
@@ -287,14 +270,18 @@ function LoginPageContent() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Button variant="outline" onClick={() => handleOAuthLogin("Google")}>
-                <Mail className="mr-2 h-4 w-4" />
-                Google
-              </Button>
-              <Button variant="outline" onClick={() => handleOAuthLogin("GitHub")}>
-                <Github className="mr-2 h-4 w-4" />
-                GitHub
-              </Button>
+              <form action={signInWithGoogle}>
+                <Button variant="outline" type="submit" className="w-full">
+                  <Mail className="mr-2 h-4 w-4" />
+                  Google
+                </Button>
+              </form>
+              <form action={signInWithGitHub}>
+                <Button variant="outline" type="submit" className="w-full">
+                  <Github className="mr-2 h-4 w-4" />
+                  GitHub
+                </Button>
+              </form>
             </div>
           </CardContent>
           <CardFooter className="text-center">

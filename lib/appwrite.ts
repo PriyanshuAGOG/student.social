@@ -1,4 +1,4 @@
-import { Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query, OAuthProvider } from "appwrite"
+import { Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query } from "appwrite"
 import { rankPodsForUser } from "./pod-matching"
 import { getEnv, normalizeAppwriteEndpoint, requireEnv } from "./env"
 
@@ -394,21 +394,15 @@ export const authService = {
         throw new Error("OAuth login only works in browser")
       }
 
-      const providerMap: Record<string, OAuthProvider> = {
-        google: OAuthProvider.Google,
-        github: OAuthProvider.Github,
-      }
-      const normalizedProvider = providerMap[provider.toLowerCase()]
+      const normalizedProvider = provider.toLowerCase()
+      const supportedProviders = new Set(["google", "github"])
 
-      if (!normalizedProvider) {
+      if (!supportedProviders.has(normalizedProvider)) {
         throw new Error(`Unsupported OAuth provider: ${provider}`)
       }
 
-      return await account.createOAuth2Session(
-        normalizedProvider,
-        `${window.location.origin}/app/feed`,
-        `${window.location.origin}/login`,
-      )
+      window.location.href = `/oauth/start?provider=${encodeURIComponent(normalizedProvider)}`
+      return null
     } catch (error: any) {
       console.error("OAuth login error:", error)
       throw new Error(error?.message || "OAuth login failed")

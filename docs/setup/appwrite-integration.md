@@ -2292,11 +2292,12 @@ export class AuthService {
   // OAuth login
   async loginWithOAuth(provider: string) {
     try {
-      account.createOAuth2Session(
-        provider as any,
-        `${window.location.origin}/app/dashboard`,
-        `${window.location.origin}/login?error=oauth_failed`
-      )
+      const redirectUrl = await account.createOAuth2Token({
+        provider: provider as any,
+        success: `${window.location.origin}/oauth`,
+        failure: `${window.location.origin}/login?error=oauth_failed`,
+      })
+      window.location.href = redirectUrl
     } catch (error) {
       console.error('OAuth login error:', error)
       throw error

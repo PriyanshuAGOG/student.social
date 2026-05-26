@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
+import type { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { getSessionCookieSecret } from '@/lib/env'
+import { createSessionClient } from '@/lib/server/appwrite'
 import crypto from 'crypto'
 
 type SessionCookie = {
@@ -11,10 +12,28 @@ type SessionCookie = {
   secret?: string
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const raw = cookieStore.get('peerspark_session')?.value
+    const appwriteSession = request.cookies.get('appwrite-session')?.value
+
+    // Preferred for SSR OAuth flow: validate Appwrite session secret directly.
+    if (appwriteSession) {
+      const { account } = await createSessionClient(request)
+      const accountUser = await account.get().catch(() => null)
+
+      if (accountUser?.$id) {
+        const { databases } = createAdminClient()
+        const profile = await databases.getDocument(process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || '', 'profiles', accountUser.$id).catch(() => null)
+
+        return NextResponse.json({
+          authenticated: true,
+          user: accountUser,
+          profile,
+        }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
+      }
+    }
+
+    const raw = request.cookies.get('peerspark_session')?.value
     if (!raw) {
       return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
     }

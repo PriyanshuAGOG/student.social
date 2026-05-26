@@ -94,6 +94,7 @@ export async function POST(req: Request) {
     response.cookies.delete(AUTH_COOKIE_NAME)
     response.cookies.delete('peerspark_jwt')
     response.cookies.delete('peerspark_session')
+    response.cookies.delete('appwrite-session')
 
     console.log('[v0] User logged out - IP:', clientIP, 'UserId:', userId)
 

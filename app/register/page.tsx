@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { authService } from "@/lib/appwrite"
 import { getPasswordRequirements } from "@/lib/password-security"
+import { signInWithGoogle, signInWithGitHub } from "@/lib/server/oauth"
 
 export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false)
@@ -116,24 +117,6 @@ export default function RegisterPage() {
         variant: "destructive",
       })
     } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleOAuthRegister = async (provider: string) => {
-    setIsLoading(true)
-    try {
-      toast({
-        title: `${provider} Registration`,
-        description: `Redirecting to ${provider} authentication...`,
-      })
-      await authService.loginWithOAuth(provider)
-    } catch (error: any) {
-      toast({
-        title: `${provider} Registration Failed`,
-        description: error?.message || `Unable to start ${provider} registration. Please try again.`,
-        variant: "destructive",
-      })
       setIsLoading(false)
     }
   }
@@ -344,14 +327,18 @@ export default function RegisterPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Button variant="outline" onClick={() => handleOAuthRegister("Google")} disabled={isLoading}>
-                <Mail className="mr-2 h-4 w-4" />
-                Google
-              </Button>
-              <Button variant="outline" onClick={() => handleOAuthRegister("GitHub")} disabled={isLoading}>
-                <Github className="mr-2 h-4 w-4" />
-                GitHub
-              </Button>
+              <form action={signInWithGoogle}>
+                <Button variant="outline" type="submit" className="w-full" disabled={isLoading}>
+                  <Mail className="mr-2 h-4 w-4" />
+                  Google
+                </Button>
+              </form>
+              <form action={signInWithGitHub}>
+                <Button variant="outline" type="submit" className="w-full" disabled={isLoading}>
+                  <Github className="mr-2 h-4 w-4" />
+                  GitHub
+                </Button>
+              </form>
             </div>
           </CardContent>
           <CardFooter className="text-center">
