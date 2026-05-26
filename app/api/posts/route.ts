@@ -112,7 +112,12 @@ export async function POST(request: NextRequest) {
       ? metadata.podId.trim()
       : null;
 
-    const now = new Date().toISOString();
+    const normalizedType = typeof metadata.type === 'string' && metadata.type.trim()
+      ? metadata.type.trim().slice(0, 50)
+      : 'post';
+
+    const normalizedImageUrls = imageUrls.slice(0, 4);
+    const normalizedImageUrl = normalizedImageUrls[0] || '';
 
     // Create post document
     const post = await databases.createDocument(
@@ -124,12 +129,11 @@ export async function POST(request: NextRequest) {
         authorName,
         authorAvatar,
         content: normalizedContent,
-        imageUrls,
-        mediaUrls: imageUrls,
-        type: metadata.type || 'text',
+        imageUrl: normalizedImageUrl,
+        imageUrls: normalizedImageUrls,
+        type: normalizedType,
         visibility: normalizedVisibility,
         podId: normalizedPodId,
-        courseId: metadata.courseId || null,
         tags: normalizedTags,
         mentions: normalizedMentions,
         likes: 0,
@@ -137,11 +141,7 @@ export async function POST(request: NextRequest) {
         comments: 0,
         shares: 0,
         saves: 0,
-        isDeleted: false,
-        isPinned: metadata.isPinned || false,
-        createdAt: now,
-        updatedAt: now,
-        timestamp: now,
+        timestamp: new Date().toISOString(),
       }
     );
 

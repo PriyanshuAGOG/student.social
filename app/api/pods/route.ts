@@ -108,14 +108,16 @@ export async function POST(request: NextRequest) {
         creatorId: userId,
         members: [userId],
         memberCount: 1,
-        image: imageUrl,
-        category: metadata.category || metadata.subject || 'general',
-        isPrivate: metadata.isPrivate || false,
         isActive: true,
         isPublic: metadata.isPublic !== false,
         subject: metadata.subject || '',
         difficulty: metadata.difficulty || 'Beginner',
         tags: normalizedTags,
+        matchingTags: normalizedTags,
+        idealLearnerType: Array.isArray(metadata.idealLearnerType) ? metadata.idealLearnerType : [],
+        sessionType: Array.isArray(metadata.sessionType) ? metadata.sessionType : [],
+        commonAvailability: Array.isArray(metadata.commonAvailability) ? metadata.commonAvailability : [],
+        averageSessionLength: Number.isFinite(Number(metadata.averageSessionLength)) ? Number(metadata.averageSessionLength) : null,
         maxMembers: normalizedMaxMembers,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -195,7 +197,7 @@ export async function GET(request: NextRequest) {
 
     // Filter for user's pods
     if ((myPods || !!userId) && userId) {
-      queries.push(Query.equal('members', userId));
+      queries.push(Query.contains('members', userId));
     }
 
     // Filter by visibility
