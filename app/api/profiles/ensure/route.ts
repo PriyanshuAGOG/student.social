@@ -40,8 +40,8 @@ function sanitizeProfileData(data: Record<string, unknown>) {
 
 function profilePermissions(userId: string) {
   return [
-    Permission.read(Role.any()),
-    Permission.create(Role.user(userId)),
+    Permission.read(Role.user(userId)),
+    Permission.write(Role.user(userId)),
     Permission.update(Role.user(userId)),
     Permission.delete(Role.user(userId)),
   ]
@@ -62,18 +62,22 @@ export async function POST(request: NextRequest) {
 
     try {
       const existing = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, userId)
+      const nextData = sanitizeProfileData({ ...(updates || {}), updatedAt: new Date().toISOString() })
+      if (Object.keys(nextData).length === 1 && Object.prototype.hasOwnProperty.call(nextData, 'updatedAt')) {
+        return NextResponse.json({ success: true, profile: existing, created: false })
+      }
+
       const updatedProfile = await databases.updateDocument(
         DATABASE_ID,
         PROFILES_COLLECTION_ID,
         userId,
-        sanitizeProfileData({ ...(updates || {}), updatedAt: updates ? new Date().toISOString() : existing.updatedAt || new Date().toISOString() }),
-        profilePermissions(userId)
+        nextData,
       )
 
       return NextResponse.json({ success: true, profile: updatedProfile, created: false })
     } catch (error: any) {
       if (error?.code !== 404 && !error?.message?.includes('not found')) {
-        throw error
+        console.error('Ensure profile read/update error:', error)
       }
     }
 

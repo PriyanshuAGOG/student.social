@@ -86,6 +86,13 @@ export async function POST(request: NextRequest) {
       imageUrl = metadata.image;
     }
 
+    const normalizedTags = Array.isArray(metadata.tags)
+      ? metadata.tags.filter((tag: unknown) => typeof tag === 'string' && tag.trim()).slice(0, 20)
+      : [];
+    const normalizedMaxMembers = Number.isFinite(Number(metadata.maxMembers))
+      ? Math.max(2, Math.min(500, Number(metadata.maxMembers)))
+      : 50;
+
     // Generate a unique teamId (required by schema, but we're not using Appwrite Teams)
     const generatedTeamId = `pod_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
@@ -108,8 +115,8 @@ export async function POST(request: NextRequest) {
         isPublic: metadata.isPublic !== false,
         subject: metadata.subject || '',
         difficulty: metadata.difficulty || 'Beginner',
-        tags: metadata.tags || [],
-        maxMembers: metadata.maxMembers || 50,
+        tags: normalizedTags,
+        maxMembers: normalizedMaxMembers,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }
@@ -187,7 +194,7 @@ export async function GET(request: NextRequest) {
     const queries: string[] = [];
 
     // Filter for user's pods
-    if (myPods && userId) {
+    if ((myPods || !!userId) && userId) {
       queries.push(Query.equal('members', userId));
     }
 
@@ -219,6 +226,7 @@ export async function GET(request: NextRequest) {
 
     return {
       success: true,
+      documents: result.documents,
       pods: result.documents,
       total: result.total,
       limit,

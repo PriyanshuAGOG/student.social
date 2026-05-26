@@ -9,7 +9,7 @@
  */
 
 // @ts-nocheck
-import { Query } from 'appwrite';
+import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { courseService } from '@/lib/course-service';
 

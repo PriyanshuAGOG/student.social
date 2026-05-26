@@ -1,25 +1,8 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from "next/server"
-import { client, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite"
-import { Client, Databases, Query } from "node-appwrite"
-import { getAppwriteEndpoint } from "@/lib/env"
-
-function getDatabases() {
-  const endpoint = getAppwriteEndpoint()
-  const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
-  const apiKey = process.env.APPWRITE_API_KEY
-
-  if (endpoint && project && apiKey) {
-    const adminClient = new Client()
-      .setEndpoint(endpoint)
-      .setProject(project)
-      .setKey(apiKey)
-
-    return new Databases(adminClient)
-  }
-
-  return new Databases(client)
-}
+import { Query } from "node-appwrite"
+import { createAdminClient } from "@/lib/appwrite-comprehensive-fixes"
+import { DATABASE_ID, COLLECTIONS } from "@/lib/appwrite-server"
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,7 +15,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const databases = getDatabases()
+    const { databases } = await createAdminClient()
     
     // Check if POD_COURSES collection exists in COLLECTIONS
     if (!COLLECTIONS.POD_COURSES) {

@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { databases } from '@/lib/appwrite'
+import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { getEnv } from '@/lib/env'
 
 const env = getEnv()
@@ -15,6 +15,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { databases } = await createAdminClient()
     const userId = req.headers.get('x-user-id')
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

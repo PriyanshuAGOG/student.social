@@ -4,8 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { databases } from '@/lib/appwrite'
-import { Query } from 'appwrite'
+import { Query } from 'node-appwrite'
+import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { getEnv } from '@/lib/env'
 
 const env = getEnv()
@@ -13,6 +13,7 @@ const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
 
 export async function GET(req: NextRequest) {
   try {
+    const { databases } = await createAdminClient()
     // Get user from session (you should implement proper auth)
     const userId = req.headers.get('x-user-id')
     if (!userId) {
@@ -23,19 +24,20 @@ export async function GET(req: NextRequest) {
     const offset = parseInt(req.nextUrl.searchParams.get('offset') || '0')
     const unreadOnly = req.nextUrl.searchParams.get('unreadOnly') === 'true'
 
-    const queries = [Query.equal('userId', userId)]
+    const queries: string[] = [Query.equal('userId', userId)]
 
     if (unreadOnly) {
       queries.push(Query.equal('isRead', false))
     }
 
     queries.push(Query.orderDesc('createdAt'))
+    queries.push(Query.limit(Math.min(limit, 100)))
+    queries.push(Query.offset(Math.max(offset, 0)))
 
     const response = await databases.listDocuments(
       DATABASE_ID,
       'in_app_notifications',
-      queries,
-      String(limit)
+      queries
     )
 
     return NextResponse.json({

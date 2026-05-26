@@ -4,8 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { databases } from '@/lib/appwrite'
-import { Query, ID } from 'appwrite'
+import { ID, Query } from 'node-appwrite'
+import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { getEnv } from '@/lib/env'
 
 const env = getEnv()
@@ -13,6 +13,7 @@ const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
 
 export async function GET(req: NextRequest) {
   try {
+    const { databases } = await createAdminClient()
     const userId = req.headers.get('x-user-id')
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -46,6 +47,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const { databases } = await createAdminClient()
     const userId = req.headers.get('x-user-id')
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

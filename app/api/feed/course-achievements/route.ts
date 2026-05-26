@@ -128,7 +128,7 @@ export async function POST(request: Request) {
       [
         Permission.read(Role.any()),
         Permission.read(Role.users()),
-        Permission.create(Role.users()),
+        Permission.write(Role.users()),
         Permission.update(Role.users()),
       ]
     );

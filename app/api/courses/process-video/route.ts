@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { Databases } from 'appwrite';
+import { Databases } from 'node-appwrite';
 import {
   createChapter,
   getOrCreateProgress,

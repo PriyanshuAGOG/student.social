@@ -10,7 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { Query } from 'node-appwrite';
+import { AppwriteException, Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
 import { enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser, ApiError } from '@/lib/api-security';
@@ -88,6 +88,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const normalizedContent = typeof content === 'string' ? content.trim() : '';
+    if (!normalizedContent) {
+      throw new AppError({
+        code: 'VALIDATION_ERROR',
+        message: 'Post content is required',
+        userMessage: 'Post content is required',
+        severity: ErrorSeverity.LOW,
+        category: ErrorCategory.VALIDATION,
+      });
+    }
+
+    const normalizedTags = Array.isArray(metadata.tags)
+      ? metadata.tags.filter((tag: unknown) => typeof tag === 'string' && tag.trim()).slice(0, 10)
+      : [];
+
+    const normalizedMentions = Array.isArray(metadata.mentions)
+      ? metadata.mentions.filter((mention: unknown) => typeof mention === 'string' && mention.trim()).slice(0, 20)
+      : [];
+
+    const normalizedVisibility = metadata.visibility === 'pod' ? 'pod' : 'public';
+    const normalizedPodId = normalizedVisibility === 'pod' && typeof metadata.podId === 'string' && metadata.podId.trim()
+      ? metadata.podId.trim()
+      : null;
+
+    const now = new Date().toISOString();
+
     // Create post document
     const post = await databases.createDocument(
       DATABASE_ID,
@@ -97,14 +123,15 @@ export async function POST(request: NextRequest) {
         authorId,
         authorName,
         authorAvatar,
-        content: content.trim(),
+        content: normalizedContent,
         imageUrls,
-        type: metadata.type || 'post',
-        visibility: metadata.visibility || 'public',
-        podId: metadata.podId || null,
+        mediaUrls: imageUrls,
+        type: metadata.type || 'text',
+        visibility: normalizedVisibility,
+        podId: normalizedPodId,
         courseId: metadata.courseId || null,
-        tags: metadata.tags || [],
-        mentions: metadata.mentions || [],
+        tags: normalizedTags,
+        mentions: normalizedMentions,
         likes: 0,
         likedBy: [],
         comments: 0,
@@ -112,8 +139,9 @@ export async function POST(request: NextRequest) {
         saves: 0,
         isDeleted: false,
         isPinned: metadata.isPinned || false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
+        timestamp: now,
       }
     );
 
@@ -160,7 +188,12 @@ export async function GET(request: NextRequest) {
           Query.limit(Math.min(limit, 100)),
           Query.offset(offset),
         ]
-      );
+      ).catch((err: any) => {
+        if ((err as AppwriteException)?.code === 404) {
+          return { documents: [], total: 0 } as any
+        }
+        throw err
+      });
 
       // Fetch actual posts
       const posts = [];
@@ -181,6 +214,7 @@ export async function GET(request: NextRequest) {
 
       return {
         success: true,
+        documents: posts,
         posts,
         total: savedPosts.total,
         limit,
@@ -213,10 +247,16 @@ export async function GET(request: NextRequest) {
       DATABASE_ID,
       POSTS_COLLECTION_ID,
       queries
-    );
+    ).catch((err: any) => {
+      if ((err as AppwriteException)?.code === 404) {
+        return { documents: [], total: 0 } as any
+      }
+      throw err
+    });
 
     return {
       success: true,
+      documents: result.documents,
       posts: result.documents,
       total: result.total,
       limit,

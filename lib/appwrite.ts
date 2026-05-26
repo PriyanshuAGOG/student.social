@@ -1,4 +1,4 @@
-import { Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query } from "appwrite"
+import { AppwriteException, Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query } from "appwrite"
 import { rankPodsForUser } from "./pod-matching"
 import { getEnv, normalizeAppwriteEndpoint, requireEnv } from "./env"
 
@@ -724,6 +724,7 @@ async function ensureProfileViaApi(userId: string, defaults: Record<string, unkn
   const response = await fetch('/api/profiles/ensure', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({ userId, defaults, updates }),
   })
 
@@ -759,7 +760,7 @@ export const profileService = {
         return existing
       } catch (error: any) {
         // If not found, create it
-        if (error?.code === 404 || error?.code === 401 || error?.message?.includes('not found') || error?.message?.includes('missing scope') || error?.message?.includes('permissions')) {
+        if (error?.code === 404 || error?.message?.includes('not found')) {
           devLog(`[ensureProfileExists] Creating profile for user: ${userId}`)
           try {
             const response = await apiJson('/api/profiles/ensure', {
@@ -773,18 +774,18 @@ export const profileService = {
               }),
             })
             devLog(`[ensureProfileExists] Profile created successfully`, { id: response?.profile?.$id })
-            return response.profile
+            return response?.profile ?? null
           } catch (createError: any) {
             // If document already exists (race condition), fetch it
             if (createError?.code === 409 || createError?.message?.includes('already exists')) {
-              return await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId)
+              return await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId).catch(() => null)
             }
             console.error(`[ensureProfileExists] Failed to create profile:`, createError)
-            throw createError
+            return null
           }
         }
         console.error(`[ensureProfileExists] Error:`, error)
-        throw error
+        return null
       }
     }
   },
@@ -805,7 +806,7 @@ export const profileService = {
       return profile
     } catch (error: any) {
       // Profile not found is expected for new users
-      if (error?.code === 404 || error?.message?.includes('not found')) {
+      if ((error instanceof AppwriteException && error.code === 404) || error?.code === 404 || error?.message?.includes('not found')) {
         console.warn(`[getProfile] Profile not found for user: ${userId}. Use ensureProfileExists() to create one.`)
         return null
       }
@@ -1073,6 +1074,10 @@ export const podService = {
    */
   async createPod(name: string, description: string, userId: string, metadata: any = {}) {
     try {
+      if (!userId || !userId.trim()) {
+        throw new Error("User ID is required")
+      }
+
       if (!name || !name.trim()) {
         throw new Error("Pod name is required")
       }
@@ -1082,13 +1087,19 @@ export const podService = {
       }
 
       if (!metadata?.image) {
+        const safeMetadata = {
+          ...metadata,
+          tags: Array.isArray(metadata?.tags) ? metadata.tags.filter((tag: unknown) => typeof tag === 'string').slice(0, 20) : [],
+          maxMembers: Number.isFinite(Number(metadata?.maxMembers)) ? Math.max(2, Math.min(500, Number(metadata.maxMembers))) : undefined,
+        }
+
         const response = await apiJson('/api/pods', {
           method: 'POST',
           body: JSON.stringify({
             name: name.trim(),
             description: description || '',
             userId,
-            metadata,
+            metadata: safeMetadata,
           }),
         })
 
@@ -1359,7 +1370,8 @@ export const podService = {
         throw new Error("User ID is required")
       }
 
-      return await apiJson(`/api/pods?userId=${encodeURIComponent(userId)}&limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
+      const response = await apiJson(`/api/pods?myPods=true&userId=${encodeURIComponent(userId)}&limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
+      return { documents: response.documents || response.pods || [], total: response.total || 0 }
     } catch (error) {
       console.error("Get user pods error:", error)
       return { documents: [], total: 0 }
@@ -1381,7 +1393,8 @@ export const podService = {
       if (filters.difficulty) params.set('difficulty', String(filters.difficulty))
       if (filters.search) params.set('search', String(filters.search))
 
-      return await apiJson(`/api/pods?${params.toString()}`)
+      const response = await apiJson(`/api/pods?${params.toString()}`)
+      return { documents: response.documents || response.pods || [], total: response.total || 0 }
     } catch (error) {
       console.error("Get all pods error:", error)
       return { documents: [], total: 0 }
@@ -2298,8 +2311,9 @@ export const chatService = {
     try {
       // Get pod rooms
       const userPods = await podService.getUserPods(userId)
+      const podDocuments = Array.isArray(userPods?.documents) ? userPods.documents : []
       const podRooms = await Promise.all(
-        userPods.documents.map(async (pod: any) => {
+        podDocuments.map(async (pod: any) => {
           try {
             return await databases.getDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, `${pod.teamId}_general`)
           } catch (e) {
@@ -2338,7 +2352,7 @@ export const chatService = {
 
       return {
         podRooms: podRooms.filter((room) => room !== null),
-        directRooms: directRooms,
+        directRooms: Array.isArray(directRooms) ? directRooms : [],
       }
     } catch (error) {
       console.error("Get user chat rooms error:", error)
@@ -2515,7 +2529,10 @@ export const resourceService = {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.ms-excel",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "image/webp",
+        "image/svg+xml",
         "text/plain",
+        "text/csv",
         "image/jpeg",
         "image/png",
         "image/gif",
@@ -2759,6 +2776,10 @@ export const feedService = {
     } = {}
   ) {
     try {
+      if (!authorId || !authorId.trim()) {
+        throw new Error("Author ID is required")
+      }
+
       // Validate content
       if (!content || !content.trim()) {
         throw new Error("Post content cannot be empty")
@@ -2817,6 +2838,10 @@ export const feedService = {
       }
 
       if (!metadata.imageFiles || metadata.imageFiles.length === 0) {
+        const cleanTags = Array.isArray(metadata.tags)
+          ? metadata.tags.filter((tag: unknown) => typeof tag === 'string' && tag.trim()).slice(0, 10)
+          : []
+
         const response = await apiJson('/api/posts', {
           method: 'POST',
           body: JSON.stringify({
@@ -2824,6 +2849,7 @@ export const feedService = {
             content,
             metadata: {
               ...metadata,
+              tags: cleanTags,
               authorName,
               authorAvatar,
               authorUsername,
@@ -2854,10 +2880,11 @@ export const feedService = {
       // Create post document
       const post = await databases.createDocument(DATABASE_ID, COLLECTIONS.POSTS, "unique()", {
         authorId: authorId,
-        content: content,
+        content: content.trim(),
         type: metadata.type || "text",
         podId: podId,
         imageUrls: imageUrls,
+        mediaUrls: imageUrls,
         timestamp: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         likes: 0,
@@ -2918,7 +2945,8 @@ export const feedService = {
         throw new Error("User ID is required")
       }
 
-      return await apiJson(`/api/posts?authorId=${encodeURIComponent(userId)}&limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
+      const response = await apiJson(`/api/posts?authorId=${encodeURIComponent(userId)}&limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
+      return { documents: response.documents || response.posts || [], total: response.total || 0 }
     } catch (error) {
       console.error("Get user posts error:", error)
       return { documents: [], total: 0 }
@@ -2930,7 +2958,8 @@ export const feedService = {
    */
   async getFeedPosts(userId?: string, limit = 20, offset = 0) {
     try {
-      return await apiJson(`/api/posts?userId=${encodeURIComponent(userId || '')}&limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
+      const response = await apiJson(`/api/posts?userId=${encodeURIComponent(userId || '')}&limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
+      return { documents: response.documents || response.posts || [], total: response.total || 0 }
     } catch (error) {
       console.error("Get feed posts error:", error)
       return { documents: [], total: 0 }

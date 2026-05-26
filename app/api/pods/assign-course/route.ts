@@ -157,7 +157,7 @@ export async function POST(request: Request) {
         'Pod Course Activities',
         [
           Permission.read(Role.any()),
-          Permission.create(Role.users()),
+          Permission.write(Role.users()),
           Permission.update(Role.users()),
         ]
       );

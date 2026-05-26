@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { ID } from 'appwrite'
+import { ID } from 'node-appwrite'
 import crypto from 'crypto'
 import { cookies } from 'next/headers'
 import { Client, Account } from 'node-appwrite'

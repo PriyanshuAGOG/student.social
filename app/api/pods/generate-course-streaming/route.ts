@@ -10,10 +10,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { DATABASE_ID, COLLECTIONS } from "@/lib/appwrite"
-import { Client, Databases, Query } from "node-appwrite"
+import { Query } from "node-appwrite"
 import { runAIChat } from "@/lib/ai"
-import { getAppwriteEndpoint } from "@/lib/env"
+import { createAdminClient } from "@/lib/appwrite-comprehensive-fixes"
+import { DATABASE_ID, COLLECTIONS } from "@/lib/appwrite-server"
 
 const REQUEST_TIMEOUT = 30000 // 30 second timeout
 
@@ -29,29 +29,6 @@ function log(level: 'info' | 'warn' | 'error', message: string, data?: Record<st
   } else {
     console.log(JSON.stringify(logEntry))
   }
-}
-
-function getDatabases() {
-  const endpoint = getAppwriteEndpoint()
-  const project = process.env.APPWRITE_PROJECT_ID || process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
-  const apiKey = process.env.APPWRITE_API_KEY
-
-  if (!endpoint) {
-    throw new Error("Missing APPWRITE_ENDPOINT environment variable")
-  }
-  if (!project) {
-    throw new Error("Missing APPWRITE_PROJECT_ID environment variable")
-  }
-  if (!apiKey) {
-    throw new Error("Missing APPWRITE_API_KEY environment variable - required for server-side operations")
-  }
-
-  const adminClient = new Client()
-    .setEndpoint(endpoint)
-    .setProject(project)
-    .setKey(apiKey)
-
-  return new Databases(adminClient)
 }
 
 // Extract video ID with timeout
@@ -208,17 +185,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    let databases
-    try {
-      databases = getDatabases()
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : 'Unknown error'
-      log('error', 'Database connection failed', { correlationId, error: errorMsg })
-      return NextResponse.json(
-        { error: `Server configuration error. Please contact support.`, correlationId, details: process.env.NODE_ENV === 'development' ? errorMsg : undefined },
-        { status: 500 }
-      )
-    }
+    const { databases } = await createAdminClient()
 
     // Check if pod already has a course
     let existingCourses
@@ -371,7 +338,7 @@ async function generateChapterContentAsync(
 ) {
   try {
     log('info', 'Starting background chapter content generation', { correlationId, courseId, chapterCount: chapters.length })
-    const databases = getDatabases()
+    const { databases } = await createAdminClient()
     let generatedCount = 0
 
     // Generate content for each chapter progressively
@@ -433,7 +400,7 @@ async function generateChapterContentAsync(
     const msg = error instanceof Error ? error.message : String(error)
     console.error(`[generateChapterContentAsync] Fatal error: ${msg}`)
     try {
-      const databases = getDatabases()
+      const { databases } = await createAdminClient()
       await databases.updateDocument(DATABASE_ID, COLLECTIONS.POD_COURSES, courseId, {
         status: "error",
         error: msg,

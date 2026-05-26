@@ -1,26 +1,8 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from "next/server"
-import { client, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite"
-import { Client, Databases, Query } from "node-appwrite"
-import { getAppwriteEndpoint } from "@/lib/env"
-
-function getDatabases() {
-  const endpoint = getAppwriteEndpoint()
-  const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
-  const apiKey = process.env.APPWRITE_API_KEY
-
-  if (endpoint && project && apiKey) {
-    const adminClient = new Client()
-      .setEndpoint(endpoint)
-      .setProject(project)
-      .setKey(apiKey)
-
-    return new Databases(adminClient)
-  }
-
-  // Fallback to public client (requires session auth)
-  return new Databases(client)
-}
+import { Query } from "node-appwrite"
+import { createAdminClient } from "@/lib/appwrite-comprehensive-fixes"
+import { DATABASE_ID, COLLECTIONS } from "@/lib/appwrite-server"
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if pod already has a course
-    const databases = getDatabases()
+    const { databases } = await createAdminClient()
     const existingCourses = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.POD_COURSES,
@@ -134,7 +116,7 @@ async function triggerCourseGeneration(
       await generateResponse.json()
 
     // Update course document with generated content
-    const databases = getDatabases()
+    const { databases } = await createAdminClient()
     await databases.updateDocument(DATABASE_ID, COLLECTIONS.POD_COURSES, courseId, {
       status: "completed",
       progress: 100,
@@ -147,7 +129,7 @@ async function triggerCourseGeneration(
   } catch (error) {
     console.error("Error in course generation background job:", error)
     try {
-      const databases = getDatabases()
+      const { databases } = await createAdminClient()
       await databases.updateDocument(DATABASE_ID, COLLECTIONS.POD_COURSES, courseId, {
         status: "error",
         progress: 0,
