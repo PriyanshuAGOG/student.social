@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { withErrorHandling, validateInput } from '@/lib/error-handler';
+import { ApiError, requireOwnership, requireUser } from '@/lib/api-security';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const MESSAGES_COLLECTION_ID = (process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID || 'messages');
@@ -17,6 +18,7 @@ export async function GET(
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   const { data, error } = await withErrorHandling(async () => {
+    const auth = requireUser(request)
     const { roomId } = await params;
     const searchParams = request.nextUrl.searchParams;
     const userId = searchParams.get('userId');
@@ -24,6 +26,9 @@ export async function GET(
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
     validateInput({ roomId }, { roomId: { required: true } });
+    if (userId) {
+      requireOwnership(userId, auth.userId)
+    }
 
     const { databases } = await createAdminClient();
 
@@ -34,9 +39,13 @@ export async function GET(
       roomId
     );
 
-    const members = Array.isArray(room.members) ? room.members : [];
-    if (userId && !members.includes(userId)) {
-      throw new Error('You do not have access to this conversation');
+    const members = Array.isArray(room.members)
+      ? room.members
+      : typeof room.members === 'string'
+        ? (() => { try { return JSON.parse(room.members) } catch { return [] } })()
+        : [];
+    if (!members.includes(auth.userId)) {
+      throw new ApiError(403, 'FORBIDDEN', 'You do not have access to this conversation');
     }
 
     // Get messages
@@ -52,17 +61,17 @@ export async function GET(
     );
 
     // If userId provided, mark messages as read
-    if (userId) {
+    if (auth.userId) {
       for (const message of messages.documents) {
         const readBy = Array.isArray(message.readBy) ? message.readBy : [];
-        if (!readBy.includes(userId) && message.senderId !== userId) {
+        if (!readBy.includes(auth.userId) && message.senderId !== auth.userId) {
           try {
             await databases.updateDocument(
               DATABASE_ID,
               MESSAGES_COLLECTION_ID,
               message.$id,
               {
-                readBy: [...readBy, userId],
+                readBy: [...readBy, auth.userId],
               }
             );
           } catch (updateError) {
@@ -82,9 +91,12 @@ export async function GET(
   }, { operation: 'getRoomMessages' });
 
   if (error) {
+    const status = error.code === 'UNAUTHORIZED' || error.code === 'FORBIDDEN'
+      ? (error.code === 'UNAUTHORIZED' ? 401 : 403)
+      : 500
     return NextResponse.json(
       { success: false, error: error.userMessage, details: error },
-      { status: 500 }
+      { status }
     );
   }
 

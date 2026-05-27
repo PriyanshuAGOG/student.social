@@ -11,6 +11,7 @@
 // @ts-nocheck
 import { Databases, Permission, Role } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
 
 interface CourseCommitment {
   userId: string;
@@ -28,8 +29,13 @@ interface CourseCommitment {
  */
 export async function POST(request: Request) {
   try {
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'pods:course-commitment:create', max: 20, windowMs: 60 * 1000 });
     const body = await request.json();
-    const { userId, podCourseId, weeklyGoal, dueDate } = body;
+    const auth = requireUser(request);
+    if (body.userId) requireOwnership(body.userId, auth.userId);
+    const { podCourseId, weeklyGoal, dueDate } = body;
+    const userId = auth.userId;
 
     if (!userId || !podCourseId || !weeklyGoal) {
       return new Response(
@@ -73,6 +79,13 @@ export async function POST(request: Request) {
       { status: 201, headers: { 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return new Response(
+        JSON.stringify({ error: error.message, code: error.code }),
+        { status: error.status, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.error('Error creating commitment:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Failed to create commitment' }),
@@ -89,7 +102,9 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    const auth = requireUser(request);
+    const userId = searchParams.get('userId') || auth.userId;
+    requireOwnership(userId, auth.userId);
     const podCourseId = searchParams.get('podCourseId');
 
     if (!userId || !podCourseId) {
@@ -151,6 +166,13 @@ export async function GET(request: Request) {
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return new Response(
+        JSON.stringify({ error: error.message, code: error.code }),
+        { status: error.status, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.error('Error fetching commitment:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Failed to fetch commitment' }),
@@ -166,6 +188,9 @@ export async function GET(request: Request) {
  */
 export async function PUT(request: Request) {
   try {
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'pods:course-commitment:update', max: 30, windowMs: 60 * 1000 });
+    const auth = requireUser(request);
     const body = await request.json();
     const { commitmentId, increment = 1 } = body;
 
@@ -183,6 +208,7 @@ export async function PUT(request: Request) {
       'course_commitments',
       commitmentId
     );
+    requireOwnership(commitment.userId, auth.userId);
 
     const newCompleted = commitment.completedThisWeek + increment;
     const newStatus = newCompleted >= commitment.weeklyGoal ? 'completed' : 'active';
@@ -207,6 +233,13 @@ export async function PUT(request: Request) {
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return new Response(
+        JSON.stringify({ error: error.message, code: error.code }),
+        { status: error.status, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.error('Error updating commitment:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Failed to update commitment' }),

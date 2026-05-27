@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { getEnv } from '@/lib/env'
+import { ApiError, requireUser } from '@/lib/api-security'
 
 const env = getEnv()
 const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
@@ -15,11 +16,7 @@ const NOTIFICATIONS_COLLECTION_ID = env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID 
 export async function GET(req: NextRequest) {
   try {
     const { databases } = await createAdminClient()
-    // Get user from session (you should implement proper auth)
-    const userId = req.headers.get('x-user-id')
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { userId } = requireUser(req)
 
     const limit = parseInt(req.nextUrl.searchParams.get('limit') || '20')
     const offset = parseInt(req.nextUrl.searchParams.get('offset') || '0')
@@ -61,6 +58,10 @@ export async function GET(req: NextRequest) {
       offset,
     })
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
+    }
+
     console.error('[API] Error fetching notifications:', error)
     return NextResponse.json(
       { error: 'Failed to fetch notifications' },

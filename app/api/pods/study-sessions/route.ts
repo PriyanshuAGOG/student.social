@@ -11,6 +11,7 @@
 // @ts-nocheck
 import { Databases, Permission, Role } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
 
 interface StudySession {
   sessionId: string;
@@ -43,7 +44,12 @@ interface StudySession {
  */
 export async function POST(request: Request) {
   try {
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'pods:study-sessions:create', max: 10, windowMs: 60 * 1000 });
     const body = await request.json();
+    const auth = requireUser(request);
+    if (body.hostId) requireOwnership(body.hostId, auth.userId);
+    body.hostId = auth.userId;
     const {
       podCourseId,
       chapterId,
@@ -129,6 +135,13 @@ export async function POST(request: Request) {
       { status: 201, headers: { 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return new Response(
+        JSON.stringify({ error: error.message, code: error.code }),
+        { status: error.status, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.error('Error creating study session:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Failed to create study session' }),
@@ -225,8 +238,13 @@ export async function GET(request: Request) {
  */
 export async function PUT(request: Request) {
   try {
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'pods:study-sessions:update', max: 30, windowMs: 60 * 1000 });
     const body = await request.json();
-    const { sessionId, action, userId, userName } = body;
+    const auth = requireUser(request);
+    let { sessionId, action, userId, userName } = body;
+    if (userId) requireOwnership(userId, auth.userId);
+    userId = auth.userId;
 
     if (!sessionId || !action) {
       return new Response(
@@ -242,6 +260,13 @@ export async function PUT(request: Request) {
       'pod_course_study_sessions',
       sessionId
     );
+
+    if ((action === 'start' || action === 'end') && session.hostId !== auth.userId) {
+      return new Response(
+        JSON.stringify({ error: 'Only the session host can update session status' }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
 
     switch (action) {
       case 'start':
@@ -341,6 +366,13 @@ export async function PUT(request: Request) {
         );
     }
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return new Response(
+        JSON.stringify({ error: error.message, code: error.code }),
+        { status: error.status, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.error('Error updating study session:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Failed to update study session' }),

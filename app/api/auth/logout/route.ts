@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { Client, Users } from 'node-appwrite'
 import { normalizeAppwriteEndpoint } from '@/lib/env'
-import { AUTH_COOKIE_NAME, getClientIP, getUserAgent, makeErrorId } from '@/lib/auth-route-utils'
+import { AUTH_COOKIE_NAME, JWT_COOKIE_NAME, getClientIP, getUserAgent, makeErrorId } from '@/lib/auth-route-utils'
 import { blacklistToken, verifyJWT } from '@/lib/auth-security'
 import type { JWTPayload } from '@/lib/auth-security'
 
@@ -18,7 +18,9 @@ export async function POST(req: Request) {
   try {
     // Extract token from Authorization header
     const authHeader = req.headers.get('authorization')
-    const token = authHeader?.replace('Bearer ', '')
+    const tokenFromHeader = authHeader?.replace('Bearer ', '')
+    const cookieStore = await cookies()
+    const token = tokenFromHeader || cookieStore.get(JWT_COOKIE_NAME)?.value
     let userId: string | undefined
 
     // Try to blacklist JWT token
@@ -36,7 +38,6 @@ export async function POST(req: Request) {
     }
 
     // Try to delete Appwrite session
-    const cookieStore = await cookies()
     const sessionCookie = cookieStore.get(AUTH_COOKIE_NAME)?.value
     
     if (sessionCookie) {

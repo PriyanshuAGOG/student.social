@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { getEnv } from '@/lib/env'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
 
 const env = getEnv()
 const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
@@ -16,11 +17,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    enforceSameOrigin(req)
+    enforceRateLimit(req, { key: 'notifications:read', max: 60, windowMs: 60 * 1000 })
     const { databases } = await createAdminClient()
-    const userId = req.headers.get('x-user-id')
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { userId } = requireUser(req)
 
     const { id } = await params
     const notificationId = id
@@ -41,6 +41,10 @@ export async function PATCH(
       data: result,
     })
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
+    }
+
     console.error('[API] Error marking notification as read:', error)
     return NextResponse.json(
       { error: 'Failed to mark notification as read' },

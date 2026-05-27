@@ -54,6 +54,41 @@ interface Message {
   replyToMessage?: Message | null
 }
 
+function getRoomIdentity(room: Partial<ChatRoom> & { participants?: string[] }) {
+  if (room.type === "pod" || room.podId) {
+    return `pod:${room.podId || room.$id || ""}`
+  }
+
+  const participants = Array.isArray(room.participants) ? [...room.participants].sort() : []
+  return participants.length > 0
+    ? `direct:${participants.join(":")}`
+    : `direct:${room.$id || ""}`
+}
+
+function normalizeRooms(rooms: any[]): ChatRoom[] {
+  const seen = new Set<string>()
+
+  return rooms
+    .map((room: any) => ({
+      ...room,
+      $id: room.$id || room.id,
+      type: room.type === "dm" ? "direct" : (room.type || (room.podId ? "pod" : "direct")),
+      name: room.name || room.displayName || room.podName || room.$id,
+      participants: Array.isArray(room.members)
+        ? room.members
+        : Array.isArray(room.participants)
+          ? room.participants
+          : [],
+    }) as ChatRoom)
+    .sort((a, b) => new Date(b.lastMessageTime || 0).getTime() - new Date(a.lastMessageTime || 0).getTime())
+    .filter((room) => {
+      const identity = getRoomIdentity(room)
+      if (seen.has(identity)) return false
+      seen.add(identity)
+      return true
+    })
+}
+
 export default function ChatPage() {
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null)
   const [rooms, setRooms] = useState<ChatRoom[]>([])
@@ -147,12 +182,7 @@ export default function ChatPage() {
       setIsLoadingRooms(true)
       try {
         const { podRooms, directRooms } = await chatService.getUserChatRooms(user.$id)
-        const normalized = [...(podRooms || []), ...(directRooms || [])].map((room: any) => ({
-          ...room,
-          $id: room.$id || room.id,
-          type: room.type === "dm" ? "direct" : (room.type || (room.podId ? "pod" : "direct")),
-          name: room.name || room.displayName || room.podName || room.$id,
-        })) as ChatRoom[]
+        const normalized = normalizeRooms([...(podRooms || []), ...(directRooms || [])])
         setRooms(normalized)
 
         const routeRoomId = searchParams.get("room")
@@ -168,9 +198,10 @@ export default function ChatPage() {
               $id: podRoom.$id,
               type: "pod",
               name: podRoom.name || "Pod Chat",
+              participants: Array.isArray(podRoom.members) ? podRoom.members : [user.$id],
               podId: routeRoomId,
             } as ChatRoom
-            setRooms((prev) => [nextRoom, ...prev.filter((room) => room.$id !== nextRoom.$id)])
+            setRooms((prev) => normalizeRooms([nextRoom, ...prev.filter((room) => room.$id !== nextRoom.$id)]))
             setSelectedRoom(nextRoom)
             setShowMobileChatList(false)
           }
@@ -183,7 +214,7 @@ export default function ChatPage() {
       }
     }
     loadRooms()
-  }, [user?.$id])
+  }, [user?.$id, searchParams])
 
   useEffect(() => {
     const loadMessages = async (fromPoll = false) => {

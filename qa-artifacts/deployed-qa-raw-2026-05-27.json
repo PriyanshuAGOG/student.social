@@ -1,0 +1,1074 @@
+{
+  "timestamp": "2026-05-27T12:09:48.865Z",
+  "base": "https://studentssocial.vercel.app",
+  "browserPlugin": "FAILED: privileged native pipe bridge is not available; browser-client is not trusted",
+  "authUserId": null,
+  "cookieNames": [
+    "peerspark_session"
+  ],
+  "results": [
+    {
+      "area": "Auth",
+      "feature": "Login",
+      "action": "POST /api/auth/login",
+      "result": "PASS",
+      "evidence": "status=200; body={\"success\":true,\"userId\":\"6a1481ee00346e527fb3\",\"email\":\"[REDACTED_EMAIL]\",\"name\":\"Priyanshu Agarwal\",\"sessionId\":\"6a16def9ad40d634f257\",\"accessToken\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2YTE0ODFlZTAwMzQ2ZTUyN2ZiMyIsInNlc3Npb25JZCI6IjZhMTZkZWY5YWQ0MGQ2MzRmMjU3IiwiZGV2aWNlRmluZ2VycHJpbnQiOiI5NGFkYjcyMDc2NzI0ZGI5ZmUyY2VkNTljMTEwNzMyMTAwZTA3OWUyYWI0MTk2ODQwZmY3ZDdlMGE5OTNhZmQ1IiwiaWF0IjoxNzc5ODgzNzcwLCJleHAiOjE3Nzk4ODU1NzAsImp0aSI6IjM1YzliMWY1LTk5NmYtNDZiZC05NDY2LTYyYjk1ODFlZmQyMyJ9.b4etTSftdp1imCROcmO7CzsMxq_byqcgF01-uhI8yfc\",\"expiresIn\":1800,\"message\":\"Login successful\"}",
+      "risk": ""
+    },
+    {
+      "area": "Auth",
+      "feature": "Session",
+      "action": "GET /api/auth/session after login",
+      "result": "PASS",
+      "evidence": "status=200; body={\"authenticated\":true,\"user\":{\"$id\":\"6a1481ee00346e527fb3\",\"$createdAt\":\"2026-05-25T17:07:59.102+00:00\",\"$updatedAt\":\"2026-05-25T17:08:42.776+00:00\",\"name\":\"Priyanshu Agarwal\",\"password\":\"$argon2id$v=19$m=65536,t=4,p=3$SkdkMkZCMDBQSDlIRE85NA$oN+j7bT81phj/h73/M5C+R/6ioJ3vtLVAtnOjsvqG2g\",\"hash\":\"argon2\",\"hashOptions\":{\"type\":\"argon2\",\"memory_cost\":65536,\"time_cost\":4,\"threads\":3},\"registration\":\"2026-05-25T17:07:59.100+00:00\",\"status\":true,\"labels\":[],\"passwordUpdate\":\"2026-05-25T17:07:59.100+00:00\",\"email\":\"[REDACTED_EMAIL]\",\"phone\":\"\",\"emailVerification\":true,\"phoneVerification\":false,\"mfa\":false,\"prefs\":{},\"targets\":[{\"$id\":\"6a1481ef213e1a41cbf2\",\"$createdAt\":\"2026-05-25T17:07:59.136+00:00\",\"$updatedAt\":\"2026-05-25T17:07:59.136+00:00\",\"name\":\"\",\"userId\":\"6a1481ee00346e527fb3\",\"providerId\":null,\"providerType\":\"email\",\"identifier\":\"[REDACTED_EMAIL]\",\"expired\":false}],\"accessedAt\":\"2026-05-25T17:07:59.985+00:00\"},\"profile\":{\"userId\":\"6a1481ee00346e527fb3\",\"name\":\"Priyanshu Agarwal\",\"email\":\"chat.priyanshuag@gmail.com\",\"bio\":\"\",\"avatar\":\"\",\"avatarFileId\":null,\"interests\":[],\"identity\":null,\"vibes\":[],\"learningGoals\":[],\"learningPace\":\"\",\"preferredSessionTypes\":[],\"",
+      "risk": ""
+    },
+    {
+      "area": "Public",
+      "feature": "Landing",
+      "action": "GET /",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "Public",
+      "feature": "Login",
+      "action": "GET /login",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "Public",
+      "feature": "Register",
+      "action": "GET /register",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "Public",
+      "feature": "Verify email",
+      "action": "GET /verify-email",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Feed",
+      "action": "GET /app/feed",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Home",
+      "action": "GET /app/home",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Chat",
+      "action": "GET /app/chat",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Messages direct placeholder",
+      "action": "GET /app/messages/test",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/c",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Pods",
+      "action": "GET /app/pods",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Vault",
+      "action": "GET /app/vault",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Saved",
+      "action": "GET /app/saved",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Profile",
+      "action": "GET /app/profile",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Settings",
+      "action": "GET /app/settings",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Notifications",
+      "action": "GET /app/notifications",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Analytics",
+      "action": "GET /app/analytics",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Leaderboard",
+      "action": "GET /app/leaderboard",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Calendar",
+      "action": "GET /app/calendar",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Courses",
+      "action": "GET /app/courses",
+      "result": "FAIL",
+      "evidence": "status=404; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Explore",
+      "action": "GET /app/explore",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Search",
+      "action": "GET /app/search",
+      "result": "FAIL",
+      "evidence": "status=404; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "App",
+      "feature": "Onboarding",
+      "action": "GET /onboarding",
+      "result": "PASS/LOADS",
+      "evidence": "status=200; location=; sample=<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script>",
+      "risk": ""
+    },
+    {
+      "area": "Auth",
+      "feature": "Validate session",
+      "action": "GET /api/auth/validate-session",
+      "result": "PASS/RESPONDS",
+      "evidence": "status=401; body={\"success\":false,\"error\":\"Authorization header missing or invalid\",\"code\":\"NO_TOKEN\",\"errorId\":\"auth_1779883783818_dmq4fu\",\"timestamp\":\"2026-05-27T12:09:43.818Z\",\"details\":{}}",
+      "risk": ""
+    },
+    {
+      "area": "Notifications",
+      "feature": "Inbox",
+      "action": "GET /api/notifications/inbox",
+      "result": "PASS/RESPONDS",
+      "evidence": "status=401; body={\"error\":\"Unauthorized\"}",
+      "risk": ""
+    },
+    {
+      "area": "Notifications",
+      "feature": "Preferences",
+      "action": "GET /api/notifications/preferences",
+      "result": "PASS/RESPONDS",
+      "evidence": "status=401; body={\"error\":\"Unauthorized\"}",
+      "risk": ""
+    },
+    {
+      "area": "Pods",
+      "feature": "List pods",
+      "action": "GET /api/pods?myPods=true",
+      "result": "PASS/RESPONDS",
+      "evidence": "status=200; body={\"success\":true,\"documents\":[{\"teamId\":\"pod_1779769112051_fcp1znn\",\"name\":\"hello\",\"description\":\"annuy\",\"creatorId\":\"6a1481ee00346e527fb3\",\"members\":[\"6a1481ee00346e527fb3\"],\"subject\":\"Design\",\"difficulty\":\"Beginner\",\"tags\":[],\"matchingTags\":[],\"idealLearnerType\":[\"beginner\"],\"sessionType\":[\"live\"],\"averageSessionLength\":60,\"commonAvailability\":[],\"isActive\":true,\"isPublic\":true,\"createdAt\":\"2026-05-26T04:18:32.051Z\",\"updatedAt\":\"2026-05-26T04:18:32.051Z\",\"memberCount\":1,\"maxMembers\":50,\"$id\":\"6a151f184759add73c70\",\"$sequence\":1,\"$createdAt\":\"2026-05-26T04:18:32.293+00:00\",\"$updatedAt\":\"2026-05-26T04:18:32.293+00:00\",\"$permissions\":[],\"$databaseId\":\"peerspark-main-db\",\"$collectionId\":\"pods\"}",
+      "risk": ""
+    },
+    {
+      "area": "Messages",
+      "feature": "Rooms for user",
+      "action": "GET /api/messages/send?userId=",
+      "result": "FAIL",
+      "evidence": "status=500; body={\"success\":false,\"error\":\"Invalid input. Please check your data and try again\",\"details\":{\"code\":\"VALIDATION_ERROR\",\"message\":\"Field 'userId' is required\",\"userMessage\":\"Invalid input. Please check your data and try again\",\"severity\":\"low\",\"category\":\"validation\",\"originalError\":{\"code\":\"VALIDATION_ERROR\",\"userMessage\":\"Please provide a valid userId\",\"severity\":\"low\",\"category\":\"validation\",\"context\":{\"field\":\"userId\",\"value\":\"\"},\"timestamp\":\"2026-05-27T12:09:45.688Z\",\"retry\":false,\"maxRetries\":3,\"name\":\"AppError\"},\"timestamp\":\"2026-05-27T12:09:45.688Z\",\"retry\":false,\"maxRetries\":0}}",
+      "risk": "Server error"
+    },
+    {
+      "area": "Vault/Resources",
+      "feature": "Calendar token invalid smoke",
+      "action": "GET /api/calendar-sync/feed?token=invalid",
+      "result": "PASS/RESPONDS",
+      "evidence": "status=404; body=not found",
+      "risk": ""
+    }
+  ],
+  "network": [
+    {
+      "label": "Landing page",
+      "url": "/",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 3085,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "Login page",
+      "url": "/login",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 607,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "Auth login API",
+      "url": "/api/auth/login",
+      "method": "POST",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/plain;charset=UTF-8",
+      "setCookies": [
+        "peerspark_cookie=[REDACTED]; Path=/; Expires=Fri, 26 Jun 2026 12:09:30 GMT; Max-Age=2592000; Secure; HttpOnly; SameSite=strict"
+      ],
+      "ms": 2457,
+      "bodySample": "{\"success\":true,\"userId\":\"6a1481ee00346e527fb3\",\"email\":\"[REDACTED_EMAIL]\",\"name\":\"Priyanshu Agarwal\",\"sessionId\":\"6a16def9ad40d634f257\",\"accessToken\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2YTE0ODFlZTAwMzQ2ZTUyN2ZiMyIsInNlc3Npb25JZCI6IjZhMTZkZWY5YWQ0MGQ2MzRmMjU3IiwiZGV2aWNlRmluZ2VycHJpbnQiOiI5NGFkYjcyMDc2NzI0ZGI5ZmUyY2VkNTljMTEwNzMyMTAwZTA3OWUyYWI0MTk2ODQwZmY3ZDdlMGE5OTNhZmQ1IiwiaWF0IjoxNzc5ODgzNzcwLCJleHAiOjE3Nzk4ODU1NzAsImp0aSI6IjM1YzliMWY1LTk5NmYtNDZiZC05NDY2LTYyYjk1ODFlZmQyMyJ9.b4etTSftdp1imCROcmO7CzsMxq_byqcgF01-uhI8yfc\",\"expiresIn\":1800,\"message\":\"Login successful\"}"
+    },
+    {
+      "label": "Auth session API",
+      "url": "/api/auth/session",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "application/json",
+      "setCookies": [],
+      "ms": 1252,
+      "bodySample": "{\"authenticated\":true,\"user\":{\"$id\":\"6a1481ee00346e527fb3\",\"$createdAt\":\"2026-05-25T17:07:59.102+00:00\",\"$updatedAt\":\"2026-05-25T17:08:42.776+00:00\",\"name\":\"Priyanshu Agarwal\",\"password\":\"$argon2id$v=19$m=65536,t=4,p=3$SkdkMkZCMDBQSDlIRE85NA$oN+j7bT81phj/h73/M5C+R/6ioJ3vtLVAtnOjsvqG2g\",\"hash\":\"argon2\",\"hashOptions\":{\"type\":\"argon2\",\"memory_cost\":65536,\"time_cost\":4,\"threads\":3},\"registration\":\"2026-05-25T17:07:59.100+00:00\",\"status\":true,\"labels\":[],\"passwordUpdate\":\"2026-05-25T17:07:59.100+00:00\",\"email\":\"[REDACTED_EMAIL]\",\"phone\":\"\",\"emailVerification\":true,\"phoneVerification\":false,\"mfa\":false,\"prefs\":{},\"targets\":[{\"$id\":\"6a1481ef213e1a41cbf2\",\"$createdAt\":\"2026-05-25T17:07:59.136+00:00\",\"$updatedAt\":\"2026-05-25T17:07:59.136+00:00\",\"name\":\"\",\"userId\":\"6a1481ee00346e527fb3\",\"providerId\":null,\"providerType\":\"email\",\"identifier\":\"chat.priyanshuag@gmail.com\",\"expired\":false}],\"accessedAt\":\"2026-05-25T17:07:59.985+00:00\"},\"profile\":{\"userId\":\"6a1481ee00346e527fb3\",\"name\":\"Priyanshu Agarwal\",\"email\":\"chat.priyanshuag@gmail.com\",\"bio\":\"\",\"avatar\":\"\",\"avatarFileId\":null,\"interests\":[],\"identity\":null,\"vibes\":[],\"learningGoals\":[],\"learningPace\":\"\",\"preferredSessionTypes\":[],\""
+    },
+    {
+      "label": "Public page Landing",
+      "url": "/",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 69,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "Public page Login",
+      "url": "/login",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 75,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "Public page Register",
+      "url": "/register",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 563,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "Public page Verify email",
+      "url": "/verify-email",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 512,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Feed",
+      "url": "/app/feed",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 658,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Home",
+      "url": "/app/home",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 629,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Chat",
+      "url": "/app/chat",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 685,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Messages direct placeholder",
+      "url": "/app/messages/test",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 1473,
+      "bodySample": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks/bb0f05b33527074f.js\" async="
+    },
+    {
+      "label": "App page Pods",
+      "url": "/app/pods",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 547,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Vault",
+      "url": "/app/vault",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 592,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Saved",
+      "url": "/app/saved",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 531,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Profile",
+      "url": "/app/profile",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 592,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Settings",
+      "url": "/app/settings",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 638,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Notifications",
+      "url": "/app/notifications",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 562,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Analytics",
+      "url": "/app/analytics",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 633,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Leaderboard",
+      "url": "/app/leaderboard",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 303,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Calendar",
+      "url": "/app/calendar",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 490,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Courses",
+      "url": "/app/courses",
+      "method": "GET",
+      "status": 404,
+      "statusText": "Not Found",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 357,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/7d5fbe2d96424723.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><meta name=\"robots\" content=\"noindex\"/><meta name=\"mobile-web-app-capable\" content=\"yes\"/><meta name=\"appl"
+    },
+    {
+      "label": "App page Explore",
+      "url": "/app/explore",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 628,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "App page Search",
+      "url": "/app/search",
+      "method": "GET",
+      "status": 404,
+      "statusText": "Not Found",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 112,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/7d5fbe2d96424723.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><meta name=\"robots\" content=\"noindex\"/><meta name=\"mobile-web-app-capable\" content=\"yes\"/><meta name=\"appl"
+    },
+    {
+      "label": "App page Onboarding",
+      "url": "/onboarding",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "text/html; charset=utf-8",
+      "setCookies": [],
+      "ms": 590,
+      "bodySample": "<!DOCTYPE html><!--3L5sguPI0Ns7HwjLjsMYu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover, user-scalable=yes\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/462da18bd3393315.css\" data-precedence=\"next\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_next/static/chunks/f190c93b4469b1d1.js\"/><script src=\"/_next/static/chunks/5437aa3ce04da696.js\" async=\"\"></script><script src=\"/_next/static/chunks/d8b5c086dcb17ddf.js\" async=\"\"></script><script src=\"/_next/static/chunks/49d4c059b0213de3.js\" async=\"\"></script><script src=\"/_next/static/chunks/da4bc0658c347c78.js\" async=\"\"></script><script src=\"/_next/static/chunks/turbopack-b3ed4eb2d89f58b9.js\" async=\"\"></script><script src=\"/_next/static/chunks/758195b3bdfeb2f8.js\" async=\"\"></script><script src=\"/_next/static/chunks/745fc861526e5a8e.js\" async=\"\"></script><script src=\"/_next/static/chunks/402f7b4c62b78f1c.js\" async=\"\"></script><script src=\"/_next/static/chunks/483a12865e0bba97.js\" async=\"\"></script><script src=\"/_next/static/chunks/7a5eb96c6d15cd21.js\" async=\"\"></script><script src=\"/_next/static/chunks"
+    },
+    {
+      "label": "Auth API Validate session",
+      "url": "/api/auth/validate-session",
+      "method": "GET",
+      "status": 401,
+      "statusText": "Unauthorized",
+      "location": null,
+      "contentType": "application/json",
+      "setCookies": [],
+      "ms": 695,
+      "bodySample": "{\"success\":false,\"error\":\"Authorization header missing or invalid\",\"code\":\"NO_TOKEN\",\"errorId\":\"auth_1779883783818_dmq4fu\",\"timestamp\":\"2026-05-27T12:09:43.818Z\",\"details\":{}}"
+    },
+    {
+      "label": "Notifications API Inbox",
+      "url": "/api/notifications/inbox",
+      "method": "GET",
+      "status": 401,
+      "statusText": "Unauthorized",
+      "location": null,
+      "contentType": "application/json",
+      "setCookies": [],
+      "ms": 694,
+      "bodySample": "{\"error\":\"Unauthorized\"}"
+    },
+    {
+      "label": "Notifications API Preferences",
+      "url": "/api/notifications/preferences",
+      "method": "GET",
+      "status": 401,
+      "statusText": "Unauthorized",
+      "location": null,
+      "contentType": "application/json",
+      "setCookies": [],
+      "ms": 331,
+      "bodySample": "{\"error\":\"Unauthorized\"}"
+    },
+    {
+      "label": "Pods API List pods",
+      "url": "/api/pods?myPods=true",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "location": null,
+      "contentType": "application/json",
+      "setCookies": [],
+      "ms": 488,
+      "bodySample": "{\"success\":true,\"documents\":[{\"teamId\":\"pod_1779769112051_fcp1znn\",\"name\":\"hello\",\"description\":\"annuy\",\"creatorId\":\"6a1481ee00346e527fb3\",\"members\":[\"6a1481ee00346e527fb3\"],\"subject\":\"Design\",\"difficulty\":\"Beginner\",\"tags\":[],\"matchingTags\":[],\"idealLearnerType\":[\"beginner\"],\"sessionType\":[\"live\"],\"averageSessionLength\":60,\"commonAvailability\":[],\"isActive\":true,\"isPublic\":true,\"createdAt\":\"2026-05-26T04:18:32.051Z\",\"updatedAt\":\"2026-05-26T04:18:32.051Z\",\"memberCount\":1,\"maxMembers\":50,\"$id\":\"6a151f184759add73c70\",\"$sequence\":1,\"$createdAt\":\"2026-05-26T04:18:32.293+00:00\",\"$updatedAt\":\"2026-05-26T04:18:32.293+00:00\",\"$permissions\":[],\"$databaseId\":\"peerspark-main-db\",\"$collectionId\":\"pods\"}],\"pods\":[{\"teamId\":\"pod_1779769112051_fcp1znn\",\"name\":\"hello\",\"description\":\"annuy\",\"creatorId\":\"6a1481ee00346e527fb3\",\"members\":[\"6a1481ee00346e527fb3\"],\"subject\":\"Design\",\"difficulty\":\"Beginner\",\"tags\":[],\"matchingTags\":[],\"idealLearnerType\":[\"beginner\"],\"sessionType\":[\"live\"],\"averageSessionLength\":60,\"commonAvailability\":[],\"isActive\":true,\"isPublic\":true,\"createdAt\":\"2026-05-26T04:18:32.051Z\",\"updatedAt\":\"2026-05-26T04:18:32.051Z\",\"memberCount\":1,\"maxMembers\":50,\"$id\":\"6a151f184759add73c70"
+    },
+    {
+      "label": "Messages API Rooms for user",
+      "url": "/api/messages/send?userId=",
+      "method": "GET",
+      "status": 500,
+      "statusText": "Internal Server Error",
+      "location": null,
+      "contentType": "application/json",
+      "setCookies": [],
+      "ms": 314,
+      "bodySample": "{\"success\":false,\"error\":\"Invalid input. Please check your data and try again\",\"details\":{\"code\":\"VALIDATION_ERROR\",\"message\":\"Field 'userId' is required\",\"userMessage\":\"Invalid input. Please check your data and try again\",\"severity\":\"low\",\"category\":\"validation\",\"originalError\":{\"code\":\"VALIDATION_ERROR\",\"userMessage\":\"Please provide a valid userId\",\"severity\":\"low\",\"category\":\"validation\",\"context\":{\"field\":\"userId\",\"value\":\"\"},\"timestamp\":\"2026-05-27T12:09:45.688Z\",\"retry\":false,\"maxRetries\":3,\"name\":\"AppError\"},\"timestamp\":\"2026-05-27T12:09:45.688Z\",\"retry\":false,\"maxRetries\":0}}"
+    },
+    {
+      "label": "Vault/Resources API Calendar token invalid smoke",
+      "url": "/api/calendar-sync/feed?token=invalid",
+      "method": "GET",
+      "status": 404,
+      "statusText": "Not Found",
+      "location": null,
+      "contentType": "text/plain;charset=UTF-8",
+      "setCookies": [],
+      "ms": 696,
+      "bodySample": "not found"
+    }
+  ],
+  "buttonScan": [
+    {
+      "file": "app/about/page.tsx",
+      "buttons": 5,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/accessibility/page.tsx",
+      "buttons": 1,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/app/admin/page.tsx",
+      "buttons": 0,
+      "handlers": [],
+      "routes": [
+        "\"/feed\""
+      ]
+    },
+    {
+      "file": "app/app/ai/page.tsx",
+      "buttons": 6,
+      "handlers": [
+        "handleSendMessage",
+        "handleSuggestionClick",
+        "handleKeyPress"
+      ],
+      "routes": []
+    },
+    {
+      "file": "app/app/analytics/page.tsx",
+      "buttons": 2,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/app/calendar/page.tsx",
+      "buttons": 20,
+      "handlers": [
+        "handleCreateEvent",
+        "handleEditEvent",
+        "handleDeleteEvent"
+      ],
+      "routes": []
+    },
+    {
+      "file": "app/app/chat/page.tsx",
+      "buttons": 19,
+      "handlers": [
+        "handleSendMessage",
+        "handleKeyPress",
+        "handleFileUpload",
+        "handleRoomSelect"
+      ],
+      "routes": []
+    },
+    {
+      "file": "app/app/feed/page.tsx",
+      "buttons": 6,
+      "handlers": [
+        "handleLike",
+        "handleBookmark",
+        "handleShare",
+        "handleCommentCountChange",
+        "handlePostClick",
+        "handleReportPost",
+        "handlePostCreated",
+        "handleCelebrate"
+      ],
+      "routes": [
+        "`/app/profile/${username.replace('@', ''",
+        "`/app/pods/${post.pod?.id}`"
+      ]
+    },
+    {
+      "file": "app/app/home/page.tsx",
+      "buttons": 13,
+      "handlers": [
+        "handleScheduleSession",
+        "handleNewSession",
+        "handleContinueChallenge",
+        "handleViewCalendar",
+        "handleJoinPod",
+        "handlePlanAction"
+      ],
+      "routes": [
+        "\"/app/calendar?mode=schedule\"",
+        "\"/app/calendar?mode=create\"",
+        "`/app/challenges/${activeChallenge.id}`",
+        "\"/app/calendar\"",
+        "`/app/pods/${podId}`",
+        "href",
+        "\"/app/pods\"",
+        "`/app/calendar?event=${session.id}`",
+        "\"/app/ai\"",
+        "\"/app/pods?tab=discover\"",
+        "\"/app/vault\"",
+        "\"/app/analytics\""
+      ]
+    },
+    {
+      "file": "app/app/leaderboard/page.tsx",
+      "buttons": 1,
+      "handlers": [
+        "handleViewProfile"
+      ],
+      "routes": []
+    },
+    {
+      "file": "app/app/messages/[userId]/page.tsx",
+      "buttons": 2,
+      "handlers": [
+        "handleSend",
+        "handleKeyPress"
+      ],
+      "routes": [
+        "\"/login\""
+      ]
+    },
+    {
+      "file": "app/app/notifications/page.tsx",
+      "buttons": 12,
+      "handlers": [
+        "handleMarkAsRead",
+        "handleMarkAllAsRead",
+        "handleAcceptInvite",
+        "handleDeclineInvite",
+        "handleJoinSession",
+        "handleSavePreferences"
+      ],
+      "routes": [
+        "\"/login\"",
+        "`/app/pods/${notification.podId}`",
+        "notification.actionUrl",
+        "`/app/pods/${notification.podId}`"
+      ]
+    },
+    {
+      "file": "app/app/pods/[podId]/page.tsx",
+      "buttons": 5,
+      "handlers": [
+        "handleJoinSession",
+        "handleLeaveSession",
+        "handleVideoToggle",
+        "handleAudioToggle",
+        "handleScreenShare",
+        "handlePlayVideo",
+        "handleOpenChat",
+        "handleOpenCalendar",
+        "handleSavePledge",
+        "handleAddCheckIn",
+        "handleToggleRsvp",
+        "handleOpenVault",
+        "handleJoinUpcoming",
+        "handleJoinPod",
+        "handleCheer",
+        "handleLeavePod"
+      ],
+      "routes": [
+        "\"/app/pods\"",
+        "`/app/chat?room=${podId}`",
+        "`/app/calendar?pod=${podId}`",
+        "`/app/vault?pod=${podId}`",
+        "`/app/calendar?event=${upcomingEvent.$id || upcomingEvent.id}`"
+      ]
+    },
+    {
+      "file": "app/app/pods/join/page.tsx",
+      "buttons": 4,
+      "handlers": [
+        "handleGoToLogin"
+      ],
+      "routes": [
+        "`/app/pods/${resolvedPodId}`",
+        "\"/app/pods\"",
+        "\"/login\"",
+        "\"/app/pods\"",
+        "`/app/pods/${podId}`"
+      ]
+    },
+    {
+      "file": "app/app/pods/page.tsx",
+      "buttons": 11,
+      "handlers": [
+        "handleJoinPod",
+        "handleCreatePod"
+      ],
+      "routes": [
+        "`/app/pods/${podId}`",
+        "`/app/chat?room=${podId}`",
+        "`/app/calendar?pod=${podId}`"
+      ]
+    },
+    {
+      "file": "app/app/profile/[username]/page.tsx",
+      "buttons": 10,
+      "handlers": [
+        "handleFollow",
+        "handleMessage",
+        "handleLike",
+        "handleShare"
+      ],
+      "routes": [
+        "`/app/messages/${userProfile.userId}`"
+      ]
+    },
+    {
+      "file": "app/app/profile/page.tsx",
+      "buttons": 22,
+      "handlers": [
+        "handleFollow",
+        "handleMessage",
+        "handleEditProfile",
+        "handleSaveProfile",
+        "handleSettings",
+        "handleLike",
+        "handleComment",
+        "handleBookmark",
+        "handleShare",
+        "handlePostClick"
+      ],
+      "routes": [
+        "\"/app/chat\"",
+        "'/app/settings'",
+        "`/app/feed?post=${postId}`",
+        "`/app/profile/${authorId}`",
+        "'/app/feed'",
+        "'/app/settings'"
+      ]
+    },
+    {
+      "file": "app/app/saved/page.tsx",
+      "buttons": 7,
+      "handlers": [
+        "handleUnsave",
+        "handleLike",
+        "handleShare"
+      ],
+      "routes": []
+    },
+    {
+      "file": "app/app/settings/page.tsx",
+      "buttons": 4,
+      "handlers": [
+        "handleSettingChange",
+        "handleLogout"
+      ],
+      "routes": [
+        "\"/login\""
+      ]
+    },
+    {
+      "file": "app/app/vault/page.tsx",
+      "buttons": 24,
+      "handlers": [
+        "handleUpload",
+        "handleDownload",
+        "handleLike",
+        "handleBookmark",
+        "handleView",
+        "handleShare"
+      ],
+      "routes": [
+        "\"/login\""
+      ]
+    },
+    {
+      "file": "app/community-guidelines/page.tsx",
+      "buttons": 3,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/contact/page.tsx",
+      "buttons": 4,
+      "handlers": [
+        "handleSubmit"
+      ],
+      "routes": []
+    },
+    {
+      "file": "app/cookies/page.tsx",
+      "buttons": 4,
+      "handlers": [
+        "handleSavePreferences"
+      ],
+      "routes": []
+    },
+    {
+      "file": "app/courses/[id]/page.tsx",
+      "buttons": 3,
+      "handlers": [
+        "handleEnroll"
+      ],
+      "routes": [
+        "'/login'",
+        "'/courses'"
+      ]
+    },
+    {
+      "file": "app/courses/page.tsx",
+      "buttons": 1,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/demo/page.tsx",
+      "buttons": 7,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/dmca/page.tsx",
+      "buttons": 2,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/forgot-password/page.tsx",
+      "buttons": 4,
+      "handlers": [
+        "handleSubmit"
+      ],
+      "routes": []
+    },
+    {
+      "file": "app/help/page.tsx",
+      "buttons": 5,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/instructor/dashboard/page.tsx",
+      "buttons": 1,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/instructor/grading/page.tsx",
+      "buttons": 2,
+      "handlers": [
+        "handleGradeSubmission"
+      ],
+      "routes": []
+    },
+    {
+      "file": "app/login/page.tsx",
+      "buttons": 4,
+      "handlers": [
+        "handleLogin"
+      ],
+      "routes": [
+        "\"/feed\"",
+        "\"/verify-email?required=1\"",
+        "\"/feed\"",
+        "\"/verify-email?required=1\"",
+        "\"/feed\"",
+        "\"/verify-email?required=1\"",
+        "isEmailVerified ? \"/feed\" : \"/verify-email?required=1\""
+      ]
+    },
+    {
+      "file": "app/onboarding/page.tsx",
+      "buttons": 10,
+      "handlers": [
+        "handleNext",
+        "handleBack",
+        "handleComplete"
+      ],
+      "routes": [
+        "'/verify-email?required=1'",
+        "\"/app/home\"",
+        "'/login?session=expired'"
+      ]
+    },
+    {
+      "file": "app/page.tsx",
+      "buttons": 16,
+      "handlers": [
+        "handleNewsletterSignup"
+      ],
+      "routes": [
+        "\"/feed\"",
+        "\"/verify-email?required=1\""
+      ]
+    },
+    {
+      "file": "app/pods/course-dashboard/page.tsx",
+      "buttons": 3,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/privacy/page.tsx",
+      "buttons": 1,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/register/page.tsx",
+      "buttons": 5,
+      "handlers": [
+        "handleRegister"
+      ],
+      "routes": [
+        "\"/feed\"",
+        "\"/verify-email?required=1\"",
+        "\"/verify-email?sent=1\""
+      ]
+    },
+    {
+      "file": "app/reset-password/page.tsx",
+      "buttons": 2,
+      "handlers": [
+        "handleSubmit"
+      ],
+      "routes": [
+        "\"/login\"",
+        "'/login'"
+      ]
+    },
+    {
+      "file": "app/status/page.tsx",
+      "buttons": 5,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/support/page.tsx",
+      "buttons": 5,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/terms/page.tsx",
+      "buttons": 1,
+      "handlers": [],
+      "routes": []
+    },
+    {
+      "file": "app/verify-email/page.tsx",
+      "buttons": 3,
+      "handlers": [
+        "handleResend",
+        "handleUseDifferentAccount"
+      ],
+      "routes": [
+        "\"/feed\"",
+        "\"/login?verify=required\"",
+        "\"/login\""
+      ]
+    }
+  ]
+}

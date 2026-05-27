@@ -1,5 +1,6 @@
+import { NextResponse } from 'next/server'
 import { normalizeAppwriteEndpoint } from '@/lib/env'
-import { authErrorResponse, authSuccessResponse, getClientIP, getUserAgent } from '@/lib/auth-route-utils'
+import { authErrorResponse, JWT_COOKIE_NAME, getClientIP, getUserAgent } from '@/lib/auth-route-utils'
 import { verifyJWT, generateJWT, isTokenBlacklisted } from '@/lib/auth-security'
 import { Client, Users } from 'node-appwrite'
 
@@ -14,15 +15,26 @@ export async function POST(req: Request) {
   try {
     // Extract token from Authorization header
     const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
+    const cookieHeader = req.headers.get('cookie') || ''
+    const cookieToken = cookieHeader
+      .split(';')
+      .map((entry) => entry.trim())
+      .find((entry) => entry.startsWith(`${JWT_COOKIE_NAME}=`))
+      ?.split('=')
+      .slice(1)
+      .join('=')
+
+    const token = authHeader?.startsWith('Bearer ')
+      ? authHeader.substring(7)
+      : cookieToken
+
+    if (!token) {
       return authErrorResponse({
         status: 401,
         code: 'NO_TOKEN',
         message: 'Authorization header missing or invalid',
       })
     }
-
-    const token = authHeader.substring(7)
 
     // Verify current JWT token
     const decoded = verifyJWT(token)
@@ -73,14 +85,26 @@ export async function POST(req: Request) {
 
       console.log('[v0] Token refreshed for user:', decoded.userId)
 
-      return authSuccessResponse(
-        {
+      const response = NextResponse.json({
+        success: true,
+        data: {
           accessToken: newToken,
-          expiresIn: 30 * 60, // 30 minutes
+          expiresIn: 30 * 60,
           tokenType: 'Bearer',
         },
-        200
-      )
+      }, { status: 200 })
+
+      response.cookies.set({
+        name: JWT_COOKIE_NAME,
+        value: newToken,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 30 * 60,
+      })
+
+      return response
     } catch (error: any) {
       console.error('[v0] Error refreshing token:', error)
 

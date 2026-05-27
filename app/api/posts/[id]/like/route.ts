@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
-import { ApiError, jsonError, jsonOk, parseJsonBody, requireOwnership, requireUser } from '@/lib/api-security'
+import { ApiError, enforceRateLimit, enforceSameOrigin, jsonError, jsonOk, parseJsonBody, requireOwnership, requireUser } from '@/lib/api-security'
 import { getEnv } from '@/lib/env'
 
 const bodySchema = z.object({ userId: z.string().min(1) })
@@ -9,6 +9,8 @@ const bodySchema = z.object({ userId: z.string().min(1) })
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: 'posts:like', max: 60, windowMs: 60 * 1000 })
     const auth = requireUser(request)
     const { id: postId } = await params
     const { userId } = await parseJsonBody(request, bodySchema)

@@ -33,8 +33,10 @@ const batchSchema = z.object({
 
 export async function POST(request: NextRequest) {
   const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID()
+  let actorId = 'unknown'
   try {
     const auth = requireUser(request)
+    actorId = auth.userId
     requireRole(auth, ['instructor', 'admin'])
     const { submissionId, assignmentId } = await parseJsonBody(request, gradeSchema, 64 * 1024)
 
@@ -90,7 +92,7 @@ export async function POST(request: NextRequest) {
       },
     }, 200, correlationId)
   } catch (error) {
-    writeAuditLog({ action: 'assignment_grade_single', actorId: request.headers.get('x-user-id') || 'unknown', correlationId, status: 'failure' })
+    writeAuditLog({ action: 'assignment_grade_single', actorId, correlationId, status: 'failure' })
     return jsonError(error, correlationId)
   }
 }
@@ -211,8 +213,10 @@ ${shouldFlag ? '\n⚠️ This response has been flagged for instructor review.' 
  */
 export async function POST_BATCH(request: NextRequest) {
   const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID()
+  let actorId = 'unknown'
   try {
     const auth = requireUser(request)
+    actorId = auth.userId
     requireRole(auth, ['instructor', 'admin'])
     const { submissionIds } = await parseJsonBody(request, batchSchema, 64 * 1024)
 
@@ -258,7 +262,7 @@ export async function POST_BATCH(request: NextRequest) {
     writeAuditLog({ action: 'assignment_grade_batch', actorId: auth.userId, correlationId, status: 'success', details: { requested: submissionIds.length, successful } })
     return jsonOk({ message: `Batch graded ${successful}/${submissionIds.length} submissions`, data: results }, 200, correlationId)
   } catch (error) {
-    writeAuditLog({ action: 'assignment_grade_batch', actorId: request.headers.get('x-user-id') || 'unknown', correlationId, status: 'failure' })
+    writeAuditLog({ action: 'assignment_grade_batch', actorId, correlationId, status: 'failure' })
     return jsonError(error, correlationId)
   }
 }

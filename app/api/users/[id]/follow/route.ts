@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const PROFILES_COLLECTION_ID = (process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles');
@@ -15,10 +16,34 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let authUserId = ''
+  let requestedUserId = ''
+
+  try {
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'users:follow', max: 30, windowMs: 60 * 1000 });
+    const body = await request.json().catch(() => ({}));
+    const auth = requireUser(request);
+    authUserId = auth.userId;
+    requestedUserId = body?.userId || auth.userId;
+    requireOwnership(requestedUserId, auth.userId);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return NextResponse.json(
+        { success: false, error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
+
+    return NextResponse.json(
+      { success: false, error: 'Invalid request body' },
+      { status: 400 }
+    );
+  }
+
   const { data, error } = await withErrorHandling(async () => {
     const { id: targetUserId } = await params;
-    const body = await request.json();
-    const { userId } = body; // Current user
+    const userId = requestedUserId || authUserId; // Current user
 
     validateInput({ targetUserId, userId }, {
       targetUserId: { required: true },
@@ -43,7 +68,7 @@ export async function POST(
       databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, targetUserId),
     ]);
 
-    const following = Array.isArray(followerProfile.following) ? followerProfile.following : [];
+    const following: string[] = Array.isArray(followerProfile.following) ? Array.from(new Set(followerProfile.following as string[])) : [];
     const isFollowing = following.includes(targetUserId);
 
     if (isFollowing) {
@@ -54,7 +79,7 @@ export async function POST(
         followingCount: newFollowing.length,
       });
 
-      const followers = Array.isArray(targetProfile.followers) ? targetProfile.followers : [];
+      const followers: string[] = Array.isArray(targetProfile.followers) ? Array.from(new Set(targetProfile.followers as string[])) : [];
       const newFollowers = followers.filter((id: string) => id !== userId);
       await databases.updateDocument(DATABASE_ID, PROFILES_COLLECTION_ID, targetUserId, {
         followers: newFollowers,
@@ -64,6 +89,8 @@ export async function POST(
       return {
         success: true,
         isFollowing: false,
+        followerCount: newFollowers.length,
+        followingCount: newFollowing.length,
         message: `Unfollowed ${targetProfile.name || 'user'}`,
       };
     } else {
@@ -74,7 +101,7 @@ export async function POST(
         followingCount: newFollowing.length,
       });
 
-      const followers = Array.isArray(targetProfile.followers) ? targetProfile.followers : [];
+      const followers: string[] = Array.isArray(targetProfile.followers) ? Array.from(new Set(targetProfile.followers as string[])) : [];
       const newFollowers = [...followers, userId];
       await databases.updateDocument(DATABASE_ID, PROFILES_COLLECTION_ID, targetUserId, {
         followers: newFollowers,
@@ -100,6 +127,8 @@ export async function POST(
       return {
         success: true,
         isFollowing: true,
+        followerCount: newFollowers.length,
+        followingCount: newFollowing.length,
         message: `Following ${targetProfile.name || 'user'}`,
       };
     }

@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const POSTS_COLLECTION_ID = (process.env.NEXT_PUBLIC_POSTS_COLLECTION_ID || 'posts');
@@ -22,9 +23,35 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let requestBody: any = null;
+
+  try {
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'posts:comments', max: 20, windowMs: 60 * 1000 });
+    requestBody = await request.json().catch(() => null);
+    if (!requestBody) {
+      return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });
+    }
+
+    const auth = requireUser(request);
+    if (requestBody.userId) {
+      requireOwnership(requestBody.userId, auth.userId);
+    }
+    requestBody.userId = auth.userId;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return NextResponse.json(
+        { success: false, error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
+
+    return NextResponse.json({ success: false, error: 'Unable to create comment' }, { status: 500 });
+  }
+
   const { data, error } = await withErrorHandling(async () => {
     const { id: postId } = await params;
-    const body = await request.json();
+    const body = requestBody;
     const { userId, content, parentCommentId } = body;
 
     validateInput(
@@ -57,6 +84,25 @@ export async function POST(
         severity: ErrorSeverity.MEDIUM,
         category: ErrorCategory.BUSINESS_LOGIC,
       });
+    }
+
+    let parentComment: any = null;
+    if (parentCommentId) {
+      parentComment = await databases.getDocument(
+        DATABASE_ID,
+        COMMENTS_COLLECTION_ID,
+        parentCommentId
+      );
+
+      if (parentComment.postId !== postId || parentComment.isDeleted) {
+        throw new AppError({
+          code: 'INVALID_PARENT_COMMENT',
+          message: 'Parent comment does not belong to this post',
+          userMessage: 'This reply could not be added to the selected comment',
+          severity: ErrorSeverity.LOW,
+          category: ErrorCategory.VALIDATION,
+        });
+      }
     }
 
     // Get commenter info
@@ -128,14 +174,8 @@ export async function POST(
     }
 
     // If reply, notify parent commenter
-    if (parentCommentId) {
+    if (parentComment) {
       try {
-        const parentComment = await databases.getDocument(
-          DATABASE_ID,
-          COMMENTS_COLLECTION_ID,
-          parentCommentId
-        );
-
         if (parentComment.authorId !== userId) {
           await databases.createDocument(
             DATABASE_ID,
@@ -157,7 +197,7 @@ export async function POST(
         await databases.updateDocument(
           DATABASE_ID,
           COMMENTS_COLLECTION_ID,
-          parentCommentId,
+          parentComment.$id,
           {
             replies: (parentComment.replies || 0) + 1,
           }
@@ -177,7 +217,7 @@ export async function POST(
   if (error) {
     return NextResponse.json(
       { success: false, error: error.userMessage, details: error },
-      { status: error.code === 'VALIDATION_ERROR' ? 400 : error.code === 'RESOURCE_NOT_FOUND' || error.code === 'POST_DELETED' ? 404 : 500 }
+      { status: error.code === 'VALIDATION_ERROR' || error.code === 'INVALID_PARENT_COMMENT' ? 400 : error.code === 'RESOURCE_NOT_FOUND' || error.code === 'POST_DELETED' ? 404 : 500 }
     );
   }
 

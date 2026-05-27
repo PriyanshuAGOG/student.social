@@ -10,6 +10,46 @@ type SessionCookie = {
   userId?: string
   email?: string
   secret?: string
+  expire?: string
+}
+
+function sanitizeAccountUser(user: any) {
+  if (!user) return null
+
+  const {
+    password,
+    hash,
+    hashOptions,
+    tokens,
+    sessions,
+    mfaRecoveryCodes,
+    ...safeUser
+  } = user
+
+  return safeUser
+}
+
+function noStoreJson(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    },
+  })
+}
+
+function signaturesMatch(expected: string, actual: string) {
+  const expectedBuffer = Buffer.from(expected)
+  const actualBuffer = Buffer.from(actual)
+  return expectedBuffer.length === actualBuffer.length && crypto.timingSafeEqual(expectedBuffer, actualBuffer)
+}
+
+function isExpired(expire?: string) {
+  if (!expire) return false
+  const expiresAt = Date.parse(expire)
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now()
 }
 
 export async function GET(request: NextRequest) {
@@ -27,7 +67,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
           authenticated: true,
-          user: accountUser,
+          user: sanitizeAccountUser(accountUser),
           profile,
         }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
       }
@@ -35,30 +75,30 @@ export async function GET(request: NextRequest) {
 
     const raw = request.cookies.get('peerspark_session')?.value
     if (!raw) {
-      return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
+      return noStoreJson({ authenticated: false, user: null, profile: null })
     }
 
     const cookieSecret = getSessionCookieSecret()
 
     const [encodedPayload, signature] = raw.split('.')
     if (!encodedPayload || !signature) {
-      return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
+      return noStoreJson({ authenticated: false, user: null, profile: null })
     }
 
     const expectedSignature = crypto.createHmac('sha256', cookieSecret).update(encodedPayload).digest('hex')
-    if (signature !== expectedSignature) {
-      return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
+    if (!signaturesMatch(expectedSignature, signature)) {
+      return noStoreJson({ authenticated: false, user: null, profile: null })
     }
 
     let sessionCookie: SessionCookie | null = null
     try {
       sessionCookie = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as SessionCookie
     } catch {
-      return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
+      return noStoreJson({ authenticated: false, user: null, profile: null })
     }
 
-    if (!sessionCookie?.userId || (!sessionCookie?.secret && !sessionCookie?.sessionId)) {
-      return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
+    if (!sessionCookie?.userId || (!sessionCookie?.secret && !sessionCookie?.sessionId) || isExpired(sessionCookie.expire)) {
+      return noStoreJson({ authenticated: false, user: null, profile: null })
     }
 
     const { users, databases } = createAdminClient()
@@ -84,16 +124,16 @@ export async function GET(request: NextRequest) {
     }
 
     if (!accountUser?.$id) {
-      return NextResponse.json({ authenticated: false, user: null, profile: null }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
+      return noStoreJson({ authenticated: false, user: null, profile: null })
     }
     const profile = await databases.getDocument(process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || '', 'profiles', accountUser.$id).catch(() => null)
 
     return NextResponse.json({
       authenticated: true,
-      user: accountUser,
+      user: sanitizeAccountUser(accountUser),
       profile,
     }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
   } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Failed to load session' }, { status: 500, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
+    return noStoreJson({ error: error?.message || 'Failed to load session' }, 500)
   }
 }

@@ -130,7 +130,7 @@ export default function PodDetailPage() {
           setMemberProfiles([])
         }
 
-        const res = await resourceService.getResources(podId, 6, 0)
+        const res = await resourceService.getResources({ podId }, 6, 0)
         setResources(res.documents || [])
 
         if (calendarService.getPodEvents) {
@@ -404,7 +404,7 @@ export default function PodDetailPage() {
     try {
       const next = await podService.incrementReaction(podId, itemId, itemType, user.$id, 1)
       setReactionCounts((prev) => ({ ...prev, [itemId]: next }))
-      setCheers((prev) => ({ ...prev, [itemId]: (prev[itemId] || 0) + 1 }))
+      setCheers((prev) => ({ ...prev, [itemId]: next }))
     } catch (err: any) {
       toast({ title: "Could not cheer", description: err?.message || "Try again", variant: "destructive" })
     }
@@ -455,25 +455,6 @@ export default function PodDetailPage() {
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, 8)
   }, [events, resources])
-
-  useEffect(() => {
-    if (!podId) return
-    try {
-      const stored = localStorage.getItem(`pod-cheers-${podId}`)
-      if (stored) setCheers(JSON.parse(stored))
-    } catch (err) {
-      console.warn("cheers load failed", err)
-    }
-  }, [podId])
-
-  useEffect(() => {
-    if (!podId) return
-    try {
-      localStorage.setItem(`pod-cheers-${podId}`, JSON.stringify(cheers))
-    } catch (err) {
-      console.warn("cheers save failed", err)
-    }
-  }, [cheers, podId])
 
   useEffect(() => {
     let cancelled = false

@@ -267,14 +267,29 @@ export default function FeedPage() {
     }
   }
 
-  const handleShare = (postId: string) => {
+  const handleShare = async (postId: string) => {
     const post = posts.find((p) => p.id === postId)
     if (post) {
-      navigator.clipboard.writeText(`https://peerspark.com/post/${postId}`)
-      toast({
-        title: "Link copied!",
-        description: "Post link has been copied to your clipboard.",
-      })
+      const shareUrl = `${window.location.origin}/app/feed?post=${postId}`
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: post.title || "PeerSpark post",
+            text: post.content.slice(0, 160),
+            url: shareUrl,
+          })
+        } else {
+          await navigator.clipboard.writeText(shareUrl)
+          toast({
+            title: "Link copied",
+            description: "Post link has been copied to your clipboard.",
+          })
+        }
+      } catch (error: any) {
+        if (error?.name !== "AbortError") {
+          toast({ title: "Share failed", description: "Could not share this post right now.", variant: "destructive" })
+        }
+      }
     }
   }
 
@@ -290,11 +305,34 @@ export default function FeedPage() {
     router.push(`/app/profile/${username.replace('@', '')}`)
   }
 
-  const handleReportPost = (postId: string) => {
-    toast({
-      title: "Post Reported",
-      description: "Thank you for reporting. We'll review this content.",
-    })
+  const handleReportPost = async (postId: string) => {
+    if (!user?.$id) {
+      toast({ title: "Sign in required", description: "Please sign in to report content.", variant: "destructive" })
+      return
+    }
+
+    try {
+      const response = await fetch("/api/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reporterId: user.$id,
+          contentId: postId,
+          contentType: "post",
+          reason: "policy_violation",
+        }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error?.message || data?.error || "Report failed")
+      }
+      toast({
+        title: "Report received",
+        description: "Thanks for helping keep PeerSpark safe. Our team will review it.",
+      })
+    } catch (error: any) {
+      toast({ title: "Report failed", description: error?.message || "Please try again.", variant: "destructive" })
+    }
   }
 
   const handlePostCreated = (newPost: Post) => {

@@ -1,0 +1,58 @@
+[
+  {
+    "label": "cookie /api/notifications/inbox",
+    "path": "/api/notifications/inbox",
+    "status": 401,
+    "ct": "application/json",
+    "body": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "label": "spoof /api/notifications/inbox",
+    "path": "/api/notifications/inbox",
+    "status": 500,
+    "ct": "application/json",
+    "body": "{\"error\":\"Failed to fetch notifications\"}"
+  },
+  {
+    "label": "cookie /api/notifications/preferences",
+    "path": "/api/notifications/preferences",
+    "status": 401,
+    "ct": "application/json",
+    "body": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "label": "spoof /api/notifications/preferences",
+    "path": "/api/notifications/preferences",
+    "status": 200,
+    "ct": "application/json",
+    "body": "{\"success\":true,\"data\":null}"
+  },
+  {
+    "label": "cookie /api/messages/send?userId=6a1481ee00346e527fb3",
+    "path": "/api/messages/send?userId=6a1481ee00346e527fb3",
+    "status": 500,
+    "ct": "application/json",
+    "body": "{\"success\":false,\"error\":\"The requested item could not be found\",\"details\":{\"code\":\"RESOURCE_NOT_FOUND\",\"message\":\"Invalid query: Attribute not found in schema: lastMessageAt\",\"userMessage\":\"The requested item could not be found\",\"severity\":\"medium\",\"category\":\"database\",\"originalError\":{\"name\":\"AppwriteException\",\"code\":400,\"type\":\"general_query_invalid\",\"response\":\"{\\\"message\\\":\\\"Invalid query: Attribute not found in schema: lastMessageAt\\\",\\\"code\\\":400,\\\"type\\\":\\\"general_query_invalid\\\",\\\"ver"
+  },
+  {
+    "label": "spoof /api/messages/send?userId=6a1481ee00346e527fb3",
+    "path": "/api/messages/send?userId=6a1481ee00346e527fb3",
+    "status": 500,
+    "ct": "application/json",
+    "body": "{\"success\":false,\"error\":\"The requested item could not be found\",\"details\":{\"code\":\"RESOURCE_NOT_FOUND\",\"message\":\"Invalid query: Attribute not found in schema: lastMessageAt\",\"userMessage\":\"The requested item could not be found\",\"severity\":\"medium\",\"category\":\"database\",\"originalError\":{\"name\":\"AppwriteException\",\"code\":400,\"type\":\"general_query_invalid\",\"response\":\"{\\\"message\\\":\\\"Invalid query: Attribute not found in schema: lastMessageAt\\\",\\\"code\\\":400,\\\"type\\\":\\\"general_query_invalid\\\",\\\"ver"
+  },
+  {
+    "label": "cookie /api/auth/validate-session",
+    "path": "/api/auth/validate-session",
+    "status": 401,
+    "ct": "application/json",
+    "body": "{\"success\":false,\"error\":\"Authorization header missing or invalid\",\"code\":\"NO_TOKEN\",\"errorId\":\"auth_1779901828038_0mqp1k\",\"timestamp\":\"2026-05-27T17:10:28.038Z\",\"details\":{}}"
+  },
+  {
+    "label": "spoof /api/auth/validate-session",
+    "path": "/api/auth/validate-session",
+    "status": 401,
+    "ct": "application/json",
+    "body": "{\"success\":false,\"error\":\"Authorization header missing or invalid\",\"code\":\"NO_TOKEN\",\"errorId\":\"auth_1779901828400_a3p7pj\",\"timestamp\":\"2026-05-27T17:10:28.400Z\",\"details\":{}}"
+  }
+]

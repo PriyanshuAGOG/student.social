@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ID, Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { getEnv } from '@/lib/env'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
 
 const env = getEnv()
 const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
@@ -14,10 +15,7 @@ const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
 export async function GET(req: NextRequest) {
   try {
     const { databases } = await createAdminClient()
-    const userId = req.headers.get('x-user-id')
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { userId } = requireUser(req)
 
     const response = await databases.listDocuments(
       DATABASE_ID,
@@ -37,6 +35,10 @@ export async function GET(req: NextRequest) {
       data: response.documents[0],
     })
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
+    }
+
     console.error('[API] Error fetching preferences:', error)
     return NextResponse.json(
       { error: 'Failed to fetch preferences' },
@@ -47,13 +49,13 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    enforceSameOrigin(req)
+    enforceRateLimit(req, { key: 'notifications:preferences', max: 20, windowMs: 60 * 1000 })
     const { databases } = await createAdminClient()
-    const userId = req.headers.get('x-user-id')
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { userId } = requireUser(req)
 
     const body = await req.json()
+    const { userId: _ignoredUserId, $id: _ignoredId, ...safeBody } = body || {}
 
     // Get existing preferences
     const existing = await databases.listDocuments(
@@ -70,7 +72,8 @@ export async function POST(req: NextRequest) {
         'notification_preferences',
         existing.documents[0].$id,
         {
-          ...body,
+          ...safeBody,
+          userId,
           updatedAt: new Date().toISOString(),
         }
       )
@@ -81,8 +84,8 @@ export async function POST(req: NextRequest) {
         'notification_preferences',
         ID.unique(),
         {
+          ...safeBody,
           userId,
-          ...body,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }
@@ -94,6 +97,10 @@ export async function POST(req: NextRequest) {
       data: result,
     })
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
+    }
+
     console.error('[API] Error updating preferences:', error)
     return NextResponse.json(
       { error: 'Failed to update preferences' },

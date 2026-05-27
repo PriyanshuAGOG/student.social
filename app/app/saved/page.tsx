@@ -128,14 +128,29 @@ export default function SavedPage() {
     }
   }
 
-  const handleShare = (postId: string) => {
+  const handleShare = async (postId: string) => {
     const post = savedPosts.find((p) => p.id === postId)
     if (post) {
-      navigator.clipboard.writeText(`https://peerspark.com/post/${postId}`)
-      toast({
-        title: "Link copied!",
-        description: "Post link has been copied to your clipboard.",
-      })
+      const shareUrl = `${window.location.origin}/app/feed?post=${postId}`
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: post.title || "PeerSpark post",
+            text: post.content.slice(0, 160),
+            url: shareUrl,
+          })
+        } else {
+          await navigator.clipboard.writeText(shareUrl)
+          toast({
+            title: "Link copied!",
+            description: "Post link has been copied to your clipboard.",
+          })
+        }
+      } catch (error: any) {
+        if (error?.name !== "AbortError") {
+          toast({ title: "Share failed", description: "Could not share this post right now.", variant: "destructive" })
+        }
+      }
     }
   }
 

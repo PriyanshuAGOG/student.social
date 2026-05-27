@@ -50,6 +50,12 @@ interface Post {
   isBookmarked: boolean
 }
 
+function relationshipCount(value: unknown, fallback = 0) {
+  if (Array.isArray(value)) return value.length
+  if (typeof value === "number") return value
+  return fallback
+}
+
 export default function UserProfilePage() {
   const params = useParams()
   const username = params.username as string
@@ -88,8 +94,8 @@ export default function UserProfilePage() {
           location: profile.location || "",
           website: profile.website || "",
           joinedDate,
-          followers: profile.followers || 0,
-          following: profile.following || 0,
+          followers: relationshipCount(profile.followers, profile.followerCount || 0),
+          following: relationshipCount(profile.following, profile.followingCount || 0),
           isFollowing: false,
           stats: {
             studyStreak: profile.studyStreak || 0,
@@ -192,7 +198,9 @@ export default function UserProfilePage() {
       setIsFollowing(nextFollowing)
       setUserProfile(prev => prev ? ({
         ...prev,
-        followers: Math.max(0, prev.followers + (nextFollowing ? 1 : -1)),
+        followers: typeof data.followerCount === "number"
+          ? data.followerCount
+          : Math.max(0, prev.followers + (nextFollowing ? 1 : -1)),
       }) : prev)
 
       toast({
@@ -210,11 +218,7 @@ export default function UserProfilePage() {
 
   const handleMessage = () => {
     if (!userProfile) return
-    router.push("/app/chat")
-    toast({
-      title: "Message",
-      description: "Opening chat with " + userProfile.name,
-    })
+    router.push(`/app/messages/${userProfile.userId}`)
   }
 
   const handleLike = async (postId: string) => {
@@ -237,12 +241,28 @@ export default function UserProfilePage() {
     }
   }
 
-  const handleShare = (postId: string) => {
-    navigator.clipboard.writeText(`${window.location.origin}/app/feed?post=${postId}`)
-    toast({
-      title: "Shared",
-      description: "Post link copied to clipboard!",
-    })
+  const handleShare = async (postId: string) => {
+    const post = userPosts.find((item) => item.id === postId)
+    const shareUrl = `${window.location.origin}/app/feed?post=${postId}`
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: post?.title || `${userProfile?.name || "PeerSpark"} post`,
+          text: post?.content?.slice(0, 160) || "Check out this PeerSpark post",
+          url: shareUrl,
+        })
+      } else {
+        await navigator.clipboard.writeText(shareUrl)
+        toast({
+          title: "Shared",
+          description: "Post link copied to clipboard!",
+        })
+      }
+    } catch (error: any) {
+      if (error?.name !== "AbortError") {
+        toast({ title: "Share failed", description: "Could not share this post right now.", variant: "destructive" })
+      }
+    }
   }
 
   // Loading state

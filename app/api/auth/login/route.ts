@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAppwriteServerConfig, getSessionCookieSecret } from '@/lib/env'
-import { authErrorResponse, authSuccessResponse, AUTH_COOKIE_NAME, signCookiePayload, getClientIP, getUserAgent, makeErrorId, addRateLimitHeaders } from '@/lib/auth-route-utils'
+import { authErrorResponse, authSuccessResponse, AUTH_COOKIE_NAME, JWT_COOKIE_NAME, signCookiePayload, getClientIP, getUserAgent, makeErrorId, addRateLimitHeaders } from '@/lib/auth-route-utils'
 import { checkRateLimit, getRateLimitConfig, isAccountLocked, recordFailedLoginAttempt, clearLoginAttempts, generateJWT, registerDevice, generateDeviceFingerprint } from '@/lib/auth-security'
 import { logAuthEvent, logLoginSuccess, logLoginFailed, logAccountLockout, logDeviceRegistration } from '@/lib/auth-audit'
 import { z } from 'zod'
@@ -340,6 +340,16 @@ export async function POST(req: Request) {
       sameSite: 'strict',
       path: '/',
       maxAge: 60 * 60 * 24 * 30, // 30 days
+    })
+
+    response.cookies.set({
+      name: JWT_COOKIE_NAME,
+      value: accessToken,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: 30 * 60, // 30 minutes
     })
 
     const duration = Date.now() - startTime

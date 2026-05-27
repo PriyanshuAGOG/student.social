@@ -98,6 +98,12 @@ const USER_ACHIEVEMENTS = [
   },
 ]
 
+function relationshipCount(value: unknown, fallback = 0) {
+  if (Array.isArray(value)) return value.length
+  if (typeof value === "number") return value
+  return fallback
+}
+
 // Sample posts are no longer used - posts are loaded dynamically from database
 // Keeping empty array as placeholder for fallback
 const USER_POSTS: any[] = []
@@ -168,8 +174,8 @@ export default function ProfilePage() {
           location: profile?.location || "",
           website: profile?.website || "",
           joinedDate,
-          followers: profile?.followers || 0,
-          following: profile?.following || 0,
+          followers: relationshipCount(profile?.followers, profile?.followerCount || 0),
+          following: relationshipCount(profile?.following, profile?.followingCount || 0),
           isFollowing: false,
           stats: {
             studyStreak: profile?.studyStreak || 0,
@@ -284,10 +290,6 @@ export default function ProfilePage() {
 
   const handleMessage = () => {
     router.push("/app/chat")
-    toast({
-      title: "Message",
-      description: "Opening chat with " + userProfile.name,
-    })
   }
 
   const handleEditProfile = () => {
@@ -351,11 +353,7 @@ export default function ProfilePage() {
   }
 
   const handleComment = (postId: string) => {
-    router.push(`/app/post/${postId}#comments`)
-    toast({
-      title: "Comments",
-      description: "Opening post comments...",
-    })
+    router.push(`/app/feed?post=${postId}`)
   }
 
   const handleBookmark = async (postId: string) => {
@@ -380,12 +378,28 @@ export default function ProfilePage() {
     }
   }
 
-  const handleShare = (postId: string) => {
-    navigator.clipboard.writeText(`${window.location.origin}/app/feed?post=${postId}`)
-    toast({
-      title: "Shared",
-      description: "Post link copied to clipboard!",
-    })
+  const handleShare = async (postId: string) => {
+    const post = userPosts.find((item) => item.id === postId)
+    const shareUrl = `${window.location.origin}/app/feed?post=${postId}`
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: post?.title || "PeerSpark post",
+          text: post?.content?.slice(0, 160) || "Check out this PeerSpark post",
+          url: shareUrl,
+        })
+      } else {
+        await navigator.clipboard.writeText(shareUrl)
+        toast({
+          title: "Shared",
+          description: "Post link copied to clipboard!",
+        })
+      }
+    } catch (error: any) {
+      if (error?.name !== "AbortError") {
+        toast({ title: "Share failed", description: "Could not share this post right now.", variant: "destructive" })
+      }
+    }
   }
 
   const handlePostClick = (authorId: string) => {

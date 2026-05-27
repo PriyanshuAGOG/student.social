@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const PODS_COLLECTION_ID = (process.env.NEXT_PUBLIC_PODS_COLLECTION_ID || 'pods');
@@ -99,9 +100,35 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let requestBody: any = null;
+
+  try {
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'pods:update', max: 20, windowMs: 60 * 1000 });
+    requestBody = await request.json().catch(() => null);
+    if (!requestBody) {
+      return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });
+    }
+
+    const auth = requireUser(request);
+    if (requestBody.userId) {
+      requireOwnership(requestBody.userId, auth.userId);
+    }
+    requestBody.userId = auth.userId;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return NextResponse.json(
+        { success: false, error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
+
+    return NextResponse.json({ success: false, error: 'Unable to update pod' }, { status: 500 });
+  }
+
   const { data, error } = await withErrorHandling(async () => {
     const { id: podId } = await params;
-    const body = await request.json();
+    const body = requestBody;
     const { userId, updates } = body;
 
     validateInput(
@@ -251,10 +278,28 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let userId = '';
+
+  try {
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'pods:delete', max: 10, windowMs: 60 * 1000 });
+    const auth = requireUser(request);
+    const requestedUserId = request.nextUrl.searchParams.get('userId') || auth.userId;
+    requireOwnership(requestedUserId, auth.userId);
+    userId = auth.userId;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return NextResponse.json(
+        { success: false, error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
+
+    return NextResponse.json({ success: false, error: 'Unable to delete pod' }, { status: 500 });
+  }
+
   const { data, error } = await withErrorHandling(async () => {
     const { id: podId } = await params;
-    const searchParams = request.nextUrl.searchParams;
-    const userId = searchParams.get('userId');
 
     validateInput(
       { podId, userId },

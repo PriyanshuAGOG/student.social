@@ -1879,10 +1879,11 @@ export const podService = {
         const doc = existing.documents[0]
         const next = Math.max(0, (doc.count || 0) + delta)
         await databases.updateDocument(DATABASE_ID, "pod_reactions", doc.$id, { count: next, updatedAt: new Date().toISOString() })
-        return next
+        const totals = await this.getReactions(podId)
+        return totals[itemId] || next
       }
 
-      const created = await databases.createDocument(DATABASE_ID, "pod_reactions", "unique()", {
+      await databases.createDocument(DATABASE_ID, "pod_reactions", "unique()", {
         podId,
         itemId,
         itemType,
@@ -1890,7 +1891,8 @@ export const podService = {
         count: Math.max(1, delta),
         updatedAt: new Date().toISOString(),
       })
-      return created.count || delta
+      const totals = await this.getReactions(podId)
+      return totals[itemId] || Math.max(1, delta)
     } catch (err) {
       console.warn("incrementReaction failed", err)
       throw err
@@ -2095,6 +2097,36 @@ export const studyPlanService = {
 }
 
 // Chat/Messaging Functions
+function parseRoomMembers(room: any): string[] {
+  if (Array.isArray(room?.members)) {
+    return room.members.filter(Boolean)
+  }
+  if (typeof room?.members === "string") {
+    try {
+      const parsed = JSON.parse(room.members)
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : []
+    } catch {
+      return []
+    }
+  }
+  if (Array.isArray(room?.participants)) {
+    return room.participants.filter(Boolean)
+  }
+  if (typeof room?.participants === "string") {
+    try {
+      const parsed = JSON.parse(room.participants)
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+function getDirectRoomKey(room: any): string {
+  return parseRoomMembers(room).sort().join(":")
+}
+
 export const chatService = {
   async getOrCreatePodRoom(podId: string, podName?: string, initialMemberIds: string[] = []) {
     if (!podId) throw new Error("Pod ID is required")
@@ -2106,7 +2138,20 @@ export const chatService = {
       ])
 
       if (existing.documents?.length) {
-        return existing.documents[0]
+        const room = existing.documents[0]
+        const currentMembers = Array.from(new Set([...(parseRoomMembers(room)), ...initialMemberIds.filter(Boolean)]))
+        if (currentMembers.length !== parseRoomMembers(room).length || room.type !== "pod" || room.name !== (podName?.trim() || room.name)) {
+          try {
+            return await databases.updateDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, room.$id, {
+              members: currentMembers,
+              type: "pod",
+              name: podName?.trim() || room.name || "Pod Chat",
+            })
+          } catch {
+            return room
+          }
+        }
+        return room
       }
     } catch (err) {
       console.warn("Pod room lookup failed, will attempt to create", err)
@@ -2140,7 +2185,26 @@ export const chatService = {
       ])
 
       if (existing.documents?.length) {
-        return existing.documents[0]
+        const canonicalRoom = [...existing.documents].sort((a: any, b: any) => {
+          const aTime = new Date(a.lastMessageTime || a.$updatedAt || a.$createdAt || 0).getTime()
+          const bTime = new Date(b.lastMessageTime || b.$updatedAt || b.$createdAt || 0).getTime()
+          return bTime - aTime
+        })[0]
+
+        const canonicalMembers = parseRoomMembers(canonicalRoom).length > 0 ? parseRoomMembers(canonicalRoom).sort() : members
+        if (canonicalRoom.type !== "direct" || getDirectRoomKey(canonicalRoom) !== members.join(":")) {
+          try {
+            return await databases.updateDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, canonicalRoom.$id, {
+              type: "direct",
+              members: canonicalMembers,
+              name: canonicalRoom.name || "Direct Messages",
+            })
+          } catch {
+            return canonicalRoom
+          }
+        }
+
+        return canonicalRoom
       }
     } catch (err) {
       console.warn("DM lookup failed, will attempt to create", err)
@@ -2216,6 +2280,12 @@ export const chatService = {
       }
 
       // Create message
+      const room = await databases.getDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, roomId)
+      const roomMembers = parseRoomMembers(room)
+      if (room.type !== "system" && roomMembers.length > 0 && !roomMembers.includes(senderId) && senderId !== "ai" && senderId !== "system") {
+        throw new Error("Sender is not a member of this room")
+      }
+
       const message = await databases.createDocument(
         DATABASE_ID,
         COLLECTIONS.MESSAGES,
@@ -2361,26 +2431,25 @@ export const chatService = {
         const allDirectRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
           Query.equal("type", ["direct", "dm"]),
         ])
-        // Filter rooms where user is a participant (handle both array and string formats)
-        directRooms = (allDirectRooms.documents || []).filter((room: any) => {
-          const participants = Array.isArray(room.members)
-            ? room.members
-            : (room.participants || [])
-
-          if (Array.isArray(participants)) {
-            return participants.includes(userId)
-          }
-          // Handle JSON string format
-          if (typeof participants === 'string') {
-            try {
-              const parsed = JSON.parse(participants)
-              return Array.isArray(parsed) && parsed.includes(userId)
-            } catch {
-              return false
-            }
-          }
-          return false
-        })
+        const seenKeys = new Set<string>()
+        directRooms = (allDirectRooms.documents || [])
+          .filter((room: any) => parseRoomMembers(room).includes(userId))
+          .sort((a: any, b: any) => {
+            const aTime = new Date(a.lastMessageTime || a.$updatedAt || a.$createdAt || 0).getTime()
+            const bTime = new Date(b.lastMessageTime || b.$updatedAt || b.$createdAt || 0).getTime()
+            return bTime - aTime
+          })
+          .filter((room: any) => {
+            const key = getDirectRoomKey(room)
+            if (!key || seenKeys.has(key)) return false
+            seenKeys.add(key)
+            return true
+          })
+          .map((room: any) => ({
+            ...room,
+            type: "direct",
+            members: parseRoomMembers(room),
+          }))
       } catch (e) {
         console.warn("Failed to fetch direct rooms:", e)
       }
@@ -2756,6 +2825,27 @@ export const resourceService = {
       return { url: downloadUrl }
     } catch (error) {
       console.error("Download resource error:", error)
+      throw error
+    }
+  },
+
+  async incrementResourceView(resourceId: string) {
+    try {
+      if (!resourceId) {
+        throw new Error("Resource ID is required")
+      }
+
+      const resource = await databases.getDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId)
+      const nextViews = (resource.views || 0) + 1
+
+      await databases.updateDocument(DATABASE_ID, COLLECTIONS.RESOURCES, resourceId, {
+        views: nextViews,
+        updatedAt: new Date().toISOString(),
+      })
+
+      return { success: true, views: nextViews }
+    } catch (error) {
+      console.error("Increment resource view error:", error)
       throw error
     }
   },

@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { withErrorHandling, validateInput } from '@/lib/error-handler';
+import { requireOwnership, requireUser } from '@/lib/api-security';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const CHAT_ROOMS_COLLECTION_ID = (process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms');
@@ -21,6 +22,7 @@ const NOTIFICATIONS_COLLECTION_ID = (process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLE
  */
 export async function POST(request: NextRequest) {
   const { data, error } = await withErrorHandling(async () => {
+    const auth = requireUser(request)
     const body = await request.json();
     const { senderId, recipientId, content, type = 'text', metadata = {} } = body;
 
@@ -32,6 +34,7 @@ export async function POST(request: NextRequest) {
         content: { required: true, minLength: 1, maxLength: 5000 },
       }
     );
+    requireOwnership(senderId, auth.userId)
 
     const { databases } = await createAdminClient();
 
@@ -43,14 +46,18 @@ export async function POST(request: NextRequest) {
       DATABASE_ID,
       CHAT_ROOMS_COLLECTION_ID,
       [
-        Query.equal('type', 'direct'),
-        Query.limit(100), // Get all DM rooms
+        Query.limit(100), // Get all recent rooms and filter direct-room variants client-side.
       ]
     );
 
     // Check if room exists between these two users
     room = existingRooms.documents.find((r: any) => {
-      const members = Array.isArray(r.members) ? r.members : [];
+      if (!['direct', 'dm'].includes(r.type)) return false;
+      const members = Array.isArray(r.members)
+        ? r.members
+        : typeof r.members === 'string'
+          ? (() => { try { return JSON.parse(r.members) } catch { return [] } })()
+          : [];
       return members.includes(senderId) && members.includes(recipientId);
     });
 
@@ -144,9 +151,14 @@ export async function POST(request: NextRequest) {
   }, { operation: 'sendDirectMessage' });
 
   if (error) {
+    const status = error.code === 'UNAUTHORIZED' || error.code === 'FORBIDDEN'
+      ? (error.code === 'UNAUTHORIZED' ? 401 : 403)
+      : error.code === 'VALIDATION_ERROR'
+        ? 400
+        : 500
     return NextResponse.json(
       { success: false, error: error.userMessage, details: error },
-      { status: error.code === 'VALIDATION_ERROR' ? 400 : 500 }
+      { status }
     );
   }
 
@@ -158,10 +170,12 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   const { data, error } = await withErrorHandling(async () => {
+    const auth = requireUser(request)
     const searchParams = request.nextUrl.searchParams;
     const userId = searchParams.get('userId');
 
     validateInput({ userId }, { userId: { required: true } });
+    requireOwnership(userId!, auth.userId)
 
     const { databases } = await createAdminClient();
 
@@ -170,7 +184,6 @@ export async function GET(request: NextRequest) {
       DATABASE_ID,
       CHAT_ROOMS_COLLECTION_ID,
       [
-        Query.equal('type', 'direct'),
         Query.orderDesc('lastMessageAt'),
         Query.limit(100),
       ]
@@ -178,14 +191,23 @@ export async function GET(request: NextRequest) {
 
     // Filter rooms where user is a member
     const userRooms = allRooms.documents.filter((room: any) => {
-      const members = Array.isArray(room.members) ? room.members : [];
+      if (!['direct', 'dm'].includes(room.type)) return false;
+      const members = Array.isArray(room.members)
+        ? room.members
+        : typeof room.members === 'string'
+          ? (() => { try { return JSON.parse(room.members) } catch { return [] } })()
+          : [];
       return members.includes(userId);
     });
 
     // Enrich each room with other user's profile
     const enrichedRooms = [];
     for (const room of userRooms) {
-      const members = Array.isArray(room.members) ? room.members : [];
+      const members = Array.isArray(room.members)
+        ? room.members
+        : typeof room.members === 'string'
+          ? (() => { try { return JSON.parse(room.members) } catch { return [] } })()
+          : [];
       const otherUserId = members.find((id: string) => id !== userId);
 
       if (otherUserId) {
@@ -228,9 +250,12 @@ export async function GET(request: NextRequest) {
   }, { operation: 'getUserDMRooms' });
 
   if (error) {
+    const status = error.code === 'UNAUTHORIZED' || error.code === 'FORBIDDEN'
+      ? (error.code === 'UNAUTHORIZED' ? 401 : 403)
+      : 500
     return NextResponse.json(
       { success: false, error: error.userMessage, details: error },
-      { status: 500 }
+      { status }
     );
   }
 

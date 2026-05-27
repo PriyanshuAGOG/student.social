@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
+import { requireOwnership, requireUser } from '@/lib/api-security';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const PODS_COLLECTION_ID = (process.env.NEXT_PUBLIC_PODS_COLLECTION_ID || 'pods');
@@ -21,6 +22,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { data, error } = await withErrorHandling(async () => {
+    const auth = requireUser(request)
     const { id: podId } = await params;
     const body = await request.json();
     const { userId } = body;
@@ -29,6 +31,7 @@ export async function POST(
       podId: { required: true },
       userId: { required: true },
     });
+    requireOwnership(userId, auth.userId)
 
     const { databases } = await createAdminClient();
 
@@ -146,7 +149,9 @@ export async function POST(
   }, { operation: 'leavePod' });
 
   if (error) {
-    const status = error.code === 'NOT_A_MEMBER' || error.code === 'CREATOR_CANNOT_LEAVE' ? 400 : 
+    const status = error.code === 'UNAUTHORIZED' ? 401 :
+                   error.code === 'FORBIDDEN' ? 403 :
+                   error.code === 'NOT_A_MEMBER' || error.code === 'CREATOR_CANNOT_LEAVE' ? 400 : 
                    error.code === 'RESOURCE_NOT_FOUND' ? 404 : 500;
     return NextResponse.json(
       { success: false, error: error.userMessage, details: error },

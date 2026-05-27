@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const PODS_COLLECTION_ID = (process.env.NEXT_PUBLIC_PODS_COLLECTION_ID || 'pods');
@@ -28,8 +29,34 @@ const POD_IMAGES_BUCKET_ID = (process.env.NEXT_PUBLIC_POD_IMAGES_BUCKET_ID || 'p
  * POST /api/pods - Create a new pod
  */
 export async function POST(request: NextRequest) {
+  let requestBody: any = null;
+
+  try {
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'pods:create', max: 10, windowMs: 60 * 1000 });
+    requestBody = await request.json().catch(() => null);
+    if (!requestBody) {
+      return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });
+    }
+
+    const auth = requireUser(request);
+    if (requestBody.userId) {
+      requireOwnership(requestBody.userId, auth.userId);
+    }
+    requestBody.userId = auth.userId;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return NextResponse.json(
+        { success: false, error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
+
+    return NextResponse.json({ success: false, error: 'Unable to create pod' }, { status: 500 });
+  }
+
   const { data, error } = await withErrorHandling(async () => {
-    const body = await request.json();
+    const body = requestBody;
     const { name, description, userId, metadata = {} } = body;
 
     // Validate input

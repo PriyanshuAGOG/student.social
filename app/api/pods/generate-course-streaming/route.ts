@@ -14,6 +14,7 @@ import { Query } from "node-appwrite"
 import { runAIChat } from "@/lib/ai"
 import { createAdminClient } from "@/lib/appwrite-comprehensive-fixes"
 import { DATABASE_ID, COLLECTIONS } from "@/lib/appwrite-server"
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from "@/lib/api-security"
 
 const REQUEST_TIMEOUT = 30000 // 30 second timeout
 
@@ -146,6 +147,10 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now()
   
   try {
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: "pods:generate-course-streaming", max: 5, windowMs: 60 * 1000 })
+    const auth = requireUser(request)
+
     let body: any
     try {
       body = await request.json()
@@ -186,6 +191,14 @@ export async function POST(request: NextRequest) {
     }
 
     const { databases } = await createAdminClient()
+    const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+    const members = Array.isArray(pod.members) ? pod.members : []
+    if (pod.creatorId !== auth.userId && !members.includes(auth.userId)) {
+      return NextResponse.json(
+        { error: "Only pod members can generate a course for this pod", correlationId },
+        { status: 403 }
+      )
+    }
 
     // Check if pod already has a course
     let existingCourses
@@ -264,7 +277,7 @@ export async function POST(request: NextRequest) {
       dailyTasks: JSON.stringify([]),
       generationStartedAt: now,
       createdAt: now,
-      createdBy: request.headers.get("x-user-id") || request.headers.get("user-id") || "anonymous",
+      createdBy: auth.userId,
       updatedAt: now,
       correlationId, // Store for debugging
     }
@@ -317,6 +330,10 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     )
   } catch (error) {
+    if (error instanceof ApiError) {
+      return NextResponse.json({ error: error.message, code: error.code, correlationId }, { status: error.status })
+    }
+
     const msg = error instanceof Error ? error.message : "Failed to generate course"
     log('error', 'Unhandled error in course generation', { correlationId, error: msg, stack: (error as Error)?.stack })
     return NextResponse.json(

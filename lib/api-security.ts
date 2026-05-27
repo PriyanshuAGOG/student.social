@@ -1,4 +1,7 @@
+import crypto from 'crypto'
 import { z } from 'zod'
+import { getSessionCookieSecret } from '@/lib/env'
+import { verifyJWT } from '@/lib/auth-security'
 
 export class ApiError extends Error {
   status: number
@@ -13,12 +16,73 @@ export class ApiError extends Error {
   }
 }
 
-export type AuthContext = { userId: string; role: string; correlationId: string }
+export type AuthContext = { userId: string; role: string; correlationId: string; authenticatedVia: 'jwt' | 'session-cookie' | 'header-fallback' }
 
 const rateMap = new Map<string, { count: number; resetAt: number }>()
 
 export function getCorrelationId(request: Request): string {
   return request.headers.get('x-correlation-id') || crypto.randomUUID()
+}
+
+type SessionCookiePayload = {
+  sessionId?: string
+  userId?: string
+  email?: string
+  secret?: string
+  deviceFingerprint?: string
+  expire?: string
+}
+
+function getCookieValue(request: Request, name: string): string | null {
+  const cookieHeader = request.headers.get('cookie')
+  if (!cookieHeader) return null
+
+  for (const entry of cookieHeader.split(';')) {
+    const [rawName, ...rawValueParts] = entry.trim().split('=')
+    if (rawName !== name) continue
+    return decodeURIComponent(rawValueParts.join('='))
+  }
+
+  return null
+}
+
+function getVerifiedSessionCookie(request: Request): SessionCookiePayload | null {
+  const raw = getCookieValue(request, 'peerspark_session')
+  if (!raw) return null
+
+  const [encodedPayload, signature] = raw.split('.')
+  if (!encodedPayload || !signature) return null
+
+  const expectedSignature = crypto.createHmac('sha256', getSessionCookieSecret()).update(encodedPayload).digest('hex')
+  const expectedBuffer = Buffer.from(expectedSignature)
+  const actualBuffer = Buffer.from(signature)
+
+  if (expectedBuffer.length !== actualBuffer.length || !crypto.timingSafeEqual(expectedBuffer, actualBuffer)) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as SessionCookiePayload
+    if (!parsed?.userId) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function getVerifiedJwtContext(request: Request) {
+  const authHeader = request.headers.get('authorization')
+  const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
+  const cookieToken = getCookieValue(request, 'peerspark_jwt')
+  const token = headerToken || cookieToken
+  if (!token) return null
+
+  const decoded = verifyJWT(token)
+  if (!decoded?.userId) {
+    throw new ApiError(401, 'UNAUTHORIZED', 'Invalid or expired authentication token')
+  }
+
+  return decoded
 }
 
 export function enforceSameOrigin(request: Request): void {
@@ -61,9 +125,44 @@ export async function parseJsonBody<T>(request: Request, schema: z.ZodSchema<T>,
 }
 
 export function requireUser(request: Request): AuthContext {
-  const userId = request.headers.get('x-user-id'); const role = request.headers.get('x-user-role') || 'user'; const correlationId = getCorrelationId(request)
-  if (!userId) throw new ApiError(401, 'UNAUTHORIZED', 'Missing authenticated user context')
-  return { userId, role, correlationId }
+  const correlationId = getCorrelationId(request)
+  const role = request.headers.get('x-user-role') || 'user'
+  const sessionCookie = getVerifiedSessionCookie(request)
+  const jwtContext = getVerifiedJwtContext(request)
+
+  if (sessionCookie?.userId) {
+    if (jwtContext && jwtContext.userId !== sessionCookie.userId) {
+      throw new ApiError(401, 'UNAUTHORIZED', 'Authentication context mismatch')
+    }
+
+    return {
+      userId: sessionCookie.userId,
+      role,
+      correlationId,
+      authenticatedVia: jwtContext ? 'jwt' : 'session-cookie',
+    }
+  }
+
+  if (jwtContext?.userId) {
+    return {
+      userId: jwtContext.userId,
+      role,
+      correlationId,
+      authenticatedVia: 'jwt',
+    }
+  }
+
+  const fallbackUserId = request.headers.get('x-user-id')
+  if (fallbackUserId && process.env.NODE_ENV !== 'production') {
+    return {
+      userId: fallbackUserId,
+      role,
+      correlationId,
+      authenticatedVia: 'header-fallback',
+    }
+  }
+
+  throw new ApiError(401, 'UNAUTHORIZED', 'Missing authenticated user context')
 }
 export function requireRole(ctx: AuthContext, allowedRoles: string[]): void { if (!allowedRoles.includes(ctx.role)) throw new ApiError(403, 'FORBIDDEN', 'Insufficient role permissions') }
 export function requireOwnership(ownerId: string, actorId: string): void { if (ownerId !== actorId) throw new ApiError(403, 'FORBIDDEN', 'Resource ownership check failed') }

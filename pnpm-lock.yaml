@@ -207,9 +207,6 @@ importers:
       '@next/eslint-plugin-next':
         specifier: 16.1.1
         version: 16.1.1
-      '@tailwindcss/oxide-linux-x64-gnu':
-        specifier: 4.3.0
-        version: 4.3.0
       '@tailwindcss/postcss':
         specifier: ^4.1.9
         version: 4.1.18

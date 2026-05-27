@@ -3,9 +3,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { Query } from "node-appwrite"
 import { createAdminClient } from "@/lib/appwrite-comprehensive-fixes"
 import { DATABASE_ID, COLLECTIONS } from "@/lib/appwrite-server"
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from "@/lib/api-security"
 
 export async function POST(request: NextRequest) {
   try {
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: "pods:generate-course", max: 5, windowMs: 60 * 1000 })
+    const auth = requireUser(request)
     const { podId, youtubeUrl, courseTitle } = await request.json()
 
     if (!podId || !youtubeUrl || !courseTitle) {
@@ -17,6 +21,12 @@ export async function POST(request: NextRequest) {
 
     // Check if pod already has a course
     const { databases } = await createAdminClient()
+    const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+    const members = Array.isArray(pod.members) ? pod.members : []
+    if (pod.creatorId !== auth.userId && !members.includes(auth.userId)) {
+      return NextResponse.json({ error: "Only pod members can generate a course for this pod" }, { status: 403 })
+    }
+
     const existingCourses = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.POD_COURSES,
@@ -42,7 +52,7 @@ export async function POST(request: NextRequest) {
       assignments: JSON.stringify([]),
       dailyTasks: JSON.stringify([]),
       createdAt: new Date().toISOString(),
-      createdBy: request.headers.get("user-id") || "anonymous",
+      createdBy: auth.userId,
       updatedAt: new Date().toISOString(),
     }
 
@@ -63,6 +73,10 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     )
   } catch (error) {
+    if (error instanceof ApiError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
+    }
+
     console.error("Error generating course:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to generate course" },

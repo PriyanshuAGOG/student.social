@@ -233,6 +233,7 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
   const [isExpanded, setIsExpanded] = useState(false)
   const { toast } = useToast()
   const { user } = useAuth()
+  const visibleCommentCount = comments.length > 0 ? countComments(comments) : initialCommentCount
 
   // Fetch comments when expanded
   useEffect(() => {
@@ -246,8 +247,9 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
     try {
       const response = await commentService.getComments(postId)
       const allComments = (response.documents || []) as unknown as Comment[]
-      
-      setComments(buildCommentTree(allComments))
+      const tree = buildCommentTree(allComments)
+      setComments(tree)
+      onCommentCountChange?.(countComments(tree))
     } catch (error) {
       console.error("Failed to load comments:", error)
       toast({
@@ -268,23 +270,15 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
         replyTo: replyingTo,
       })
       const comment = rawComment as unknown as Comment
-      
-      if (replyingTo) {
-        const replyComment = {
-          ...comment,
-          replyTo: replyingTo,
-          replies: [],
-        }
-        setComments(prev => addReplyToTree(prev, replyingTo, replyComment))
-      } else {
-        // Add as top-level comment
-        setComments(prev => [{ ...comment, replies: [] }, ...prev])
-      }
-      
+
+      const nextTree = replyingTo
+        ? addReplyToTree(comments, replyingTo, { ...comment, replyTo: replyingTo, replies: [] })
+        : [{ ...comment, replies: [] }, ...comments]
+
+      setComments(nextTree)
       setNewComment("")
       setReplyingTo(null)
-      const nextCount = countComments(replyingTo ? addReplyToTree(comments, replyingTo, { ...comment, replyTo: replyingTo, replies: [] }) : [{ ...comment, replies: [] }, ...comments])
-      onCommentCountChange?.(nextCount)
+      onCommentCountChange?.(countComments(nextTree))
       
       toast({
         title: "Comment posted",
@@ -351,8 +345,9 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
           }))
       }
       
-      setComments(removeComment)
-      onCommentCountChange?.(Math.max(0, countComments(removeComment(comments))))
+      const nextTree = removeComment(comments)
+      setComments(nextTree)
+      onCommentCountChange?.(Math.max(0, countComments(nextTree)))
       
       toast({ title: "Comment deleted" })
     } catch (error) {
@@ -403,7 +398,7 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
         className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
       >
         <MessageCircle className="h-4 w-4" />
-        {isExpanded ? "Hide comments" : `View ${initialCommentCount || 0} comment${initialCommentCount !== 1 ? 's' : ''}`}
+        {isExpanded ? "Hide comments" : `View ${visibleCommentCount || 0} comment${visibleCommentCount !== 1 ? 's' : ''}`}
       </button>
 
       {isExpanded && (

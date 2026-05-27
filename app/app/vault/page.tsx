@@ -15,7 +15,7 @@ import { FolderOpen, Search, Upload, Filter, Grid3X3, List, FileText, ImageIcon,
 import { useToast } from "@/hooks/use-toast"
 import { resourceService, profileService } from "@/lib/appwrite"
 import { useAuth } from "@/lib/auth-context"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 const RESOURCE_TYPES = [
   { id: "all", label: "All", icon: FolderOpen },
@@ -98,6 +98,8 @@ export default function VaultPage() {
   const { toast } = useToast()
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const scopedPodId = searchParams.get("pod")
 
   // Load resources from database
   const loadResources = useCallback(async () => {
@@ -105,14 +107,17 @@ export default function VaultPage() {
 
     setIsLoading(true)
     try {
-      // Load all public resources and user's own resources
-      const [publicResult, myResult] = await Promise.all([
+      // Load public resources, user's own resources, and pod-scoped resources when requested.
+      const [publicResult, myResult, podResult] = await Promise.all([
         resourceService.getResources({ visibility: "public" }, 100),
         resourceService.getResources({ authorId: user.$id }, 100),
+        scopedPodId ? resourceService.getResources({ podId: scopedPodId }, 100) : Promise.resolve({ documents: [] }),
       ])
 
       // Merge and deduplicate
-      const allDocs = [...publicResult.documents, ...myResult.documents]
+      const allDocs = scopedPodId
+        ? [...podResult.documents, ...myResult.documents]
+        : [...publicResult.documents, ...myResult.documents]
       const uniqueDocs = allDocs.filter((doc, index, self) => 
         index === self.findIndex(d => d.$id === doc.$id)
       )
@@ -157,11 +162,11 @@ export default function VaultPage() {
         downloads: doc.downloads || 0,
         isBookmarked: Array.isArray(doc.bookmarkedBy) ? doc.bookmarkedBy.includes(user.$id) : false,
         isLiked: Array.isArray(doc.likedBy) ? doc.likedBy.includes(user.$id) : false,
-        visibility: doc.visibility || "public",
+        visibility: doc.visibility || (doc.podId ? "pod" : "public"),
       }))
 
       setResources(transformedResources)
-      setMyResourcesCount(myResult.documents.length)
+      setMyResourcesCount(transformedResources.filter((resource) => resource.authorId === user.$id).length)
       setBookmarkedCount(transformedResources.filter((resource) => resource.isBookmarked).length)
     } catch (error) {
       console.error("Failed to load resources:", error)
@@ -173,7 +178,7 @@ export default function VaultPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [user, toast])
+  }, [user, toast, scopedPodId])
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -193,7 +198,8 @@ export default function VaultPage() {
         title: file.name,
         description: "",
         tags: [],
-        visibility: "public",
+        visibility: scopedPodId ? "pod" : "public",
+        podId: scopedPodId || undefined,
       })
 
       toast({
@@ -317,17 +323,23 @@ export default function VaultPage() {
   const handleView = (resourceId: string) => {
     const resource = resources.find(r => r.$id === resourceId)
     if (resource && resource.fileUrl) {
-      setResources(prev => 
-        prev.map(r => 
-          r.$id === resourceId 
-            ? { ...r, views: r.views + 1 }
-            : r
-        )
-      )
       toast({
         title: "Opening Resource",
         description: `Opening ${resource.title}`,
       })
+      resourceService.incrementResourceView(resourceId)
+        .then((result) => {
+          setResources(prev =>
+            prev.map(r =>
+              r.$id === resourceId
+                ? { ...r, views: result.views }
+                : r
+            )
+          )
+        })
+        .catch((error) => {
+          console.error("Failed to record resource view:", error)
+        })
       window.open(resource.fileUrl, '_blank')
     }
   }
@@ -359,12 +371,31 @@ export default function VaultPage() {
     const matchesSearch =
       resource.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       resource.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      resource.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+      resource.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (resource.authorName || "").toLowerCase().includes(searchQuery.toLowerCase())
 
     const matchesType = selectedType === "all" || resource.category === selectedType
 
     return matchesSearch && matchesType
   })
+
+  const sortedResources = filteredResources.slice().sort((a, b) => {
+    switch (sortBy) {
+      case "popular":
+        return (b.likes + b.views) - (a.likes + a.views)
+      case "downloads":
+        return b.downloads - a.downloads
+      case "alphabetical":
+        return a.title.localeCompare(b.title)
+      case "recent":
+      default:
+        return new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime()
+    }
+  })
+
+  const myUploads = sortedResources.filter((resource) => resource.authorId === user?.$id)
+  const bookmarkedResources = sortedResources.filter((resource) => resource.isBookmarked)
+  const recentResources = sortedResources.slice(0, 5)
 
   const getTypeIcon = (type: string) => {
     const typeMap = {
@@ -652,7 +683,7 @@ export default function VaultPage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-xl font-bold">Resource Vault</h1>
-            <p className="text-sm text-muted-foreground">Your learning library</p>
+            <p className="text-sm text-muted-foreground">{scopedPodId ? "Pod learning library" : "Your learning library"}</p>
           </div>
           <Button 
             size="sm" 
@@ -705,7 +736,7 @@ export default function VaultPage() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold">Resource Vault</h1>
-              <p className="text-muted-foreground">Your centralized learning library</p>
+              <p className="text-muted-foreground">{scopedPodId ? "Resources scoped to this pod plus your uploads" : "Your centralized learning library"}</p>
             </div>
             <div className="flex items-center space-x-2">
               <Button variant="outline" onClick={() => loadResources()}>
@@ -899,29 +930,33 @@ export default function VaultPage() {
               </TabsList>
 
               <TabsContent value="all" className="space-y-4">
-                {viewMode === "grid" ? renderResourceGrid(filteredResources) : renderResourceList(filteredResources)}
+                {viewMode === "grid" ? renderResourceGrid(sortedResources) : renderResourceList(sortedResources)}
               </TabsContent>
 
               <TabsContent value="my-uploads" className="space-y-4">
-                <Card>
-                  <CardContent className="flex flex-col items-center justify-center py-12">
-                    <Upload className="w-12 h-12 text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No uploads yet</h3>
-                    <p className="text-muted-foreground text-center mb-4">
-                      Start sharing your knowledge with the community
-                    </p>
-                    <Button onClick={openFilePicker} className="bg-primary hover:bg-primary/90">
-                      <Upload className="w-4 h-4 mr-2" />
-                      Upload Your First Resource
-                    </Button>
-                  </CardContent>
-                </Card>
+                {myUploads.length > 0 ? (
+                  viewMode === "grid" ? renderResourceGrid(myUploads) : renderResourceList(myUploads)
+                ) : (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12">
+                      <Upload className="w-12 h-12 text-muted-foreground mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">No uploads yet</h3>
+                      <p className="text-muted-foreground text-center mb-4">
+                        Start sharing your knowledge with the community
+                      </p>
+                      <Button onClick={openFilePicker} className="bg-primary hover:bg-primary/90">
+                        <Upload className="w-4 h-4 mr-2" />
+                        Upload Your First Resource
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
               </TabsContent>
 
               <TabsContent value="bookmarked" className="space-y-4">
                 {viewMode === "grid"
-                  ? renderResourceGrid(filteredResources.filter((r) => r.isBookmarked))
-                  : renderResourceList(filteredResources.filter((r) => r.isBookmarked))}
+                  ? renderResourceGrid(bookmarkedResources)
+                  : renderResourceList(bookmarkedResources)}
               </TabsContent>
 
               <TabsContent value="recent" className="space-y-4">
@@ -931,11 +966,7 @@ export default function VaultPage() {
                     <CardDescription>Resources you&apos;ve accessed in the last 7 days</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {filteredResources
-                      .slice()
-                      .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
-                      .slice(0, 5)
-                      .map((resource) => (
+                    {recentResources.map((resource) => (
                       <div key={resource.$id} className="flex items-center space-x-3 p-3 rounded-lg bg-secondary/50">
                         <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
                           {getTypeIcon(resource.category)}
