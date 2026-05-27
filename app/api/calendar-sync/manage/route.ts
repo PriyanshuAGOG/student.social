@@ -2,13 +2,17 @@ import crypto from 'crypto'
 import { z } from 'zod'
 import { ApiError, jsonError, jsonOk, parseJsonBody, requireUser } from '@/lib/api-security'
 import { REMINDER_MINUTES_ALLOWED } from '@/lib/calendar/constants'
+import { getDefaultCalendarSyncSettings, normalizeCalendarSyncSettings } from '@/lib/calendar/settings'
 import { decryptCalendarToken, encryptCalendarToken, generateCalendarToken, hashCalendarToken } from '@/lib/calendar/token'
+import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { Query } from 'node-appwrite'
 
 const secret = process.env.CALENDAR_FEED_SECRET || 'dev-secret'
 const encKey = process.env.CALENDAR_TOKEN_ENCRYPTION_KEY || 'dev-encryption-key'
 const baseFeedUrl = process.env.CALENDAR_ICS_FUNCTION_URL || 'http://localhost:3000/api/calendar-sync/feed'
 
-const store = new Map<string, any>()
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
+const CALENDAR_FEED_SETTINGS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALENDAR_FEED_SETTINGS_COLLECTION_ID || 'calendar_feed_settings'
 
 const settingsSchema = z.object({
   feedName: z.string().min(1).max(120).optional(),
@@ -17,32 +21,105 @@ const settingsSchema = z.object({
   pastWindowDays: z.number().min(0).max(365).optional(),
   futureWindowDays: z.number().min(7).max(730).optional(),
   maxEventsPerFeed: z.number().min(10).max(3000).optional(),
+  includeClasses: z.boolean().optional(),
+  includeStudySessions: z.boolean().optional(),
+  includeDeadlines: z.boolean().optional(),
+  includeProgressReviews: z.boolean().optional(),
+  includeHabits: z.boolean().optional(),
+  includeGoals: z.boolean().optional(),
+  includeExams: z.boolean().optional(),
+  includeAssignments: z.boolean().optional(),
+  includeCustomEvents: z.boolean().optional(),
+  includeCompleted: z.boolean().optional(),
+  includeCancelled: z.boolean().optional(),
+  includeDescriptions: z.boolean().optional(),
+  includeLocations: z.boolean().optional(),
+  includeReminders: z.boolean().optional(),
+  includeDeepLinks: z.boolean().optional(),
 })
+
+type CalendarFeedRecord = {
+  $id: string
+  userId: string
+  status: 'active' | 'disabled' | 'revoked'
+  tokenHash: string
+  tokenPrefix: string
+  encryptedToken: string
+  settingsJson?: string
+  lastFetchedAt?: string
+  fetchCount?: number
+  lastTokenRotatedAt?: string
+  createdAt?: string
+  updatedAt?: string
+}
 
 const buildUrls = (rawToken: string) => ({
   feedUrl: `${baseFeedUrl}?token=${rawToken}`,
   webcalUrl: `webcal://${baseFeedUrl.replace(/^https?:\/\//, '')}?token=${rawToken}`,
 })
 
+async function getFeedCollection() {
+  const { databases } = await createAdminClient()
+  return databases
+}
+
+async function getFeedRecord(userId: string) {
+  const databases = await getFeedCollection()
+  try {
+    const result = await databases.listDocuments(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, [
+      Query.equal('userId', userId),
+      Query.limit(1),
+    ])
+    return result.documents[0] as CalendarFeedRecord | undefined
+  } catch (error: any) {
+    if (error?.code === 404 || String(error?.message || '').includes('not found')) {
+      return undefined
+    }
+    throw error
+  }
+}
+
+async function findFeedByTokenHash(tokenHash: string) {
+  const databases = await getFeedCollection()
+  const result = await databases.listDocuments(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, [
+    Query.equal('tokenHash', tokenHash),
+    Query.limit(1),
+  ])
+  return result.documents[0] as CalendarFeedRecord | undefined
+}
+
+function parseSettings(record?: CalendarFeedRecord) {
+  const defaultSettings = getDefaultCalendarSyncSettings()
+  if (!record?.settingsJson) {
+    return defaultSettings
+  }
+
+  try {
+    return normalizeCalendarSyncSettings(JSON.parse(record.settingsJson))
+  } catch {
+    return defaultSettings
+  }
+}
+
 export async function GET(request: Request) {
   const c = request.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
     const auth = requireUser(request)
     const action = new URL(request.url).searchParams.get('action') || 'status'
-    const rec = store.get(auth.userId)
+    const rec = await getFeedRecord(auth.userId)
     if (!rec) return jsonOk({ status: 'not_enabled' }, 200, c)
 
     if (action === 'preview') {
-      return jsonOk({ events: [{ title: '[Study] DSA Session', type: 'study_session', startAt: new Date().toISOString() }] }, 200, c)
+      return jsonOk({ events: [{ title: '[Study] DSA Session', type: 'study_session', startAt: new Date().toISOString() }], settings: parseSettings(rec) }, 200, c)
     }
 
     if (action === 'download') {
       const raw = decryptCalendarToken(rec.encryptedToken, encKey)
-      return jsonOk({ ...buildUrls(raw), tokenPrefix: rec.tokenPrefix, status: rec.status }, 200, c)
+      return jsonOk({ ...buildUrls(raw), tokenPrefix: rec.tokenPrefix, status: rec.status, settings: parseSettings(rec) }, 200, c)
     }
 
     const raw = decryptCalendarToken(rec.encryptedToken, encKey)
-    return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: rec.settings, fetchCount: rec.fetchCount || 0, lastFetchedAt: rec.lastFetchedAt || null, providerDiagnostics: rec.providerDiagnostics || 'Never fetched yet', ...buildUrls(raw) }, 200, c)
+    return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: parseSettings(rec), fetchCount: rec.fetchCount || 0, lastFetchedAt: rec.lastFetchedAt || null, providerDiagnostics: rec.providerDiagnostics || 'Never fetched yet', ...buildUrls(raw) }, 200, c)
   } catch (e) {
     return jsonError(e, c)
   }
@@ -53,10 +130,14 @@ export async function POST(request: Request) {
   try {
     const auth = requireUser(request)
     const action = new URL(request.url).searchParams.get('action') || 'create'
-    const existing = store.get(auth.userId)
+    const databases = await getFeedCollection()
+    const existing = await getFeedRecord(auth.userId)
 
     if (action === 'create') {
-      if (existing) return jsonOk(existing, 200, c)
+      if (existing) {
+        const raw = decryptCalendarToken(existing.encryptedToken, encKey)
+        return jsonOk({ status: existing.status, tokenPrefix: existing.tokenPrefix, settings: parseSettings(existing), ...buildUrls(raw) }, 200, c)
+      }
       const raw = generateCalendarToken()
       const rec = {
         userId: auth.userId,
@@ -64,27 +145,32 @@ export async function POST(request: Request) {
         tokenPrefix: raw.slice(0, 14),
         tokenHash: hashCalendarToken(raw, secret),
         encryptedToken: encryptCalendarToken(raw, encKey),
-        settings: { privacyMode: 'full', futureWindowDays: 180, pastWindowDays: 14, maxEventsPerFeed: 1000, defaultReminderMinutes: 15 },
+        settingsJson: JSON.stringify(getDefaultCalendarSyncSettings()),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       }
-      store.set(auth.userId, rec)
-      return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: rec.settings, ...buildUrls(raw) }, 201, c)
+      await databases.createDocument(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, auth.userId, rec as any)
+      return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: normalizeCalendarSyncSettings(JSON.parse(rec.settingsJson)), ...buildUrls(raw) }, 201, c)
     }
 
     if (!existing) throw new ApiError(404, 'NOT_FOUND', 'Feed not found')
     if (action === 'rotate') {
       const raw = generateCalendarToken()
-      existing.tokenHash = hashCalendarToken(raw, secret)
-      existing.tokenPrefix = raw.slice(0, 14)
-      existing.encryptedToken = encryptCalendarToken(raw, encKey)
-      existing.lastTokenRotatedAt = new Date().toISOString()
-      return jsonOk({ status: existing.status, tokenPrefix: existing.tokenPrefix, ...buildUrls(raw) }, 200, c)
+      await databases.updateDocument(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, existing.$id, {
+        tokenHash: hashCalendarToken(raw, secret),
+        tokenPrefix: raw.slice(0, 14),
+        encryptedToken: encryptCalendarToken(raw, encKey),
+        lastTokenRotatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as any)
+      return jsonOk({ status: existing.status, tokenPrefix: raw.slice(0, 14), ...buildUrls(raw) }, 200, c)
     }
     if (action === 'disable') {
-      existing.status = 'disabled'
+      await databases.updateDocument(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, existing.$id, { status: 'disabled', updatedAt: new Date().toISOString() } as any)
       return jsonOk({ status: 'disabled' }, 200, c)
     }
     if (action === 'enable') {
-      existing.status = 'active'
+      await databases.updateDocument(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, existing.$id, { status: 'active', updatedAt: new Date().toISOString() } as any)
       return jsonOk({ status: 'active' }, 200, c)
     }
     throw new ApiError(400, 'BAD_ACTION', 'Unsupported action')
@@ -97,11 +183,16 @@ export async function PATCH(request: Request) {
   const c = request.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
     const auth = requireUser(request)
-    const rec = store.get(auth.userId)
+    const databases = await getFeedCollection()
+    const rec = await getFeedRecord(auth.userId)
     if (!rec) throw new ApiError(404, 'NOT_FOUND', 'Feed not found')
     const patch = await parseJsonBody(request, settingsSchema)
-    rec.settings = { ...rec.settings, ...patch }
-    return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: rec.settings }, 200, c)
+    const nextSettings = normalizeCalendarSyncSettings({ ...parseSettings(rec), ...patch })
+    await databases.updateDocument(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, rec.$id, {
+      settingsJson: JSON.stringify(nextSettings),
+      updatedAt: new Date().toISOString(),
+    } as any)
+    return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: nextSettings }, 200, c)
   } catch (e) {
     return jsonError(e, c)
   }

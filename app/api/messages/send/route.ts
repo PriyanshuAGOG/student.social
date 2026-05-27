@@ -112,14 +112,15 @@ export async function POST(request: NextRequest) {
       {
         roomId: room.$id,
         senderId,
-        senderName,
-        senderAvatar,
-        content: content.trim(),
-        type,
-        readBy: [senderId],
-        replyTo: metadata.replyTo || null,
-        attachmentUrl: metadata.attachmentUrl || null,
-        timestamp: new Date().toISOString(),
+          authorId: senderId,
+          senderName,
+          senderAvatar,
+          content: content.trim(),
+          type,
+          readBy: [senderId],
+          replyTo: metadata.replyTo || null,
+            fileUrl: metadata.fileUrl || metadata.attachmentUrl || null,
+          timestamp: new Date().toISOString(),
       }
     );
 

@@ -99,6 +99,10 @@ export async function POST(req: NextRequest) {
 
     const { databases } = await createAdminClient()
 
+      if (!DATABASE_ID) {
+        throw new Error('DATABASE_ID environment variable not set')
+      }
+
     const result = await databases.createDocument(
       DATABASE_ID,
       'admin_broadcasts',

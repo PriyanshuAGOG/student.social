@@ -551,6 +551,79 @@ export const authService = {
     }
   },
 
+  // Update private application preferences stored in Appwrite account prefs
+  async updatePrefs(prefs: Record<string, any>) {
+    try {
+      if (typeof (account as any).updatePrefs === 'function') {
+        return await (account as any).updatePrefs(prefs)
+      }
+
+      const response = await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/prefs', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Appwrite-Project': projectId || ''
+        },
+        body: JSON.stringify(prefs),
+        credentials: 'include',
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.message || 'Failed to update preferences')
+      return data
+    } catch (error: any) {
+      console.error('Update prefs error:', error)
+      throw new Error(error?.message || 'Failed to update preferences')
+    }
+  },
+
+  // Update email address after confirming the current password
+  async updateEmail(email: string, password: string) {
+    try {
+      if (typeof (account as any).updateEmail === 'function') {
+        return await (account as any).updateEmail(email, password)
+      }
+
+      const response = await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account/email', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Appwrite-Project': projectId || ''
+        },
+        body: JSON.stringify({ email, password }),
+        credentials: 'include',
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.message || 'Failed to update email')
+      return data
+    } catch (error: any) {
+      console.error('Update email error:', error)
+      throw new Error(error?.message || 'Failed to update email')
+    }
+  },
+
+  // Delete the current authenticated account
+  async deleteAccount() {
+    try {
+      if (typeof (account as any).delete === 'function') {
+        return await (account as any).delete()
+      }
+
+      const response = await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account', {
+        method: 'DELETE',
+        headers: {
+          'X-Appwrite-Project': projectId || ''
+        },
+        credentials: 'include',
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.message || 'Failed to delete account')
+      return data
+    } catch (error: any) {
+      console.error('Delete account error:', error)
+      throw new Error(error?.message || 'Failed to delete account')
+    }
+  },
+
   // Request password reset
   async requestPasswordReset(email: string) {
     try {
@@ -842,7 +915,7 @@ export const profileService = {
 
   // Update user profile (create if doesn't exist)
   async updateProfile(userId: string, data: any) {
-    const safeAttributes = ['name', 'username', 'bio', 'avatar', 'email', 'isOnline', 'studyStreak', 'totalPoints', 'level', 'badges', 'avatarFileId']
+    const safeAttributes = ['name', 'username', 'bio', 'location', 'website', 'avatar', 'email', 'isOnline', 'studyStreak', 'totalPoints', 'level', 'badges', 'avatarFileId']
     const optionalAttributes = [
       'interests',
       'identity',
@@ -903,6 +976,8 @@ export const profileService = {
               username: data.username || normalizeUsername(data.name || data.email || userId) || `user_${userId.slice(0, 6)}`,
               email: data.email || "",
               bio: data.bio || "",
+              location: data.location || "",
+              website: data.website || "",
               avatar: data.avatar || "",
               joinedAt: new Date().toISOString(),
               isOnline: true,

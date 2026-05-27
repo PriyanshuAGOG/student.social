@@ -19,6 +19,8 @@ export interface Profile {
     name: string;
     email: string;
     bio?: string;
+    location?: string;
+    website?: string;
     interests?: string[];
     avatar?: string;
     joinedAt: string;

@@ -89,8 +89,6 @@ export async function POST(
         replyTo: replyTo || parentCommentId || null,
         likes: 0,
         likedBy: [],
-        replies: 0,
-        isDeleted: false,
         timestamp: now,
         createdAt: now,
         updatedAt: now,
