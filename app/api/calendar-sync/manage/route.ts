@@ -70,7 +70,7 @@ async function getFeedRecord(userId: string) {
       Query.equal('userId', userId),
       Query.limit(1),
     ])
-    return result.documents[0] as CalendarFeedRecord | undefined
+    return result.documents[0] as unknown as CalendarFeedRecord | undefined
   } catch (error: any) {
     if (error?.code === 404 || String(error?.message || '').includes('not found')) {
       return undefined
@@ -85,7 +85,7 @@ async function findFeedByTokenHash(tokenHash: string) {
     Query.equal('tokenHash', tokenHash),
     Query.limit(1),
   ])
-  return result.documents[0] as CalendarFeedRecord | undefined
+  return result.documents[0] as unknown as CalendarFeedRecord | undefined
 }
 
 function parseSettings(record?: CalendarFeedRecord) {
@@ -119,7 +119,7 @@ export async function GET(request: Request) {
     }
 
     const raw = decryptCalendarToken(rec.encryptedToken, encKey)
-    return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: parseSettings(rec), fetchCount: rec.fetchCount || 0, lastFetchedAt: rec.lastFetchedAt || null, providerDiagnostics: rec.providerDiagnostics || 'Never fetched yet', ...buildUrls(raw) }, 200, c)
+    return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: parseSettings(rec), fetchCount: rec.fetchCount || 0, lastFetchedAt: rec.lastFetchedAt || null, ...buildUrls(raw) }, 200, c)
   } catch (e) {
     return jsonError(e, c)
   }

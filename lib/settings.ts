@@ -277,7 +277,7 @@ export function buildPeerSparkSettingsFromFlat(flat: Record<string, any>): PeerS
   }
 }
 
-export function buildPeerSparkSettingsPatch<T extends keyof PeerSparkSettings>(
+export function buildPeerSparkSettingsPatch<T extends Exclude<keyof PeerSparkSettings, 'version'>>(
   settings: PeerSparkSettings,
   section: T,
   key: string,
