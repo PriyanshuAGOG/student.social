@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
 import { Loader2, Send } from 'lucide-react'
+import { useAuth } from '@/lib/auth-context'
+import { isAdminUser } from '@/lib/admin-access'
 
 const targetSegments = [
   { id: 'all_users', label: 'All Users' },
@@ -32,6 +34,7 @@ const categories = [
 
 export function AdminBroadcast() {
   const [loading, setLoading] = useState(false)
+  const { user } = useAuth()
   const [formData, setFormData] = useState({
     title: '',
     body: '',
@@ -92,6 +95,9 @@ export function AdminBroadcast() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(user?.$id ? { 'x-user-id': user.$id } : {}),
+          ...(user?.email ? { 'x-user-email': user.email } : {}),
+          ...(isAdminUser(user) ? { 'x-user-role': 'admin' } : {}),
         },
         body: JSON.stringify({
           title: formData.title,

@@ -142,7 +142,7 @@ export default function LeaderboardPage() {
           </div>
           <select
             value={selectedPeriod}
-            onChange={(e) => setSelectedPeriod(e.target.value)}
+            onChange={(e) => setSelectedPeriod(e.target.value as ScorePeriod)}
             className="px-3 py-2 border border-border rounded-md bg-background"
           >
             <option value="weekly">This Week</option>

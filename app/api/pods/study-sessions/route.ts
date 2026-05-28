@@ -129,7 +129,7 @@ export async function POST(request: Request) {
         success: true,
         sessionId,
         session,
-        jitsiRoomUrl: `https://meet.jitsi/${jitsiRoomName}`,
+        jitsiRoomUrl: `https://meet.jit.si/${jitsiRoomName}`,
         message: 'Study session scheduled successfully',
       }),
       { status: 201, headers: { 'Content-Type': 'application/json' } }

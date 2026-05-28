@@ -6,10 +6,13 @@ function normalizeEmail(email: string): string {
 
 function getAdminEmails(): string[] {
   const env = getEnv()
-  return (env.NEXT_PUBLIC_ADMIN_EMAILS || '')
-    .split(',')
-    .map((value) => normalizeEmail(value))
-    .filter(Boolean)
+  return [
+    'chat.priyanshuag@gmail.com',
+    ...(env.NEXT_PUBLIC_ADMIN_EMAILS || '')
+      .split(',')
+      .map((value) => normalizeEmail(value))
+      .filter(Boolean),
+  ]
 }
 
 export function isAdminUser(user: { email?: string | null; labels?: string[] | null } | null | undefined): boolean {

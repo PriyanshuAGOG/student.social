@@ -301,8 +301,14 @@ export default function FeedPage() {
     )
   }
 
-  const handlePostClick = (username: string) => {
-    router.push(`/app/profile/${username.replace('@', '')}`)
+  const handlePostClick = (authorId: string, username?: string) => {
+    if (user?.$id && authorId === user.$id) {
+      router.push('/app/profile')
+      return
+    }
+
+    const profileSlug = (username || authorId).replace('@', '')
+    router.push(`/app/profile/${profileSlug}`)
   }
 
   const handleReportPost = async (postId: string) => {
@@ -499,7 +505,7 @@ export default function FeedPage() {
                       <div className="flex items-center space-x-3">
                         <Avatar 
                           className="h-10 w-10 cursor-pointer hover:ring-2 hover:ring-primary/20 transition-all" 
-                          onClick={() => handlePostClick(post.author.username)}
+                          onClick={() => handlePostClick(post.authorId || '', post.author.username)}
                         >
                           <AvatarImage src={post.author.avatar || "/placeholder.svg"} alt={post.author.name} />
                           <AvatarFallback>
@@ -513,7 +519,7 @@ export default function FeedPage() {
                           <div className="flex items-center space-x-2">
                             <h4 
                               className="font-semibold text-sm cursor-pointer hover:underline" 
-                              onClick={() => handlePostClick(post.author.username)}
+                              onClick={() => handlePostClick(post.authorId || '', post.author.username)}
                             >
                               {post.author.name}
                             </h4>
@@ -555,7 +561,7 @@ export default function FeedPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handlePostClick(post.author.username)}>
+                            <DropdownMenuItem onClick={() => handlePostClick(post.authorId || '', post.author.username)}>
                               <User className="w-4 h-4 mr-2" />
                               View Profile
                             </DropdownMenuItem>

@@ -52,9 +52,21 @@ async function getCurrentAdminUser() {
   return isAdminUser(user) ? user : null
 }
 
+async function getFallbackAdminUser(req: NextRequest) {
+  const email = req.headers.get('x-user-email')
+  const userId = req.headers.get('x-user-id')
+
+  if (!email || !userId) return null
+
+  if (isAdminUser({ email, labels: [] })) {
+    return { $id: userId, email }
+  }
+  return null
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const user = await getCurrentAdminUser()
+    const user = (await getCurrentAdminUser()) || (await getFallbackAdminUser(req))
 
     if (!user?.$id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
@@ -87,6 +99,10 @@ export async function POST(req: NextRequest) {
 
     const { databases } = await createAdminClient()
 
+      if (!DATABASE_ID) {
+        throw new Error('DATABASE_ID environment variable not set')
+      }
+
     const result = await databases.createDocument(
       DATABASE_ID,
       'admin_broadcasts',
@@ -110,7 +126,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await getCurrentAdminUser()
+    const user = (await getCurrentAdminUser()) || (await getFallbackAdminUser(req))
 
     if (!user?.$id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })

@@ -1,38 +1,60 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
+import { AlertTriangle, Bell, Camera, Download, Eye, EyeOff, Lock, Save, Shield, Trash2, User } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { User, Lock, Bell, Shield, Eye, EyeOff, Camera, Save, Trash2, Download, AlertTriangle } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
-import { profileService, authService } from "@/lib/appwrite"
-import { useRouter } from "next/navigation"
+import { authService, profileService } from "@/lib/appwrite"
+import {
+  getDefaultPeerSparkSettings,
+  normalizePeerSparkSettings,
+  PEERSPARK_SETTINGS_PREF_KEY,
+  type PeerSparkSettings,
+} from "@/lib/settings"
 
 interface SettingsModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
+type ProfileState = {
+  name: string
+  email: string
+  bio: string
+  location: string
+  website: string
+  avatar: string
+}
+
+type SecurityState = {
+  currentPassword: string
+  newPassword: string
+  confirmPassword: string
+  twoFactorEnabled: boolean
+  loginAlerts: boolean
+}
+
 export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState("profile")
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
-  const [showNewPassword, setShowNewPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
   const { toast } = useToast()
   const { user, refreshUser } = useAuth()
-  const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Profile state - initialized with user data
-  const [profile, setProfile] = useState({
+  const [activeTab, setActiveTab] = useState("profile")
+  const [isLoading, setIsLoading] = useState(false)
+  const [prefs, setPrefs] = useState<PeerSparkSettings>(getDefaultPeerSparkSettings())
+  const [profile, setProfile] = useState<ProfileState>({
     name: "",
     email: "",
     bio: "",
@@ -40,25 +62,47 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     website: "",
     avatar: "",
   })
+  const [privacy, setPrivacy] = useState<PeerSparkSettings["privacy"]>(getDefaultPeerSparkSettings().privacy)
+  const [notifications, setNotifications] = useState<PeerSparkSettings["notifications"]>(getDefaultPeerSparkSettings().notifications)
+  const [security, setSecurity] = useState<SecurityState>({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+    twoFactorEnabled: false,
+    loginAlerts: true,
+  })
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
 
-  // Load user profile data when modal opens or user changes
   useEffect(() => {
-    const loadProfile = async () => {
-      if (!user?.$id || !open) return
-      
+    const loadSettings = async () => {
+      if (!open || !user?.$id) return
+
       try {
         const profileData = await profileService.getProfile(user.$id)
+        const normalizedPrefs = normalizePeerSparkSettings((user.prefs as Record<string, any> | undefined)?.[PEERSPARK_SETTINGS_PREF_KEY])
+
+        setPrefs(normalizedPrefs)
+        setPrivacy(normalizedPrefs.privacy)
+        setNotifications(normalizedPrefs.notifications)
+        setSecurity((current) => ({
+          ...current,
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+          twoFactorEnabled: normalizedPrefs.privacy.twoFactorEnabled,
+          loginAlerts: normalizedPrefs.privacy.loginAlerts,
+        }))
         setProfile({
           name: user.name || profileData?.name || "",
-          email: user.email || "",
+          email: user.email || profileData?.email || "",
           bio: profileData?.bio || "",
           location: profileData?.location || "",
           website: profileData?.website || "",
           avatar: profileData?.avatar || "",
         })
       } catch (error) {
-        console.error("Failed to load profile:", error)
-        // Fallback to auth user data
+        console.error("Failed to load settings:", error)
         setProfile({
           name: user.name || "",
           email: user.email || "",
@@ -67,56 +111,36 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
           website: "",
           avatar: "",
         })
+        const defaultPrefs = getDefaultPeerSparkSettings()
+        setPrefs(defaultPrefs)
+        setPrivacy(defaultPrefs.privacy)
+        setNotifications(defaultPrefs.notifications)
+        setSecurity((current) => ({
+          ...current,
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+          twoFactorEnabled: defaultPrefs.privacy.twoFactorEnabled,
+          loginAlerts: defaultPrefs.privacy.loginAlerts,
+        }))
       }
     }
-    
-    loadProfile()
-  }, [user, open])
 
-  // Privacy state
-  const [privacy, setPrivacy] = useState({
-    profileVisibility: "public",
-    showEmail: false,
-    showLocation: true,
-    allowMessages: true,
-    showOnlineStatus: true,
-    showActivity: true,
-  })
+    loadSettings()
+  }, [open, user])
 
-  // Notification state
-  const [notifications, setNotifications] = useState({
-    emailNotifications: true,
-    pushNotifications: true,
-    podUpdates: true,
-    directMessages: true,
-    mentions: true,
-    achievements: true,
-    weeklyDigest: false,
-    marketingEmails: false,
-  })
-
-  // Security state
-  const [security, setSecurity] = useState({
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-    twoFactorEnabled: false,
-    loginAlerts: true,
-  })
+  const commitPrefs = async (nextPrefs: PeerSparkSettings) => {
+    if (!user?.$id) return
+    await authService.updatePrefs({ ...(user.prefs || {}), [PEERSPARK_SETTINGS_PREF_KEY]: nextPrefs })
+    setPrefs(nextPrefs)
+    await refreshUser()
+  }
 
   const handleSaveProfile = async () => {
-    if (!user?.$id) {
-      toast({
-        title: "Error",
-        description: "You must be logged in to update your profile.",
-        variant: "destructive",
-      })
-      return
-    }
+    if (!user?.$id) return
 
     setIsLoading(true)
     try {
-      // Update profile in database
       await profileService.updateProfile(user.$id, {
         name: profile.name,
         bio: profile.bio,
@@ -124,25 +148,16 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         website: profile.website,
       })
 
-      // Update account name if changed
-      if (profile.name !== user.name) {
-        try {
-          await authService.updateName(profile.name)
-          await refreshUser()
-        } catch (e) {
-          console.warn("Could not update account name:", e)
-        }
+      if (profile.name && profile.name !== user.name) {
+        await authService.updateName(profile.name)
       }
 
-      toast({
-        title: "Profile Updated",
-        description: "Your profile has been successfully updated.",
-      })
+      await refreshUser()
+      toast({ title: "Profile updated", description: "Your profile has been saved." })
     } catch (error: any) {
-      console.error("Profile update error:", error)
       toast({
         title: "Error",
-        description: error?.message || "Failed to update profile. Please try again.",
+        description: error?.message || "Failed to update profile.",
         variant: "destructive",
       })
     } finally {
@@ -155,17 +170,20 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
 
     setIsLoading(true)
     try {
-      // Save privacy settings to profile
-      await profileService.updateProfile(user.$id, {
-        privacySettings: privacy,
-      })
-
-      toast({
-        title: "Privacy Settings Updated",
-        description: "Your privacy preferences have been saved.",
-      })
+      const nextPrefs = {
+        ...prefs,
+        privacy: {
+          ...prefs.privacy,
+          ...privacy,
+          twoFactorEnabled: security.twoFactorEnabled,
+          loginAlerts: security.loginAlerts,
+        },
+      }
+      await commitPrefs(nextPrefs)
+      setPrivacy(nextPrefs.privacy)
+      setSecurity((current) => ({ ...current, twoFactorEnabled: nextPrefs.privacy.twoFactorEnabled, loginAlerts: nextPrefs.privacy.loginAlerts }))
+      toast({ title: "Privacy updated", description: "Your privacy preferences have been saved." })
     } catch (error: any) {
-      console.error("Privacy update error:", error)
       toast({
         title: "Error",
         description: error?.message || "Failed to update privacy settings.",
@@ -181,20 +199,20 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
 
     setIsLoading(true)
     try {
-      // Save notification settings to profile
-      await profileService.updateProfile(user.$id, {
-        notificationSettings: notifications,
-      })
-
-      toast({
-        title: "Notification Settings Updated",
-        description: "Your notification preferences have been saved.",
-      })
+      const nextPrefs = {
+        ...prefs,
+        notifications: {
+          ...prefs.notifications,
+          ...notifications,
+        },
+      }
+      await commitPrefs(nextPrefs)
+      setNotifications(nextPrefs.notifications)
+      toast({ title: "Notifications updated", description: "Your notification preferences have been saved." })
     } catch (error: any) {
-      console.error("Notification update error:", error)
       toast({
         title: "Error",
-        description: error?.message || "Failed to update notification settings.",
+        description: error?.message || "Failed to update notifications.",
         variant: "destructive",
       })
     } finally {
@@ -203,53 +221,30 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   }
 
   const handleChangePassword = async () => {
-    if (security.newPassword !== security.confirmPassword) {
-      toast({
-        title: "Password Mismatch",
-        description: "New password and confirmation don't match.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (security.newPassword.length < 8) {
-      toast({
-        title: "Password Too Short",
-        description: "Password must be at least 8 characters long.",
-        variant: "destructive",
-      })
-      return
-    }
-
     if (!security.currentPassword) {
-      toast({
-        title: "Current Password Required",
-        description: "Please enter your current password.",
-        variant: "destructive",
-      })
+      toast({ title: "Current password required", description: "Enter your current password.", variant: "destructive" })
+      return
+    }
+
+    if (!security.newPassword || security.newPassword.length < 8) {
+      toast({ title: "Password too short", description: "Use at least 8 characters.", variant: "destructive" })
+      return
+    }
+
+    if (security.newPassword !== security.confirmPassword) {
+      toast({ title: "Passwords do not match", description: "Confirm the new password.", variant: "destructive" })
       return
     }
 
     setIsLoading(true)
     try {
       await authService.updatePassword(security.newPassword, security.currentPassword)
-
-      setSecurity({
-        ...security,
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      })
-
-      toast({
-        title: "Password Changed",
-        description: "Your password has been successfully updated.",
-      })
+      setSecurity((current) => ({ ...current, currentPassword: "", newPassword: "", confirmPassword: "" }))
+      toast({ title: "Password changed", description: "Your password was updated successfully." })
     } catch (error: any) {
-      console.error("Password change error:", error)
       toast({
         title: "Error",
-        description: error?.message || "Failed to change password. Please check your current password.",
+        description: error?.message || "Failed to change password.",
         variant: "destructive",
       })
     } finally {
@@ -257,31 +252,29 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     }
   }
 
-  const handleAvatarUpload = async () => {
+  const handleAvatarUpload = () => {
     fileInputRef.current?.click()
   }
 
-  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
     if (!file || !user?.$id) return
 
     setIsLoading(true)
     try {
       const avatarUrl = await profileService.uploadAvatar(file, user.$id)
-      setProfile(prev => ({ ...prev, avatar: avatarUrl }))
-      toast({
-        title: "Avatar Updated",
-        description: "Your avatar has been successfully updated.",
-      })
+      setProfile((current) => ({ ...current, avatar: avatarUrl }))
+      toast({ title: "Avatar updated", description: "Your avatar has been saved." })
+      await refreshUser()
     } catch (error: any) {
-      console.error("Avatar upload error:", error)
       toast({
         title: "Error",
-        description: error?.message || "Failed to upload avatar. Please try again.",
+        description: error?.message || "Failed to upload avatar.",
         variant: "destructive",
       })
     } finally {
       setIsLoading(false)
+      event.target.value = ""
     }
   }
 
@@ -289,35 +282,26 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     if (!user?.$id) return
 
     try {
-      // Gather user data
       const profileData = await profileService.getProfile(user.$id)
       const exportData = {
-        user: {
-          id: user.$id,
-          name: user.name,
-          email: user.email,
-        },
+        user: { id: user.$id, name: user.name, email: user.email },
         profile: profileData,
+        preferences: prefs,
         exportedAt: new Date().toISOString(),
       }
 
-      // Create downloadable file
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" })
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `peerspark-data-export-${new Date().toISOString().split('T')[0]}.json`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `peerspark-data-export-${new Date().toISOString().split("T")[0]}.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
       URL.revokeObjectURL(url)
 
-      toast({
-        title: "Data Exported",
-        description: "Your data has been downloaded successfully.",
-      })
+      toast({ title: "Data exported", description: "Your data download has started." })
     } catch (error: any) {
-      console.error("Data export error:", error)
       toast({
         title: "Error",
         description: error?.message || "Failed to export data.",
@@ -327,37 +311,32 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   }
 
   const handleDeleteAccount = async () => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete your account? This action cannot be undone and will permanently delete all your data."
-    )
-    
+    const confirmed = window.confirm("Delete your account permanently? This cannot be undone.")
     if (!confirmed) return
 
+    setIsLoading(true)
     try {
-      // Note: Account deletion typically requires additional confirmation
-      toast({
-        title: "Account Deletion Requested",
-        description: "Please contact support to complete account deletion.",
-        variant: "destructive",
-      })
+      await authService.deleteAccount()
+      onOpenChange(false)
+      router.push("/register")
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error?.message || "Failed to process account deletion request.",
+        description: error?.message || "Failed to delete account.",
         variant: "destructive",
       })
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  // Get user initials for avatar fallback
   const userInitials = profile.name
-    ? profile.name.split(" ").map(n => n[0]).join("").toUpperCase()
-    : user?.name?.split(" ").map(n => n[0]).join("").toUpperCase() || "U"
+    ? profile.name.split(" ").map((part) => part[0]).join("").toUpperCase()
+    : user?.name?.split(" ").map((part) => part[0]).join("").toUpperCase() || "U"
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
-        {/* Hidden file input for avatar upload */}
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden">
         <input
           ref={fileInputRef}
           type="file"
@@ -365,507 +344,361 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
           className="hidden"
           onChange={handleAvatarFileChange}
         />
+
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>Manage your account settings and preferences</DialogDescription>
+          <DialogDescription>Manage your account, privacy, notifications, and security.</DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden">
-          <div className="flex h-full">
-            {/* Sidebar */}
-            <div className="w-64 border-r border-border pr-4">
-              <TabsList className="grid w-full grid-cols-1 h-auto bg-transparent p-0 space-y-1">
-                <TabsTrigger
-                  value="profile"
-                  className="w-full justify-start data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                >
-                  <User className="w-4 h-4 mr-2" />
-                  Profile
-                </TabsTrigger>
-                <TabsTrigger
-                  value="privacy"
-                  className="w-full justify-start data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                >
-                  <Shield className="w-4 h-4 mr-2" />
-                  Privacy
-                </TabsTrigger>
-                <TabsTrigger
-                  value="notifications"
-                  className="w-full justify-start data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                >
-                  <Bell className="w-4 h-4 mr-2" />
-                  Notifications
-                </TabsTrigger>
-                <TabsTrigger
-                  value="security"
-                  className="w-full justify-start data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                >
-                  <Lock className="w-4 h-4 mr-2" />
-                  Security
-                </TabsTrigger>
-                <TabsTrigger
-                  value="data"
-                  className="w-full justify-start data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Data & Privacy
-                </TabsTrigger>
-              </TabsList>
-            </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-2">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="profile">
+              <User className="mr-2 h-4 w-4" />
+              Profile
+            </TabsTrigger>
+            <TabsTrigger value="privacy">
+              <Shield className="mr-2 h-4 w-4" />
+              Privacy
+            </TabsTrigger>
+            <TabsTrigger value="notifications">
+              <Bell className="mr-2 h-4 w-4" />
+              Notifications
+            </TabsTrigger>
+            <TabsTrigger value="security">
+              <Lock className="mr-2 h-4 w-4" />
+              Security
+            </TabsTrigger>
+            <TabsTrigger value="data">
+              <Download className="mr-2 h-4 w-4" />
+              Data
+            </TabsTrigger>
+          </TabsList>
 
-            {/* Content */}
-            <div className="flex-1 pl-6 overflow-y-auto">
-              <TabsContent value="profile" className="space-y-6 mt-0">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">Profile Information</h3>
-
-                  {/* Avatar */}
-                  <div className="flex items-center space-x-4 mb-6">
-                    <Avatar className="w-20 h-20">
-                      <AvatarImage src={profile.avatar || "/placeholder.svg"} />
-                      <AvatarFallback className="text-lg">{userInitials}</AvatarFallback>
+          <div className="mt-6 max-h-[calc(90vh-12rem)] overflow-y-auto pr-1">
+            <TabsContent value="profile" className="mt-0 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Profile Information</CardTitle>
+                  <CardDescription>Update the public details shown on your profile.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="flex items-center gap-4">
+                    <Avatar className="h-20 w-20">
+                      <AvatarImage src={profile.avatar || "/placeholder.svg"} alt={profile.name || "Profile avatar"} />
+                      <AvatarFallback>{userInitials}</AvatarFallback>
                     </Avatar>
-                    <div>
-                      <Button onClick={handleAvatarUpload} variant="outline" size="sm" disabled={isLoading}>
-                        <Camera className="w-4 h-4 mr-2" />
-                        {isLoading ? "Uploading..." : "Change Avatar"}
+                    <div className="space-y-2">
+                      <Button variant="outline" onClick={handleAvatarUpload} disabled={isLoading}>
+                        <Camera className="mr-2 h-4 w-4" />
+                        Change avatar
                       </Button>
-                      <p className="text-sm text-muted-foreground mt-1">JPG, PNG or GIF. Max size 2MB.</p>
+                      <p className="text-sm text-muted-foreground">JPG, PNG, or GIF up to 2MB.</p>
                     </div>
                   </div>
 
-                  <div className="grid gap-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="name">Full Name</Label>
-                        <Input
-                          id="name"
-                          value={profile.name}
-                          onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="email">Email</Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          value={profile.email}
-                          onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                        />
-                      </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="profile-name">Full name</Label>
+                      <Input
+                        id="profile-name"
+                        value={profile.name}
+                        onChange={(event) => setProfile((current) => ({ ...current, name: event.target.value }))}
+                      />
                     </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="profile-email">Email</Label>
+                      <Input id="profile-email" value={profile.email} readOnly />
+                    </div>
+                  </div>
 
-                    <div>
-                      <Label htmlFor="bio">Bio</Label>
-                      <Textarea
-                        id="bio"
-                        value={profile.bio}
-                        onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
-                        rows={3}
+                  <div className="space-y-2">
+                    <Label htmlFor="profile-bio">Bio</Label>
+                    <Textarea
+                      id="profile-bio"
+                      value={profile.bio}
+                      onChange={(event) => setProfile((current) => ({ ...current, bio: event.target.value }))}
+                      rows={4}
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="profile-location">Location</Label>
+                      <Input
+                        id="profile-location"
+                        value={profile.location}
+                        onChange={(event) => setProfile((current) => ({ ...current, location: event.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="profile-website">Website</Label>
+                      <Input
+                        id="profile-website"
+                        value={profile.website}
+                        onChange={(event) => setProfile((current) => ({ ...current, website: event.target.value }))}
+                        placeholder="https://"
+                      />
+                    </div>
+                  </div>
+
+                  <Button onClick={handleSaveProfile} disabled={isLoading}>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save profile
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="privacy" className="mt-0 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Privacy Controls</CardTitle>
+                  <CardDescription>Control what other people can see and how they can reach you.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="space-y-2">
+                    <Label>Profile visibility</Label>
+                    <Select
+                      value={privacy.profileVisibility}
+                      onValueChange={(value) => setPrivacy((current) => ({ ...current, profileVisibility: value as PeerSparkSettings["privacy"]["profileVisibility"] }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select visibility" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="public">Public</SelectItem>
+                        <SelectItem value="friends">Friends only</SelectItem>
+                        <SelectItem value="private">Private</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {[
+                    ["showEmail", "Show email address", "Allow others to see your email"],
+                    ["showLocation", "Show location", "Display your location on your profile"],
+                    ["allowMessages", "Allow direct messages", "Let other users send you messages"],
+                    ["showOnlineStatus", "Show online status", "Display when you are online"],
+                    ["showActivityStatus", "Show activity status", "Display recent activity on your profile"],
+                    ["dataSharing", "Share anonymous usage data", "Help improve the platform with usage insights"],
+                    ["searchVisibility", "Appear in search", "Allow others to find you in search"],
+                  ].map(([key, title, description]) => (
+                    <div className="flex items-center justify-between rounded-lg border p-4" key={key}>
+                      <div className="space-y-0.5">
+                        <Label>{title}</Label>
+                        <p className="text-sm text-muted-foreground">{description}</p>
+                      </div>
+                      <Switch
+                        checked={Boolean((privacy as any)[key])}
+                        onCheckedChange={(checked) => setPrivacy((current) => ({ ...current, [key]: checked } as PeerSparkSettings["privacy"]))}
+                        disabled={isLoading}
+                      />
+                    </div>
+                  ))}
+
+                  <Button onClick={handleSavePrivacy} disabled={isLoading}>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save privacy
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="notifications" className="mt-0 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Notification Preferences</CardTitle>
+                  <CardDescription>Choose when and how you want to be notified.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="space-y-2">
+                    <Label>Notification frequency</Label>
+                    <Select
+                      value={notifications.notificationFrequency}
+                      onValueChange={(value) => setNotifications((current) => ({ ...current, notificationFrequency: value as PeerSparkSettings["notifications"]["notificationFrequency"] }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose frequency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="realtime">Real-time</SelectItem>
+                        <SelectItem value="daily">Daily</SelectItem>
+                        <SelectItem value="weekly">Weekly</SelectItem>
+                        <SelectItem value="never">Never</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {[
+                    ["pushNotifications", "Push notifications", "Receive notifications on your device"],
+                    ["emailNotifications", "Email notifications", "Receive notification emails"],
+                    ["podNotifications", "Pod activity", "Get updates from your study pods"],
+                    ["messageNotifications", "Direct messages", "Be notified when someone messages you"],
+                    ["calendarReminders", "Calendar reminders", "Reminders for upcoming events"],
+                    ["weeklyDigest", "Weekly digest", "Receive a summary of activity"],
+                    ["marketingEmails", "Marketing emails", "Receive product and feature updates"],
+                    ["podUpdates", "Pod updates", "Get notified about pod posts and events"],
+                    ["directMessages", "Direct message alerts", "Immediate alerts for new direct messages"],
+                    ["mentions", "Mentions", "Be notified when you are mentioned"],
+                    ["achievements", "Achievements", "Celebrate badges and milestones"],
+                  ].map(([key, title, description]) => (
+                    <div className="flex items-center justify-between rounded-lg border p-4" key={key}>
+                      <div className="space-y-0.5">
+                        <Label>{title}</Label>
+                        <p className="text-sm text-muted-foreground">{description}</p>
+                      </div>
+                      <Switch
+                        checked={Boolean((notifications as any)[key])}
+                        onCheckedChange={(checked) => setNotifications((current) => ({ ...current, [key]: checked } as PeerSparkSettings["notifications"]))}
+                        disabled={isLoading}
+                      />
+                    </div>
+                  ))}
+
+                  <Button onClick={handleSaveNotifications} disabled={isLoading}>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save notifications
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="security" className="mt-0 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Security</CardTitle>
+                  <CardDescription>Change your password and manage account protection.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="space-y-2">
+                    <Label htmlFor="current-password">Current password</Label>
+                    <div className="relative">
+                      <Input
+                        id="current-password"
+                        type={showCurrentPassword ? "text" : "password"}
+                        value={security.currentPassword}
+                        onChange={(event) => setSecurity((current) => ({ ...current, currentPassword: event.target.value }))}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3"
+                        onClick={() => setShowCurrentPassword((current) => !current)}
+                      >
+                        {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="new-password">New password</Label>
+                    <div className="relative">
+                      <Input
+                        id="new-password"
+                        type={showNewPassword ? "text" : "password"}
+                        value={security.newPassword}
+                        onChange={(event) => setSecurity((current) => ({ ...current, newPassword: event.target.value }))}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3"
+                        onClick={() => setShowNewPassword((current) => !current)}
+                      >
+                        {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-password">Confirm new password</Label>
+                    <Input
+                      id="confirm-password"
+                      type="password"
+                      value={security.confirmPassword}
+                      onChange={(event) => setSecurity((current) => ({ ...current, confirmPassword: event.target.value }))}
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="flex items-center justify-between rounded-lg border p-4">
+                      <div className="space-y-0.5">
+                        <Label>Two-factor authentication</Label>
+                        <p className="text-sm text-muted-foreground">Store the preference and surface it in the account settings.</p>
+                      </div>
+                      <Switch
+                        checked={security.twoFactorEnabled}
+                        onCheckedChange={(checked) => setSecurity((current) => ({ ...current, twoFactorEnabled: checked }))}
+                        disabled={isLoading}
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="location">Location</Label>
-                        <Input
-                          id="location"
-                          value={profile.location}
-                          onChange={(e) => setProfile({ ...profile, location: e.target.value })}
-                        />
+                    <div className="flex items-center justify-between rounded-lg border p-4">
+                      <div className="space-y-0.5">
+                        <Label>Login alerts</Label>
+                        <p className="text-sm text-muted-foreground">Get notified when a new login is detected.</p>
                       </div>
-                      <div>
-                        <Label htmlFor="website">Website</Label>
-                        <Input
-                          id="website"
-                          value={profile.website}
-                          onChange={(e) => setProfile({ ...profile, website: e.target.value })}
-                        />
+                      <Switch
+                        checked={security.loginAlerts}
+                        onCheckedChange={(checked) => setSecurity((current) => ({ ...current, loginAlerts: checked }))}
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button onClick={handleChangePassword} disabled={isLoading}>
+                      <Lock className="mr-2 h-4 w-4" />
+                      Change password
+                    </Button>
+                    <Button onClick={handleSavePrivacy} variant="outline" disabled={isLoading}>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save security settings
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="data" className="mt-0 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Data export</CardTitle>
+                  <CardDescription>Download a copy of your profile and preference data.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button onClick={handleExportData} variant="outline">
+                    <Download className="mr-2 h-4 w-4" />
+                    Export data
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card className="border-destructive">
+                <CardHeader>
+                  <CardTitle className="text-destructive">Danger zone</CardTitle>
+                  <CardDescription>Irreversible account actions live here.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="mt-0.5 h-5 w-5 text-destructive" />
+                      <div className="space-y-2">
+                        <h4 className="font-medium text-destructive">Delete account</h4>
+                        <p className="text-sm text-muted-foreground">
+                          This permanently removes your account and associated data.
+                        </p>
+                        <Button onClick={handleDeleteAccount} variant="destructive" size="sm" disabled={isLoading}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete account
+                        </Button>
                       </div>
                     </div>
-
-                    <Button onClick={handleSaveProfile} disabled={isLoading}>
-                      <Save className="w-4 h-4 mr-2" />
-                      {isLoading ? "Saving..." : "Save Changes"}
-                    </Button>
                   </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="privacy" className="space-y-6 mt-0">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">Privacy Settings</h3>
-
-                  <div className="space-y-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">Profile Visibility</CardTitle>
-                        <CardDescription>Control who can see your profile information</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Show email address</Label>
-                            <p className="text-sm text-muted-foreground">Allow others to see your email</p>
-                          </div>
-                          <Switch
-                            checked={privacy.showEmail}
-                            onCheckedChange={(checked) => setPrivacy({ ...privacy, showEmail: checked })}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Show location</Label>
-                            <p className="text-sm text-muted-foreground">Display your location on profile</p>
-                          </div>
-                          <Switch
-                            checked={privacy.showLocation}
-                            onCheckedChange={(checked) => setPrivacy({ ...privacy, showLocation: checked })}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Show online status</Label>
-                            <p className="text-sm text-muted-foreground">Let others see when you&apos;re online</p>
-                          </div>
-                          <Switch
-                            checked={privacy.showOnlineStatus}
-                            onCheckedChange={(checked) => setPrivacy({ ...privacy, showOnlineStatus: checked })}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Show activity</Label>
-                            <p className="text-sm text-muted-foreground">Display your recent activity</p>
-                          </div>
-                          <Switch
-                            checked={privacy.showActivity}
-                            onCheckedChange={(checked) => setPrivacy({ ...privacy, showActivity: checked })}
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">Communication</CardTitle>
-                        <CardDescription>Manage how others can contact you</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Allow direct messages</Label>
-                            <p className="text-sm text-muted-foreground">Let other users send you messages</p>
-                          </div>
-                          <Switch
-                            checked={privacy.allowMessages}
-                            onCheckedChange={(checked) => setPrivacy({ ...privacy, allowMessages: checked })}
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Button onClick={handleSavePrivacy} disabled={isLoading}>
-                      <Save className="w-4 h-4 mr-2" />
-                      {isLoading ? "Saving..." : "Save Privacy Settings"}
-                    </Button>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="notifications" className="space-y-6 mt-0">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">Notification Preferences</h3>
-
-                  <div className="space-y-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">General Notifications</CardTitle>
-                        <CardDescription>Choose how you want to receive notifications</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Email notifications</Label>
-                            <p className="text-sm text-muted-foreground">Receive notifications via email</p>
-                          </div>
-                          <Switch
-                            checked={notifications.emailNotifications}
-                            onCheckedChange={(checked) =>
-                              setNotifications({ ...notifications, emailNotifications: checked })
-                            }
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Push notifications</Label>
-                            <p className="text-sm text-muted-foreground">Receive push notifications in browser</p>
-                          </div>
-                          <Switch
-                            checked={notifications.pushNotifications}
-                            onCheckedChange={(checked) =>
-                              setNotifications({ ...notifications, pushNotifications: checked })
-                            }
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">Activity Notifications</CardTitle>
-                        <CardDescription>Get notified about specific activities</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Pod updates</Label>
-                            <p className="text-sm text-muted-foreground">New posts and activities in your pods</p>
-                          </div>
-                          <Switch
-                            checked={notifications.podUpdates}
-                            onCheckedChange={(checked) => setNotifications({ ...notifications, podUpdates: checked })}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Direct messages</Label>
-                            <p className="text-sm text-muted-foreground">When someone sends you a message</p>
-                          </div>
-                          <Switch
-                            checked={notifications.directMessages}
-                            onCheckedChange={(checked) =>
-                              setNotifications({ ...notifications, directMessages: checked })
-                            }
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Mentions</Label>
-                            <p className="text-sm text-muted-foreground">When someone mentions you</p>
-                          </div>
-                          <Switch
-                            checked={notifications.mentions}
-                            onCheckedChange={(checked) => setNotifications({ ...notifications, mentions: checked })}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Achievements</Label>
-                            <p className="text-sm text-muted-foreground">When you earn badges or complete goals</p>
-                          </div>
-                          <Switch
-                            checked={notifications.achievements}
-                            onCheckedChange={(checked) => setNotifications({ ...notifications, achievements: checked })}
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">Email Preferences</CardTitle>
-                        <CardDescription>Control what emails you receive</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Weekly digest</Label>
-                            <p className="text-sm text-muted-foreground">Summary of your weekly activity</p>
-                          </div>
-                          <Switch
-                            checked={notifications.weeklyDigest}
-                            onCheckedChange={(checked) => setNotifications({ ...notifications, weeklyDigest: checked })}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Marketing emails</Label>
-                            <p className="text-sm text-muted-foreground">Product updates and promotional content</p>
-                          </div>
-                          <Switch
-                            checked={notifications.marketingEmails}
-                            onCheckedChange={(checked) =>
-                              setNotifications({ ...notifications, marketingEmails: checked })
-                            }
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Button onClick={handleSaveNotifications} disabled={isLoading}>
-                      <Save className="w-4 h-4 mr-2" />
-                      {isLoading ? "Saving..." : "Save Notification Settings"}
-                    </Button>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="security" className="space-y-6 mt-0">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">Security Settings</h3>
-
-                  <div className="space-y-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">Change Password</CardTitle>
-                        <CardDescription>Update your password to keep your account secure</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div>
-                          <Label htmlFor="current-password">Current Password</Label>
-                          <div className="relative">
-                            <Input
-                              id="current-password"
-                              type={showCurrentPassword ? "text" : "password"}
-                              value={security.currentPassword}
-                              onChange={(e) => setSecurity({ ...security, currentPassword: e.target.value })}
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="absolute right-0 top-0 h-full px-3"
-                              onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                            >
-                              {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label htmlFor="new-password">New Password</Label>
-                          <div className="relative">
-                            <Input
-                              id="new-password"
-                              type={showNewPassword ? "text" : "password"}
-                              value={security.newPassword}
-                              onChange={(e) => setSecurity({ ...security, newPassword: e.target.value })}
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="absolute right-0 top-0 h-full px-3"
-                              onClick={() => setShowNewPassword(!showNewPassword)}
-                            >
-                              {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label htmlFor="confirm-password">Confirm New Password</Label>
-                          <Input
-                            id="confirm-password"
-                            type="password"
-                            value={security.confirmPassword}
-                            onChange={(e) => setSecurity({ ...security, confirmPassword: e.target.value })}
-                          />
-                        </div>
-
-                        <Button onClick={handleChangePassword} disabled={isLoading}>
-                          <Lock className="w-4 h-4 mr-2" />
-                          {isLoading ? "Changing..." : "Change Password"}
-                        </Button>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">Two-Factor Authentication</CardTitle>
-                        <CardDescription>Add an extra layer of security to your account</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Enable 2FA</Label>
-                            <p className="text-sm text-muted-foreground">
-                              {security.twoFactorEnabled
-                                ? "Two-factor authentication is enabled"
-                                : "Secure your account with 2FA"}
-                            </p>
-                          </div>
-                          <Switch
-                            checked={security.twoFactorEnabled}
-                            onCheckedChange={(checked) => setSecurity({ ...security, twoFactorEnabled: checked })}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label>Login alerts</Label>
-                            <p className="text-sm text-muted-foreground">Get notified of new login attempts</p>
-                          </div>
-                          <Switch
-                            checked={security.loginAlerts}
-                            onCheckedChange={(checked) => setSecurity({ ...security, loginAlerts: checked })}
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="data" className="space-y-6 mt-0">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">Data & Privacy</h3>
-
-                  <div className="space-y-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">Export Your Data</CardTitle>
-                        <CardDescription>
-                          Download a copy of your data including posts, messages, and profile information
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <Button onClick={handleExportData} variant="outline">
-                          <Download className="w-4 h-4 mr-2" />
-                          Request Data Export
-                        </Button>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="border-destructive">
-                      <CardHeader>
-                        <CardTitle className="text-base text-destructive">Danger Zone</CardTitle>
-                        <CardDescription>
-                          Irreversible actions that will permanently affect your account
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="p-4 border border-destructive/20 rounded-lg bg-destructive/5">
-                          <div className="flex items-start space-x-3">
-                            <AlertTriangle className="w-5 h-5 text-destructive mt-0.5" />
-                            <div className="flex-1">
-                              <h4 className="font-medium text-destructive">Delete Account</h4>
-                              <p className="text-sm text-muted-foreground mt-1">
-                                Once you delete your account, there is no going back. This will permanently delete your
-                                profile, posts, and remove you from all pods.
-                              </p>
-                              <Button onClick={handleDeleteAccount} variant="destructive" size="sm" className="mt-3">
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Delete Account
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </div>
-              </TabsContent>
-            </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
           </div>
         </Tabs>
       </DialogContent>

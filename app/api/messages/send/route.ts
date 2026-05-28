@@ -24,13 +24,12 @@ export async function POST(request: NextRequest) {
   const { data, error } = await withErrorHandling(async () => {
     const auth = requireUser(request)
     const body = await request.json();
-    const { senderId, recipientId, content, type = 'text', metadata = {} } = body;
+    const { senderId, recipientId, roomId, content, type = 'text', metadata = {} } = body;
 
     validateInput(
-      { senderId, recipientId, content },
+      { senderId, content },
       {
         senderId: { required: true },
-        recipientId: { required: true },
         content: { required: true, minLength: 1, maxLength: 5000 },
       }
     );
@@ -38,43 +37,66 @@ export async function POST(request: NextRequest) {
 
     const { databases } = await createAdminClient();
 
-    // Get or create DM room
+    // Get or create room
     let room;
-    
-    // Try to find existing room between these users
-    const existingRooms = await databases.listDocuments(
-      DATABASE_ID,
-      CHAT_ROOMS_COLLECTION_ID,
-      [
-        Query.limit(100), // Get all recent rooms and filter direct-room variants client-side.
-      ]
-    );
 
-    // Check if room exists between these two users
-    room = existingRooms.documents.find((r: any) => {
-      if (!['direct', 'dm'].includes(r.type)) return false;
-      const members = Array.isArray(r.members)
-        ? r.members
-        : typeof r.members === 'string'
-          ? (() => { try { return JSON.parse(r.members) } catch { return [] } })()
-          : [];
-      return members.includes(senderId) && members.includes(recipientId);
-    });
-
-    // Create room if doesn't exist
-    if (!room) {
-      room = await databases.createDocument(
+    if (roomId) {
+      room = await databases.getDocument(
         DATABASE_ID,
         CHAT_ROOMS_COLLECTION_ID,
-        'unique()',
-        {
-          type: 'direct',
-          members: [senderId, recipientId],
-          createdAt: new Date().toISOString(),
-          isActive: true,
-          lastMessageAt: new Date().toISOString(),
-        }
+        roomId
       );
+
+      const roomMembers = Array.isArray(room.members)
+        ? room.members
+        : typeof room.members === 'string'
+          ? (() => { try { return JSON.parse(room.members) } catch { return [] } })()
+          : [];
+      if (!roomMembers.includes(senderId)) {
+        throw new Error('You do not have access to this conversation');
+      }
+    }
+
+    if (!room) {
+      if (!recipientId) {
+        throw new Error('recipientId is required when roomId is not provided');
+      }
+
+      // Try to find existing room between these two users
+      const existingRooms = await databases.listDocuments(
+        DATABASE_ID,
+        CHAT_ROOMS_COLLECTION_ID,
+        [
+          Query.limit(100), // Get recent rooms and filter direct-room variants in app code.
+        ]
+      );
+
+      // Check if room exists between these two users
+      room = existingRooms.documents.find((r: any) => {
+        if (!['direct', 'dm'].includes(r.type)) return false;
+        const members = Array.isArray(r.members)
+          ? r.members
+          : typeof r.members === 'string'
+            ? (() => { try { return JSON.parse(r.members) } catch { return [] } })()
+            : [];
+        return members.includes(senderId) && members.includes(recipientId);
+      });
+
+      // Create room if doesn't exist
+      if (!room) {
+        room = await databases.createDocument(
+          DATABASE_ID,
+          CHAT_ROOMS_COLLECTION_ID,
+          'unique()',
+          {
+            type: 'direct',
+            members: [senderId, recipientId],
+            createdAt: new Date().toISOString(),
+            isActive: true,
+            lastMessageAt: new Date().toISOString(),
+          }
+        );
+      }
     }
 
     // Get sender profile
@@ -100,14 +122,15 @@ export async function POST(request: NextRequest) {
       {
         roomId: room.$id,
         senderId,
-        senderName,
-        senderAvatar,
-        content: content.trim(),
-        type,
-        readBy: [senderId],
-        replyTo: metadata.replyTo || null,
-        attachmentUrl: metadata.attachmentUrl || null,
-        timestamp: new Date().toISOString(),
+          authorId: senderId,
+          senderName,
+          senderAvatar,
+          content: content.trim(),
+          type,
+          readBy: [senderId],
+          replyTo: metadata.replyTo || null,
+            fileUrl: metadata.fileUrl || metadata.attachmentUrl || null,
+          timestamp: new Date().toISOString(),
       }
     );
 
