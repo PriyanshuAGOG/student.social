@@ -1,18 +1,11 @@
-import { getEnv } from './env'
+export const ADMIN_OWNER_EMAIL = 'chat.priyanshuag@gmail.com'
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
-function getAdminEmails(): string[] {
-  const env = getEnv()
-  return [
-    'chat.priyanshuag@gmail.com',
-    ...(env.NEXT_PUBLIC_ADMIN_EMAILS || '')
-      .split(',')
-      .map((value) => normalizeEmail(value))
-      .filter(Boolean),
-  ]
+export function isOwnerEmail(email?: string | null): boolean {
+  return normalizeEmail(email || '') === ADMIN_OWNER_EMAIL
 }
 
 export function isAdminUser(user: { email?: string | null; labels?: string[] | null } | null | undefined): boolean {
@@ -21,8 +14,5 @@ export function isAdminUser(user: { email?: string | null; labels?: string[] | n
   const email = user.email ? normalizeEmail(user.email) : ''
   if (!email) return false
 
-  const emailAllowed = getAdminEmails().includes(email)
-  const labelAllowed = Array.isArray(user.labels) && user.labels.includes('admin')
-
-  return emailAllowed || labelAllowed
+  return email === ADMIN_OWNER_EMAIL
 }
