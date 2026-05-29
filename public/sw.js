@@ -50,8 +50,8 @@ self.addEventListener('fetch', (event) => {
 
   // Handle API requests
   if (url.pathname.startsWith('/api/')) {
-    if (url.pathname.startsWith('/api/auth/')) {
-      event.respondWith(bypassAuthRequest(request));
+    if (url.pathname.startsWith('/api/admin/') || url.pathname.startsWith('/api/auth/')) {
+      event.respondWith(fetch(request, { cache: 'no-store', credentials: 'include' }));
       return;
     }
     event.respondWith(networkFirst(request));
@@ -115,17 +115,6 @@ async function networkFirst(request) {
 
     const cached = await caches.match(request);
     return cached || new Response('Offline - API unavailable', { status: 503 });
-  }
-}
-
-async function bypassAuthRequest(request) {
-  try {
-    return await fetch(request, {
-      cache: 'no-store',
-      credentials: 'include',
-    })
-  } catch {
-    return new Response('Offline - Auth unavailable', { status: 503 })
   }
 }
 

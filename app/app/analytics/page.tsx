@@ -131,15 +131,17 @@ export default function AnalyticsPage() {
                   <CardDescription>Measured from your actual scheduled and completed study sessions</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={studyData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip />
-                      <Area type="monotone" dataKey="hours" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.25} />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <div className="h-[300px] min-h-[300px] w-full min-w-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={studyData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="hours" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.25} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -149,16 +151,18 @@ export default function AnalyticsPage() {
                   <CardDescription>Weighted from your posts, pods, resources, and session subjects</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie data={subjectData} dataKey="hours" nameKey="name" outerRadius={100} label>
-                        {subjectData.map((entry, index) => (
-                          <Cell key={entry.name} fill={entry.color || COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <div className="h-[300px] min-h-[300px] w-full min-w-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={subjectData} dataKey="hours" nameKey="name" outerRadius={100} label>
+                          {subjectData.map((entry, index) => (
+                            <Cell key={entry.name} fill={entry.color || COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -169,16 +173,18 @@ export default function AnalyticsPage() {
                 <CardDescription>Combined weekly workload and focus trend</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={studyData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="sessions" fill="#8B5CF6" />
-                    <Bar dataKey="focus" fill="#10B981" />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="h-[300px] min-h-[300px] w-full min-w-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={studyData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="sessions" fill="#8B5CF6" />
+                      <Bar dataKey="focus" fill="#10B981" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@/lib/auth-context"
 import { ClientErrorReporter } from "@/components/admin/ClientErrorReporter"
+import { ServiceWorkerRegister } from "@/components/sw-register"
 
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://peerspark.app"
@@ -93,12 +94,12 @@ export default function RootLayout({
         {/* Preconnect to Jitsi for faster video calls - script loads dynamically when needed */}
         <link rel="preconnect" href="https://meet.jit.si" />
         <link rel="dns-prefetch" href="https://meet.jit.si" />
-        <script src="/sw-register.js" defer suppressHydrationWarning></script>
       </head>
       <body>
         <AuthProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
             {children}
+            <ServiceWorkerRegister />
             <ClientErrorReporter />
             <Toaster />
           </ThemeProvider>

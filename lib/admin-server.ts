@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { ApiError, enforceRateLimit, enforceSameOrigin, getCorrelationId, jsonError, parseJsonBody } from '@/lib/api-security'
 import { getEnv, getSessionCookieSecret, normalizeAppwriteEndpoint } from '@/lib/env'
 import { isAdminUser } from '@/lib/admin-access'
+import { createSessionClient } from '@/lib/server/appwrite'
 
 const env = getEnv()
 
@@ -156,6 +157,39 @@ function verifySessionCookie(request: Request): SessionCookie | null {
   }
 }
 
+async function getAdminUserFromRequest(request: NextRequest) {
+  const signedSession = verifySessionCookie(request)
+  if (signedSession?.secret) {
+    const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT)
+    const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID
+    if (!endpoint || !project) {
+      throw new ApiError(500, 'ADMIN_AUTH_CONFIG_MISSING', 'Appwrite admin authentication is not configured')
+    }
+
+    const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(signedSession.secret)
+    const account = new Account(sessionClient)
+    const user = await account.get().catch(() => null)
+    if (user && isAdminUser(user)) {
+      return user
+    }
+  }
+
+  const appwriteSession = request.cookies.get('appwrite-session')?.value
+  if (!appwriteSession) return null
+
+  try {
+    const { account } = await createSessionClient(request)
+    const user = await account.get().catch(() => null)
+    if (user && isAdminUser(user)) {
+      return user
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
 function resolveRole(user: { email?: string | null; labels?: string[] | null }): AdminRole {
   const labels = Array.isArray(user.labels) ? user.labels : []
   const email = (user.email || '').trim().toLowerCase()
@@ -181,21 +215,12 @@ export function hasAdminPermission(admin: Pick<AdminContext, 'permissions'>, per
 
 export async function requireAdmin(request: NextRequest, permission: AdminPermission): Promise<AdminContext> {
   const correlationId = getCorrelationId(request)
-  const session = verifySessionCookie(request)
-  if (!session?.secret) {
+  const user = await getAdminUserFromRequest(request)
+  if (!user) {
     throw new ApiError(401, 'ADMIN_AUTH_REQUIRED', 'Admin session cookie is required')
   }
 
-  const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT)
-  const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID
-  if (!endpoint || !project) {
-    throw new ApiError(500, 'ADMIN_AUTH_CONFIG_MISSING', 'Appwrite admin authentication is not configured')
-  }
-
-  const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(session.secret)
-  const account = new Account(sessionClient)
-  const user = await account.get().catch(() => null)
-  if (!user || !isAdminUser(user)) {
+  if (!isAdminUser(user)) {
     throw new ApiError(403, 'ADMIN_FORBIDDEN', 'Admin access is required')
   }
 

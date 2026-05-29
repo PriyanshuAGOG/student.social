@@ -43,6 +43,16 @@ type ApiState<T> = {
   error: string | null
 }
 
+class AdminApiError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'AdminApiError'
+    this.status = status
+  }
+}
+
 type Overview = {
   admin: { email: string; role: string; permissions: string[] }
   health: Record<string, string>
@@ -86,7 +96,7 @@ async function fetchAdmin<T>(url: string): Promise<T> {
   const response = await fetch(url, { credentials: 'include', cache: 'no-store' })
   const data = await response.json().catch(() => ({}))
   if (!response.ok || data?.success === false) {
-    throw new Error(data?.error?.message || data?.error || `Request failed: ${response.status}`)
+    throw new AdminApiError(data?.error?.message || data?.error || `Request failed: ${response.status}`, response.status)
   }
   return data.data as T
 }
@@ -232,17 +242,26 @@ export function AdminCommandCenter({ adminEmail }: { adminEmail?: string }) {
   const [selected, setSelected] = useState<Record<string, any>>({})
   const [overview, setOverview] = useState<ApiState<Overview>>({ data: null, loading: true, error: null })
   const [datasets, setDatasets] = useState<Record<string, ApiState<any>>>({})
+  const [accessDenied, setAccessDenied] = useState(false)
 
   const loadOverview = useCallback(async () => {
+    if (accessDenied) return
     setOverview((current) => ({ ...current, loading: true, error: null }))
     try {
       setOverview({ data: await fetchAdmin<Overview>('/api/admin/overview'), loading: false, error: null })
+      setAccessDenied(false)
     } catch (error) {
-      setOverview({ data: null, loading: false, error: error instanceof Error ? error.message : 'Failed to load overview' })
+      const status = error instanceof AdminApiError ? error.status : 0
+      const message = error instanceof Error ? error.message : 'Failed to load overview'
+      setOverview({ data: null, loading: false, error: message })
+      if (status === 401 || status === 403) {
+        setAccessDenied(true)
+      }
     }
-  }, [])
+  }, [accessDenied])
 
   const loadDataset = useCallback(async (key: string) => {
+    if (accessDenied) return
     const endpoint = moduleEndpoints[key]
     if (!endpoint) return
     setDatasets((current) => ({ ...current, [key]: { data: current[key]?.data || null, loading: true, error: null } }))
@@ -251,18 +270,23 @@ export function AdminCommandCenter({ adminEmail }: { adminEmail?: string }) {
       const data = await fetchAdmin<any>(`${endpoint}${suffix}`)
       setDatasets((current) => ({ ...current, [key]: { data, loading: false, error: null } }))
     } catch (error) {
+      const status = error instanceof AdminApiError ? error.status : 0
       setDatasets((current) => ({
         ...current,
         [key]: { data: null, loading: false, error: error instanceof Error ? error.message : 'Failed to load data' },
       }))
+      if (status === 401 || status === 403) {
+        setAccessDenied(true)
+      }
     }
-  }, [query])
+  }, [accessDenied, query])
 
   useEffect(() => {
     loadOverview()
   }, [loadOverview])
 
   useEffect(() => {
+    if (accessDenied) return
     if (activeTab !== 'command' && activeTab !== 'notifications' && activeTab !== 'security') {
       loadDataset(activeTab)
     }
@@ -272,7 +296,7 @@ export function AdminCommandCenter({ adminEmail }: { adminEmail?: string }) {
     if (activeTab === 'security') {
       loadDataset('audit')
     }
-  }, [activeTab, loadDataset])
+  }, [accessDenied, activeTab, loadDataset])
 
   const analyticsRows = useMemo(() => {
     const data = datasets.analytics?.data
@@ -280,6 +304,10 @@ export function AdminCommandCenter({ adminEmail }: { adminEmail?: string }) {
   }, [datasets.analytics?.data])
 
   const refreshActive = () => {
+    if (accessDenied) {
+      loadOverview()
+      return
+    }
     loadOverview()
     if (activeTab !== 'command') loadDataset(activeTab)
     if (activeTab === 'system') loadDataset('flags')
@@ -329,6 +357,11 @@ export function AdminCommandCenter({ adminEmail }: { adminEmail?: string }) {
               {overview.error}
             </div>
           )}
+          {accessDenied && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+              Admin session expired or is not authorized. Sign in again to reload operations.
+            </div>
+          )}
         </div>
       </div>
 
@@ -343,8 +376,9 @@ export function AdminCommandCenter({ adminEmail }: { adminEmail?: string }) {
                   type="button"
                   onClick={() => setActiveTab(item.id)}
                   className={`flex h-10 items-center gap-2 rounded-md px-3 text-left text-sm transition ${
-                    activeTab === item.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                      accessDenied ? 'cursor-not-allowed opacity-60' : activeTab === item.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
                   }`}
+                    disabled={accessDenied}
                 >
                   <Icon className="h-4 w-4" />
                   <span className="truncate">{item.label}</span>
@@ -646,7 +680,7 @@ export function AdminCommandCenter({ adminEmail }: { adminEmail?: string }) {
                 <CardDescription>Growth, engagement, safety, and reliability rollups.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[360px]">
+                <div className="min-h-[360px] h-[360px] w-full min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={analyticsRows}>
                       <CartesianGrid strokeDasharray="3 3" />
