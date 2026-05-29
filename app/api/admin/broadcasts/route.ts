@@ -3,74 +3,21 @@
  * Create an admin broadcast
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { ID, Query } from 'node-appwrite'
 import crypto from 'crypto'
-import { cookies } from 'next/headers'
-import { Client, Account } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
-import { getEnv, getSessionCookieSecret, normalizeAppwriteEndpoint } from '@/lib/env'
-import { isAdminUser } from '@/lib/admin-access'
+import { getEnv } from '@/lib/env'
+import { adminJson, requireAdmin, writeAdminAudit } from '@/lib/admin-server'
+import { jsonError } from '@/lib/api-security'
 
 const env = getEnv()
 const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
 
-type SessionCookie = {
-  secret?: string
-  userId?: string
-}
-
-async function getCurrentAdminUser() {
-  const cookieStore = await cookies()
-  const raw = cookieStore.get('peerspark_session')?.value
-  if (!raw) return null
-
-  const [encodedPayload, signature] = raw.split('.')
-  if (!encodedPayload || !signature) return null
-
-  const expectedSignature = crypto.createHmac('sha256', getSessionCookieSecret()).update(encodedPayload).digest('hex')
-  if (signature !== expectedSignature) return null
-
-  let sessionCookie: SessionCookie | null = null
-  try {
-    sessionCookie = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as SessionCookie
-  } catch {
-    return null
-  }
-
-  if (!sessionCookie?.secret) return null
-
-  const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT)
-  const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
-  if (!endpoint || !project) return null
-
-  const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(sessionCookie.secret)
-  const sessionAccount = new Account(sessionClient)
-  const user = await sessionAccount.get().catch(() => null)
-  if (!user) return null
-
-  return isAdminUser(user) ? user : null
-}
-
-async function getFallbackAdminUser(req: NextRequest) {
-  const email = req.headers.get('x-user-email')
-  const userId = req.headers.get('x-user-id')
-
-  if (!email || !userId) return null
-
-  if (isAdminUser({ email, labels: [] })) {
-    return { $id: userId, email }
-  }
-  return null
-}
-
 export async function POST(req: NextRequest) {
+  const correlationId = req.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
-    const user = (await getCurrentAdminUser()) || (await getFallbackAdminUser(req))
-
-    if (!user?.$id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-    }
+    const admin = await requireAdmin(req, 'notifications.manage')
 
     const body = await req.json()
     const { title, body: messageBody, category, channels, targetSegment, scheduledFor } = body
@@ -92,7 +39,7 @@ export async function POST(req: NextRequest) {
       targetSegment,
       scheduledFor: scheduledFor || new Date().toISOString(),
       status: 'scheduled',
-      createdBy: user.$id,
+      createdBy: admin.userId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -110,27 +57,28 @@ export async function POST(req: NextRequest) {
       broadcast
     )
 
-    return NextResponse.json({
-      success: true,
-      data: result,
-      message: 'Broadcast created successfully',
+    await writeAdminAudit({
+      actorId: admin.userId,
+      actorEmail: admin.email,
+      action: 'notifications.broadcast.create',
+      targetType: 'admin_broadcast',
+      targetId: result.$id,
+      reason: `Broadcast to ${targetSegment}`,
+      after: result,
+      correlationId,
     })
+
+    return adminJson({ broadcast: result, message: 'Broadcast created successfully' }, correlationId)
   } catch (error: any) {
     console.error('[API] Error creating broadcast:', error)
-    return NextResponse.json(
-      { error: 'Failed to create broadcast' },
-      { status: 500 }
-    )
+    return jsonError(error, correlationId)
   }
 }
 
 export async function GET(req: NextRequest) {
+  const correlationId = req.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
-    const user = (await getCurrentAdminUser()) || (await getFallbackAdminUser(req))
-
-    if (!user?.$id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-    }
+    await requireAdmin(req, 'notifications.manage')
 
     const limit = parseInt(req.nextUrl.searchParams.get('limit') || '20')
 
@@ -142,16 +90,9 @@ export async function GET(req: NextRequest) {
       [Query.orderDesc('createdAt'), Query.limit(Math.min(limit, 100))]
     )
 
-    return NextResponse.json({
-      success: true,
-      data: response.documents,
-      total: response.total,
-    })
+    return adminJson({ documents: response.documents, total: response.total }, correlationId)
   } catch (error: any) {
     console.error('[API] Error fetching broadcasts:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch broadcasts' },
-      { status: 500 }
-    )
+    return jsonError(error, correlationId)
   }
 }

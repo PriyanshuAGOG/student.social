@@ -4,6 +4,7 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@/lib/auth-context"
+import { ClientErrorReporter } from "@/components/admin/ClientErrorReporter"
 
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://peerspark.app"
@@ -98,6 +99,7 @@ export default function RootLayout({
         <AuthProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
             {children}
+            <ClientErrorReporter />
             <Toaster />
           </ThemeProvider>
         </AuthProvider>

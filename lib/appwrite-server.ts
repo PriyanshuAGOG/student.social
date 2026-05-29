@@ -45,4 +45,6 @@ export const COLLECTIONS = {
   CALENDAR_EVENTS: process.env.NEXT_PUBLIC_CALENDAR_EVENTS_COLLECTION_ID || 'calendar_events',
   SAVED_POSTS: process.env.NEXT_PUBLIC_SAVED_POSTS_COLLECTION_ID || 'saved_posts',
   POD_COURSES: process.env.NEXT_PUBLIC_POD_COURSES_COLLECTION_ID || 'pod_courses',
+  COURSES: process.env.NEXT_PUBLIC_COURSES_COLLECTION_ID || 'courses',
+  CHAPTERS: process.env.NEXT_PUBLIC_CHAPTERS_COLLECTION_ID || 'course_chapters',
 }

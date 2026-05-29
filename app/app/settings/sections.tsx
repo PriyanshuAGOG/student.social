@@ -444,7 +444,22 @@ export const settingsSections: SettingSection[] = [
         title: 'Report a Bug',
         description: 'Report technical issues',
         type: 'button',
-        action: () => console.log('Reporting bug...')
+        action: () => {
+          const message = window.prompt('Describe the bug you found')
+          if (!message?.trim()) return
+          fetch('/api/client-errors', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'bug_report',
+              message: message.trim(),
+              route: window.location.pathname,
+              userAgent: navigator.userAgent,
+              metadata: { source: 'settings' },
+            }),
+          }).catch(() => undefined)
+        }
       }
     ]
   },
