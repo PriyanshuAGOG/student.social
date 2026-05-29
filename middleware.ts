@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { ADMIN_OWNER_EMAIL } from '@/lib/admin-access'
+
+const ADMIN_OWNER_EMAIL = 'chat.priyanshuag@gmail.com'
 
 const WINDOW_MS = 60_000
 const MAX_REQUESTS_PER_WINDOW = 120
@@ -43,25 +44,52 @@ function checkRateLimit(req: NextRequest): string | null {
   return null
 }
 
+function decodeBase64Url(value: string): string {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4)
+  return atob(padded)
+}
+
+async function isOwnerRequest(req: NextRequest): Promise<boolean> {
+  const raw = req.cookies.get('peerspark_session')?.value
+  if (!raw) return false
+
+  const sessionSecret = process.env.APPWRITE_SESSION_COOKIE_SECRET
+  if (!sessionSecret) return false
+
+  const [encodedPayload, signature] = raw.split('.')
+  if (!encodedPayload || !signature) return false
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(sessionSecret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const expectedSignature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(encodedPayload))
+  const actualBytes = Uint8Array.from(signature.match(/.{1,2}/g) || [], (byte) => Number.parseInt(byte, 16))
+  const expectedBytes = new Uint8Array(expectedSignature)
+
+  if (actualBytes.length !== expectedBytes.length) return false
+  for (let index = 0; index < expectedBytes.length; index += 1) {
+    if (expectedBytes[index] !== actualBytes[index]) return false
+  }
+
+  try {
+    const payload = JSON.parse(decodeBase64Url(encodedPayload)) as { email?: string }
+    return String(payload.email || '').trim().toLowerCase() === ADMIN_OWNER_EMAIL
+  } catch {
+    return false
+  }
+}
+
 export async function middleware(req: NextRequest) {
   const correlationId = req.headers.get('x-correlation-id') || crypto.randomUUID()
 
   if (req.nextUrl.pathname === '/app/admin' || req.nextUrl.pathname.startsWith('/app/admin/')) {
-    try {
-      const sessionResponse = await fetch(new URL('/api/auth/session', req.url), {
-        headers: {
-          cookie: req.headers.get('cookie') || '',
-        },
-        credentials: 'include',
-        cache: 'no-store',
-      })
-
-      const sessionPayload = await sessionResponse.json().catch(() => null)
-      const email = String(sessionPayload?.user?.email || '').trim().toLowerCase()
-      if (!sessionResponse.ok || !sessionPayload?.authenticated || email !== ADMIN_OWNER_EMAIL) {
-        return new Response('Not Found', { status: 404, statusText: 'Not Found' })
-      }
-    } catch {
+    const allowed = await isOwnerRequest(req)
+    if (!allowed) {
       return new Response('Not Found', { status: 404, statusText: 'Not Found' })
     }
   }
