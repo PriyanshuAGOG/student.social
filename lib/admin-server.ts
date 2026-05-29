@@ -97,6 +97,8 @@ const rolePermissions: Record<AdminRole, AdminPermission[]> = {
 type SessionCookie = {
   secret?: string
   userId?: string
+  sessionId?: string
+  expire?: string
 }
 
 export type AdminContext = {
@@ -159,18 +161,36 @@ function verifySessionCookie(request: Request): SessionCookie | null {
 
 async function getAdminUserFromRequest(request: NextRequest) {
   const signedSession = verifySessionCookie(request)
-  if (signedSession?.secret) {
-    const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT)
-    const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID
-    if (!endpoint || !project) {
-      throw new ApiError(500, 'ADMIN_AUTH_CONFIG_MISSING', 'Appwrite admin authentication is not configured')
+  if (signedSession?.userId && (signedSession.secret || signedSession.sessionId)) {
+    if (signedSession.secret) {
+      const endpoint = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT)
+      const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID
+      if (!endpoint || !project) {
+        throw new ApiError(500, 'ADMIN_AUTH_CONFIG_MISSING', 'Appwrite admin authentication is not configured')
+      }
+
+      const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(signedSession.secret)
+      const account = new Account(sessionClient)
+      const user = await account.get().catch(() => null)
+      if (user && isAdminUser(user)) {
+        return user
+      }
     }
 
-    const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(signedSession.secret)
-    const account = new Account(sessionClient)
-    const user = await account.get().catch(() => null)
-    if (user && isAdminUser(user)) {
-      return user
+    if (signedSession.sessionId) {
+      try {
+        const { users } = createAdminClient()
+        const userSessions = await users.listSessions(signedSession.userId, false).catch(() => null)
+        const activeSession = userSessions?.sessions?.find((candidate: any) => candidate.$id === signedSession.sessionId)
+        if (activeSession?.$id) {
+          const user = await users.get(signedSession.userId).catch(() => null)
+          if (user && isAdminUser(user)) {
+            return user
+          }
+        }
+      } catch {
+        // Fall through to appwrite-session fallback.
+      }
     }
   }
 
