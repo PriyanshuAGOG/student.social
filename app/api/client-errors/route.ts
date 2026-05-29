@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       const { databases } = await createAdminClient()
       await databases.createDocument(DATABASE_ID, ADMIN_COLLECTIONS.clientErrors, ID.unique(), doc)
     } catch {
-      console.info(JSON.stringify({ type: 'client_error_fallback', ...doc }))
+      console.info(JSON.stringify({ eventType: 'client_error_fallback', ...doc }))
     }
 
     return NextResponse.json({ success: true, data: { accepted: true }, correlationId }, { status: 202 })

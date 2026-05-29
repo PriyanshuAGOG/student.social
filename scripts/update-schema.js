@@ -327,7 +327,6 @@ const collections = [
       { key: 'status', type: 'string', size: 80 },
       { key: 'beforeJson', type: 'string', size: 5000 },
       { key: 'afterJson', type: 'string', size: 5000 },
-      { key: 'metadataJson', type: 'string', size: 5000 },
       { key: 'correlationId', type: 'string', size: 255 },
       { key: 'createdAt', type: 'string', size: 255, required: true },
     ],

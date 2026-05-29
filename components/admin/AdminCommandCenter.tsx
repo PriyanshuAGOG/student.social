@@ -96,14 +96,24 @@ function StatusBadge({ status }: { status?: string }) {
   return <Badge variant={variant as any}>{status || 'ready'}</Badge>
 }
 
-function EmptyRow({ label }: { label: string }) {
+function EmptyRow({ label, columns }: { label: string; columns: number }) {
   return (
     <TableRow>
-      <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+      <TableCell colSpan={columns} className="h-24 text-center text-muted-foreground">
         {label}
       </TableCell>
     </TableRow>
   )
+}
+
+function formatCellValue(value: unknown) {
+  if (value === null || value === undefined) return '-'
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  if (typeof value === 'number' || typeof value === 'bigint') return String(value)
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) return value.length ? value.join(', ') : '-'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
 }
 
 function DataTable({
@@ -126,13 +136,15 @@ function DataTable({
       </TableHeader>
       <TableBody>
         {rows.length === 0 ? (
-          <EmptyRow label={empty} />
+          <EmptyRow label={empty} columns={columns.length} />
         ) : (
           rows.map((row, index) => (
             <TableRow key={row.$id || row.id || `${row.key || row.email}-${index}`}>
               {columns.map((column) => (
                 <TableCell key={column.key} className="max-w-[280px] truncate">
-                  {column.render ? column.render(row) : row[column.key] || '-'}
+                  {column.render
+                    ? column.render(row)
+                    : formatCellValue(row[column.key])}
                 </TableCell>
               ))}
             </TableRow>
@@ -270,6 +282,8 @@ export function AdminCommandCenter({ adminEmail }: { adminEmail?: string }) {
   const refreshActive = () => {
     loadOverview()
     if (activeTab !== 'command') loadDataset(activeTab)
+    if (activeTab === 'system') loadDataset('flags')
+    if (activeTab === 'security') loadDataset('audit')
   }
 
   return (

@@ -307,7 +307,6 @@ export async function writeAdminAudit(entry: {
     status: entry.status || 'success',
     beforeJson: JSON.stringify(entry.before || {}).slice(0, 5000),
     afterJson: JSON.stringify(entry.after || {}).slice(0, 5000),
-    metadataJson: JSON.stringify(entry.metadata || {}).slice(0, 5000),
     correlationId: entry.correlationId,
     createdAt: new Date().toISOString(),
   }

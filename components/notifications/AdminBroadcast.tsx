@@ -11,6 +11,11 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
 import { Loader2, Send } from 'lucide-react'
 
+function formatLocalDatetime(date: Date) {
+  const offset = date.getTimezoneOffset() * 60000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16)
+}
+
 const targetSegments = [
   { id: 'all_users', label: 'All Users' },
   { id: 'active_users', label: 'Active Users (Last 24h)' },
@@ -43,7 +48,7 @@ export function AdminBroadcast() {
       email: false,
     },
     scheduleFor: 'now',
-    scheduledTime: new Date().toISOString().slice(0, 16),
+    scheduledTime: formatLocalDatetime(new Date()),
   })
 
   const [preview, setPreview] = useState(false)
@@ -120,7 +125,7 @@ export function AdminBroadcast() {
         targetSegment: 'all_users',
         channels: { inApp: true, push: false, email: false },
         scheduleFor: 'now',
-        scheduledTime: new Date().toISOString().slice(0, 16),
+          scheduledTime: formatLocalDatetime(new Date()),
       })
     } catch (error) {
       console.error('Error creating broadcast:', error)
@@ -311,7 +316,7 @@ export function AdminBroadcast() {
                     targetSegment: 'all_users',
                     channels: { inApp: true, push: false, email: false },
                     scheduleFor: 'now',
-                    scheduledTime: new Date().toISOString().slice(0, 16),
+                    scheduledTime: formatLocalDatetime(new Date()),
                   })
                 }
               >
