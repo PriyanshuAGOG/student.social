@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { withErrorHandling, validateInput } from '@/lib/error-handler';
-import { requireOwnership, requireUser } from '@/lib/api-security';
+import { enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const CHAT_ROOMS_COLLECTION_ID = (process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms');
@@ -22,9 +22,12 @@ const NOTIFICATIONS_COLLECTION_ID = (process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLE
  */
 export async function POST(request: NextRequest) {
   const { data, error } = await withErrorHandling(async () => {
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: 'messages:send', max: 60, windowMs: 60 * 1000 })
+
     const auth = requireUser(request)
     const body = await request.json();
-    const { senderId, recipientId, roomId, content, type = 'text', metadata = {} } = body;
+    const { senderId, recipientId, roomId, content, type = 'text', metadata = {}, clientMessageId } = body;
 
     validateInput(
       { senderId, content },
@@ -99,6 +102,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (clientMessageId) {
+      const existingMessages = await databases.listDocuments(
+        DATABASE_ID,
+        MESSAGES_COLLECTION_ID,
+        [
+          Query.equal('roomId', room.$id),
+          Query.equal('clientMessageId', String(clientMessageId)),
+          Query.limit(1),
+        ]
+      )
+
+      if (existingMessages.documents.length > 0) {
+        return {
+          success: true,
+          message: existingMessages.documents[0],
+          roomId: room.$id,
+          deduplicated: true,
+        }
+      }
+    }
+
     // Get sender profile
     let senderName = 'User';
     let senderAvatar = '';
@@ -123,10 +147,13 @@ export async function POST(request: NextRequest) {
         roomId: room.$id,
         senderId,
           authorId: senderId,
+          clientMessageId: clientMessageId || null,
           senderName,
           senderAvatar,
           content: content.trim(),
           type,
+          contentType: type,
+          deliveryState: 'sent',
           readBy: [senderId],
           replyTo: metadata.replyTo || null,
             fileUrl: metadata.fileUrl || metadata.attachmentUrl || null,

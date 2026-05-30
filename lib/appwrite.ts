@@ -2154,57 +2154,28 @@ export const chatService = {
    */
   async getOrCreateDirectRoom(userA: string, userB: string) {
     if (!userA || !userB) throw new Error("Both user IDs are required")
+    const currentUser = await fetchSessionUser()
+    const recipientId = currentUser?.$id === userA ? userB : userA
 
-    const members = [userA, userB].sort()
-
-    // Try to find an existing DM room
-    try {
-      const existing = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
-        Query.limit(100),
-      ])
-
-      const matchingRooms = (existing.documents || []).filter((room: any) => {
-        if (!["direct", "dm"].includes(room.type)) return false
-        const roomMembers = parseRoomMembers(room)
-        return members.every((member) => roomMembers.includes(member))
-      })
-
-      if (matchingRooms.length) {
-        const canonicalRoom = [...matchingRooms].sort((a: any, b: any) => {
-          const aTime = new Date(a.lastMessageTime || a.$updatedAt || a.$createdAt || 0).getTime()
-          const bTime = new Date(b.lastMessageTime || b.$updatedAt || b.$createdAt || 0).getTime()
-          return bTime - aTime
-        })[0]
-
-        const canonicalMembers = parseRoomMembers(canonicalRoom).length > 0 ? parseRoomMembers(canonicalRoom).sort() : members
-        if (canonicalRoom.type !== "direct" || getDirectRoomKey(canonicalRoom) !== members.join(":")) {
-          try {
-            return await databases.updateDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, canonicalRoom.$id, {
-              type: "direct",
-              members: canonicalMembers,
-              name: canonicalRoom.name || "Direct Messages",
-            })
-          } catch {
-            return canonicalRoom
-          }
-        }
-
-        return canonicalRoom
-      }
-    } catch (err) {
-      console.warn("DM lookup failed, will attempt to create", err)
-    }
-
-    // Create the room with auto-generated ID (stays under 36 chars Appwrite limit)
-    const room = await databases.createDocument(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, "unique()", {
-      name: "Direct Messages",
-      type: "direct",
-      members,
-      createdAt: new Date().toISOString(),
-      lastMessageTime: new Date().toISOString(),
+    const response = await apiJson('/api/messages/direct-room', {
+      method: 'POST',
+      body: JSON.stringify({ recipientId }),
     })
 
-    return room
+    return response.room || response.data || response
+  },
+
+  async getOrCreateDirectRoomByUsername(username: string) {
+    if (!username?.trim()) {
+      throw new Error('Username is required')
+    }
+
+    const response = await apiJson('/api/messages/direct-room', {
+      method: 'POST',
+      body: JSON.stringify({ recipientUsername: username.trim() }),
+    })
+
+    return response.room || response.data || response
   },
 
   async getOrCreatePodRoom(podId: string, podName = "Pod Chat", members: string[] = []) {
@@ -2244,6 +2215,7 @@ export const chatService = {
       fileUrl?: string
       fileName?: string
       fileSize?: number
+      clientMessageId?: string
     } = {}
   ) {
     try {
@@ -2251,6 +2223,10 @@ export const chatService = {
       if (typeof messageTypeOrMetadata === "object") {
         metadata = messageTypeOrMetadata
       }
+
+      const clientMessageId = metadata.clientMessageId || (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `msg_${Date.now()}_${Math.random().toString(16).slice(2)}`)
 
       // Validate inputs
       if (!roomId || !senderId || !content) {
@@ -2285,6 +2261,7 @@ export const chatService = {
           roomId,
           senderId,
           content: content.trim(),
+          clientMessageId,
           type,
           metadata: {
             senderName,
@@ -2395,32 +2372,16 @@ export const chatService = {
         }),
       )
 
-      // Get direct message rooms - query by type only since participants may not be indexed
-      // Then filter client-side for rooms that include this user
       let directRooms: any[] = []
       try {
-        const allDirectRooms = await databases.listDocuments(DATABASE_ID, COLLECTIONS.CHAT_ROOMS, [
-          Query.equal("type", ["direct", "dm"]),
-        ])
-        const seenKeys = new Set<string>()
-        directRooms = (allDirectRooms.documents || [])
-          .filter((room: any) => parseRoomMembers(room).includes(userId))
-          .sort((a: any, b: any) => {
-            const aTime = new Date(a.lastMessageTime || a.$updatedAt || a.$createdAt || 0).getTime()
-            const bTime = new Date(b.lastMessageTime || b.$updatedAt || b.$createdAt || 0).getTime()
-            return bTime - aTime
-          })
-          .filter((room: any) => {
-            const key = getDirectRoomKey(room)
-            if (!key || seenKeys.has(key)) return false
-            seenKeys.add(key)
-            return true
-          })
-          .map((room: any) => ({
-            ...room,
-            type: "direct",
-            members: parseRoomMembers(room),
-          }))
+        const dmResponse = await apiJson(`/api/messages/send?userId=${encodeURIComponent(userId)}`)
+        directRooms = Array.isArray(dmResponse?.rooms)
+          ? dmResponse.rooms.map((room: any) => ({
+              ...room,
+              type: room.type === 'dm' ? 'direct' : room.type || 'direct',
+              members: parseRoomMembers(room),
+            }))
+          : []
       } catch (e) {
         console.warn("Failed to fetch direct rooms:", e)
       }
@@ -2466,6 +2427,46 @@ export const chatService = {
    */
   async createDirectChat(userId1: string, userId2: string) {
     return await this.getOrCreateDirectRoom(userId1, userId2)
+  },
+}
+
+export const callService = {
+  async startRoomCall(roomId: string, mediaType: 'voice' | 'video' = 'video') {
+    if (!roomId) {
+      throw new Error('Room ID is required')
+    }
+
+    const response = await apiJson('/api/calls/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ roomId, mediaType }),
+    })
+
+    return response.session || response.data || response
+  },
+
+  async updateSession(sessionId: string, action: 'accept' | 'decline' | 'end' | 'join' | 'leave', reason?: string) {
+    if (!sessionId) {
+      throw new Error('Session ID is required')
+    }
+
+    const response = await apiJson(`/api/calls/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action, reason }),
+    })
+
+    return response.session || response.data || response
+  },
+
+  async getRoomCallHistory(roomId: string, limit = 20) {
+    if (!roomId) {
+      throw new Error('Room ID is required')
+    }
+
+    const response = await apiJson(`/api/calls/sessions?roomId=${encodeURIComponent(roomId)}&limit=${encodeURIComponent(String(limit))}`)
+    return {
+      documents: response.sessions || response.documents || [],
+      total: response.total || 0,
+    }
   },
 }
 

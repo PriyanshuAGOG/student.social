@@ -8,9 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ArrowLeft, Loader2, MessageSquare, Send, User } from "lucide-react"
+import { ArrowLeft, Loader2, MessageSquare, Phone, Send, User, Video } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
-import { chatService, profileService } from "@/lib/appwrite"
+import { callService, chatService, profileService } from "@/lib/appwrite"
 import { useToast } from "@/hooks/use-toast"
 
 interface Message {
@@ -36,6 +36,7 @@ export default function DirectMessagePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [isSending, setIsSending] = useState(false)
+  const [isStartingCall, setIsStartingCall] = useState(false)
   const [selfProfile, setSelfProfile] = useState<any>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -149,6 +150,27 @@ export default function DirectMessagePage() {
     }
   }
 
+  const startCall = async (mediaType: 'voice' | 'video') => {
+    if (!roomId || !user?.$id || isStartingCall) return
+
+    setIsStartingCall(true)
+    try {
+      const session = await callService.startRoomCall(roomId, mediaType)
+      const joinUrl = session?.joinUrl || session?.url
+      if (joinUrl && typeof window !== 'undefined') {
+        window.open(joinUrl, '_blank', 'noopener,noreferrer')
+      }
+      toast({
+        title: mediaType === 'voice' ? 'Voice call started' : 'Video call started',
+        description: `Call session created for ${targetProfile?.name || 'this conversation'}`,
+      })
+    } catch (err: any) {
+      toast({ title: 'Failed to start call', description: err?.message || 'Try again', variant: 'destructive' })
+    } finally {
+      setIsStartingCall(false)
+    }
+  }
+
   const handleKeyPress = (e: KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -175,6 +197,12 @@ export default function DirectMessagePage() {
           <p className="text-xs text-muted-foreground truncate">Private conversation</p>
         </div>
         {isSyncing && !isLoading && <Badge variant="outline" className="text-[10px]">Syncing...</Badge>}
+        <Button variant="ghost" size="icon" onClick={() => startCall('voice')} disabled={isStartingCall || isLoading} title="Voice call">
+          <Phone className="w-4 h-4" />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={() => startCall('video')} disabled={isStartingCall || isLoading} title="Video call">
+          <Video className="w-4 h-4" />
+        </Button>
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-6">

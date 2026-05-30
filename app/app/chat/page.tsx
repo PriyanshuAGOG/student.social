@@ -21,7 +21,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/hooks/use-toast"
 import { useRouter, useSearchParams } from "next/navigation"
-import { chatService } from "@/lib/appwrite"
+import { callService, chatService } from "@/lib/appwrite"
 import { useAuth } from "@/lib/auth-context"
 import { announceToScreenReader } from "@/lib/accessibility-utils"
 
@@ -99,6 +99,7 @@ export default function ChatPage() {
   const [isLoadingRooms, setIsLoadingRooms] = useState(true)
   const [showMobileChatList, setShowMobileChatList] = useState(true)
   const [isListening, setIsListening] = useState(false)
+  const [isStartingCall, setIsStartingCall] = useState(false)
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'reconnecting' | 'error'>('connected')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -353,28 +354,31 @@ export default function ChatPage() {
     }
   }
 
-  const startVideoCall = async () => {
-    if (!selectedRoom) return
+  const startCall = async (mediaType: "voice" | "video") => {
+    if (!selectedRoom || !user?.$id || isStartingCall) return
 
+    setIsStartingCall(true)
     try {
+      const session = await callService.startRoomCall(selectedRoom.$id, mediaType)
+      const joinUrl = session?.joinUrl || session?.url
+
+      if (joinUrl && typeof window !== "undefined") {
+        window.open(joinUrl, "_blank", "noopener,noreferrer")
+      }
+
       toast({
-        title: "Starting video call",
-        description: `Starting call in ${selectedRoom.name}...`,
+        title: mediaType === "voice" ? "Voice call started" : "Video call started",
+        description: `Call session created for ${selectedRoom.name}`,
       })
-      // Simulate video call start
-      setTimeout(() => {
-        toast({
-          title: "Call started",
-          description: "Video call is now active",
-        })
-      }, 1000)
-    } catch (error) {
-      console.error("Failed to start video call:", error)
+    } catch (error: any) {
+      console.error(`Failed to start ${mediaType} call:`, error)
       toast({
         title: "Failed to start call",
-        description: "Please try again.",
+        description: error?.message || "Please try again.",
         variant: "destructive",
       })
+    } finally {
+      setIsStartingCall(false)
     }
   }
 
@@ -789,10 +793,10 @@ export default function ChatPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" onClick={startVideoCall}>
+                  <Button variant="ghost" size="sm" onClick={() => startCall("video")} disabled={isStartingCall}>
                     <Video className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" onClick={() => startCall("voice")} disabled={isStartingCall}>
                     <Phone className="h-4 w-4" />
                   </Button>
                 </div>
@@ -831,10 +835,10 @@ export default function ChatPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm" onClick={startVideoCall}>
+                  <Button variant="ghost" size="sm" onClick={() => startCall("video")} disabled={isStartingCall}>
                     <Video className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" onClick={() => startCall("voice")} disabled={isStartingCall}>
                     <Phone className="h-4 w-4" />
                   </Button>
                   <DropdownMenu>

@@ -108,10 +108,31 @@ test('chat routes enforce authenticated ownership and membership', () => {
   const roomRoute = fs.readFileSync('app/api/messages/room/[roomId]/route.ts', 'utf8')
   assert.match(sendRoute, /requireUser\(request\)/)
   assert.match(sendRoute, /requireOwnership\(senderId, auth\.userId\)/)
+  assert.match(sendRoute, /enforceSameOrigin\(request\)/)
+  assert.match(sendRoute, /enforceRateLimit\(request, \{ key: 'messages:send'/)
   assert.doesNotMatch(sendRoute, /Query\.equal\('type', \['direct', 'dm'\]\)/)
   assert.match(sendRoute, /!\['direct', 'dm'\]\.includes\(room\.type\)/)
+  assert.match(sendRoute, /clientMessageId/)
   assert.match(roomRoute, /requireUser\(request\)/)
   assert.match(roomRoute, /!members\.includes\(auth\.userId\)/)
+})
+
+test('call sessions are backed by authenticated routes and durable schema', () => {
+  const createCall = fs.readFileSync('app/api/calls/sessions/route.ts', 'utf8')
+  const updateCall = fs.readFileSync('app/api/calls/sessions/[sessionId]/route.ts', 'utf8')
+  const schema = fs.readFileSync('scripts/update-schema.js', 'utf8')
+  const appwrite = fs.readFileSync('lib/appwrite.ts', 'utf8')
+
+  assert.match(createCall, /requireUser\(req\)/)
+  assert.match(createCall, /enforceSameOrigin\(req\)/)
+  assert.match(createCall, /CALL_SESSIONS_COLLECTION_ID/)
+  assert.match(createCall, /CALL_PARTICIPANTS_COLLECTION_ID/)
+  assert.match(updateCall, /requireUser\(req\)/)
+  assert.match(updateCall, /enforceSameOrigin\(req\)/)
+  assert.match(schema, /id: 'call_sessions'/)
+  assert.match(schema, /id: 'call_participants'/)
+  assert.match(appwrite, /export const callService = \{/)
+  assert.match(appwrite, /startRoomCall\(/)
 })
 
 test('vault page uses real uploads and sorted resource views', () => {
