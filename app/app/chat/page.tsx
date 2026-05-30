@@ -22,9 +22,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/hooks/use-toast"
 import { useRouter, useSearchParams } from "next/navigation"
 import { callService, chatService } from "@/lib/appwrite"
-import { attachReplyTargets, formatChatTimestamp, normalizeChatRooms } from "@/lib/chat-domain"
+import { attachReplyTargets, formatChatTimestamp, normalizeChatRooms, type ChatMessageType, type ChatRoomType } from "@/lib/chat-domain"
 import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
-import { MessageActionsMenu } from "@/components/chat/message-actions-menu"
+import { MessageActionsMenu, type ChatMessageActionTarget } from "@/components/chat/message-actions-menu"
 import { useAuth } from "@/lib/auth-context"
 import { announceToScreenReader } from "@/lib/accessibility-utils"
 import { useChatPresence } from "@/hooks/use-chat-presence"
@@ -33,24 +33,25 @@ import { createOutboxMessage, mergeChatMessages, useChatOutbox } from "@/hooks/u
 interface ChatRoom {
   $id: string
   name?: string
-  type: "pod" | "direct"
+  type: ChatRoomType
   avatar?: string
   lastMessage?: string
   lastMessageTime?: string
   unreadCount?: number
   isOnline?: boolean
   participants?: string[]
-  podId?: string
+  podId?: string | null
 }
 
 interface Message {
   $id: string
+  $createdAt?: string
   content: string
   authorId: string
   authorName?: string
   authorAvatar?: string
   timestamp: string
-  type: "text" | "image" | "file" | "system"
+  type: ChatMessageType
   fileUrl?: string
   fileName?: string
   isEdited?: boolean
@@ -227,7 +228,7 @@ export default function ChatPage() {
     const original = inputValue.trim()
     const replyToId = replyingTo?.$id || null
     const senderName = user.name || "You"
-    const senderAvatar = user?.avatar || "/placeholder.svg"
+    const senderAvatar = (user as any)?.avatar || "/placeholder.svg"
     const optimisticMessage = createOutboxMessage({
       roomId: selectedRoom.$id,
       authorId: user.$id,
@@ -325,7 +326,7 @@ export default function ChatPage() {
     setIsLoading(true)
     try {
       const retrySenderName = user.name || "You"
-      const retrySenderAvatar = user?.avatar || "/placeholder.svg"
+      const retrySenderAvatar = (user as any)?.avatar || "/placeholder.svg"
       const msg = await chatService.sendMessage(selectedRoom.$id, user.$id, message.content, "text", {
         replyTo: message.replyTo || null,
         clientMessageId: message.clientMessageId,
@@ -350,7 +351,7 @@ export default function ChatPage() {
 
   const isImageMessage = (message: Message) => Boolean(message.fileUrl && /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(message.fileUrl))
 
-  const handleCopyMessage = async (message: Message) => {
+  const handleCopyMessage = async (message: ChatMessageActionTarget) => {
     try {
       await navigator.clipboard.writeText(message.content)
       toast({ title: "Copied", description: "Message copied to clipboard." })
@@ -359,7 +360,7 @@ export default function ChatPage() {
     }
   }
 
-  const handleEditMessage = async (message: Message) => {
+  const handleEditMessage = async (message: ChatMessageActionTarget) => {
     const nextContent = window.prompt("Edit message", message.content)
     if (nextContent === null) return
     const trimmed = nextContent.trim()
@@ -373,7 +374,7 @@ export default function ChatPage() {
     }
   }
 
-  const handleDeleteMessage = async (message: Message) => {
+  const handleDeleteMessage = async (message: ChatMessageActionTarget) => {
     if (!window.confirm("Delete this message?")) return
 
     try {
@@ -384,7 +385,7 @@ export default function ChatPage() {
     }
   }
 
-  const handleTogglePin = async (message: Message) => {
+  const handleTogglePin = async (message: ChatMessageActionTarget) => {
     try {
       const updated = await chatService.updateMessage(message.$id, "pin")
       updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
@@ -393,7 +394,7 @@ export default function ChatPage() {
     }
   }
 
-  const handleToggleStar = async (message: Message) => {
+  const handleToggleStar = async (message: ChatMessageActionTarget) => {
     try {
       const updated = await chatService.updateMessage(message.$id, "star")
       updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
@@ -402,7 +403,7 @@ export default function ChatPage() {
     }
   }
 
-  const handleReportMessage = async (message: Message) => {
+  const handleReportMessage = async (message: ChatMessageActionTarget) => {
     try {
       await chatService.reportMessage(message.$id, user?.$id || "", "policy_violation", `Reported from room ${selectedRoom?.name || selectedRoom?.$id || 'conversation'}`)
       toast({ title: "Reported", description: "The message has been sent for review." })
@@ -1001,16 +1002,17 @@ export default function ChatPage() {
                     <div className="py-10 text-center text-sm text-muted-foreground">
                       No messages match your search.
                     </div>
-                  ) : visibleMessages.map((message) => {
-                  const isCurrent = message.authorId === user?.$id
-                  const isAI = message.authorId === "ai"
-                  const bubbleClass = isCurrent
-                    ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md"
-                    : isAI
-                      ? "bg-blue-100 dark:bg-blue-900/20 text-blue-900 dark:text-blue-100 rounded-2xl rounded-bl-md border border-blue-200 dark:border-blue-800"
-                      : "bg-muted rounded-2xl rounded-bl-md"
+                  ) : visibleMessages.map((rawMessage) => {
+                    const message = rawMessage as Message
+                    const isCurrent = message.authorId === user?.$id
+                    const isAI = message.authorId === "ai"
+                    const bubbleClass = isCurrent
+                      ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md"
+                      : isAI
+                        ? "bg-blue-100 dark:bg-blue-900/20 text-blue-900 dark:text-blue-100 rounded-2xl rounded-bl-md border border-blue-200 dark:border-blue-800"
+                        : "bg-muted rounded-2xl rounded-bl-md"
 
-                  return (
+                    return (
                     <div
                       key={message.$id}
                       className={`flex gap-3 group ${isCurrent ? "justify-end" : "justify-start"}`}
@@ -1043,7 +1045,7 @@ export default function ChatPage() {
                               variant="ghost"
                               size="sm"
                               className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => setReplyingTo(message)}
+                              onClick={() => setReplyingTo(message as Message)}
                               title="Reply"
                             >
                               <Reply className="h-3 w-3" />
@@ -1124,7 +1126,7 @@ export default function ChatPage() {
                             <div className="mt-2 flex items-center justify-between gap-2">
                               <button
                                 className="text-[11px] font-medium opacity-70 hover:opacity-100"
-                                onClick={() => setReplyingTo(message)}
+                                onClick={() => setReplyingTo(message as Message)}
                               >
                                 Reply
                               </button>
@@ -1300,44 +1302,6 @@ export default function ChatPage() {
                 </>
               )}
             </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">No conversations yet</h3>
-                  <p className="text-muted-foreground">Join a pod or start a direct message to begin chatting</p>
-                </>
-              ) : (
-                <>
-                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">Select a conversation</h3>
-                  <p className="text-muted-foreground">Choose a chat from the sidebar to start messaging</p>
-                  <div className="mt-4 md:hidden">
-                    <Button variant="outline" onClick={() => setShowMobileChatList(true)}>
-                      Open chat list
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
           </div>
         )}
       </div>

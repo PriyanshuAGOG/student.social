@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ArrowLeft, Clock3, Loader2, MessageSquare, Phone, Search, Send, User, Video } from "lucide-react"
 import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
-import { MessageActionsMenu } from "@/components/chat/message-actions-menu"
+import { MessageActionsMenu, type ChatMessageActionTarget } from "@/components/chat/message-actions-menu"
 import { useAuth } from "@/lib/auth-context"
 import { callService, chatService, profileService } from "@/lib/appwrite"
 import { attachReplyTargets, formatChatTimestamp, normalizeChatMessage } from "@/lib/chat-domain"
@@ -29,6 +29,8 @@ interface Message {
   replyToMessage?: Message | null
   isEdited?: boolean
   fileUrl?: string | null
+  fileName?: string | null
+  clientMessageId?: string
   readBy?: string[]
   metadata?: Record<string, any>
   deletedAt?: string | null
@@ -187,7 +189,6 @@ export default function DirectMessagePage() {
   const handleRetry = async (message: any) => {
     if (!roomId || !user?.$id || !message?.clientMessageId) return
 
-    markMessageSending(message.clientMessageId)
     setIsSending(true)
     try {
       const senderProfile = selfProfile ?? (await profileService.getProfile(user.$id))
@@ -198,10 +199,8 @@ export default function DirectMessagePage() {
         senderName,
         senderAvatar,
         replyTo: message.replyTo || null,
-        clientMessageId: message.clientMessageId,
       })
 
-      removeMessage(message.clientMessageId)
       setMessages((prev: Message[]) => [
         ...prev,
         {
@@ -217,7 +216,6 @@ export default function DirectMessagePage() {
       ])
       scrollToBottom()
     } catch (error: any) {
-      markMessageFailed(message.clientMessageId, error?.message || "Try again")
       toast({ title: "Retry failed", description: error?.message || "Try again", variant: "destructive" })
     } finally {
       setIsSending(false)
@@ -268,7 +266,7 @@ export default function DirectMessagePage() {
     setMessages((prev) => prev.map((message) => (message.$id === messageId ? updater(message) : message)))
   }
 
-  const handleCopyMessage = async (message: Message) => {
+  const handleCopyMessage = async (message: ChatMessageActionTarget) => {
     try {
       await navigator.clipboard.writeText(message.content)
       toast({ title: "Copied", description: "Message copied to clipboard." })
@@ -277,7 +275,7 @@ export default function DirectMessagePage() {
     }
   }
 
-  const handleEditMessage = async (message: Message) => {
+  const handleEditMessage = async (message: ChatMessageActionTarget) => {
     const nextContent = window.prompt("Edit message", message.content)
     if (nextContent === null) return
     const trimmed = nextContent.trim()
@@ -296,7 +294,7 @@ export default function DirectMessagePage() {
     }
   }
 
-  const handleDeleteMessage = async (message: Message) => {
+  const handleDeleteMessage = async (message: ChatMessageActionTarget) => {
     if (!window.confirm("Delete this message?")) return
 
     try {
@@ -313,7 +311,7 @@ export default function DirectMessagePage() {
     }
   }
 
-  const handleTogglePin = async (message: Message) => {
+  const handleTogglePin = async (message: ChatMessageActionTarget) => {
     try {
       const updated = await chatService.updateMessage(message.$id, "pin")
       updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
@@ -322,7 +320,7 @@ export default function DirectMessagePage() {
     }
   }
 
-  const handleToggleStar = async (message: Message) => {
+  const handleToggleStar = async (message: ChatMessageActionTarget) => {
     try {
       const updated = await chatService.updateMessage(message.$id, "star")
       updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
@@ -331,7 +329,7 @@ export default function DirectMessagePage() {
     }
   }
 
-  const handleReportMessage = async (message: Message) => {
+  const handleReportMessage = async (message: ChatMessageActionTarget) => {
     try {
       await chatService.reportMessage(message.$id, user?.$id || "", "policy_violation", `Reported from DM with ${targetProfile?.name || "member"}`)
       toast({ title: "Reported", description: "The message has been sent for review." })
@@ -514,17 +512,6 @@ export default function DirectMessagePage() {
             )}
           </CardContent>
         </Card>
-      </div>
-
-      <CallHistoryDialog
-        roomId={roomId}
-        roomName={targetProfile?.name || "Direct Message"}
-        open={showCallHistory}
-        onOpenChange={setShowCallHistory}
-      />
-    </div>
-  )
-}
       </div>
 
       <CallHistoryDialog
