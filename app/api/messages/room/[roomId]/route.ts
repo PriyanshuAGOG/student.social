@@ -12,6 +12,7 @@ import { ApiError, requireOwnership, requireUser } from '@/lib/api-security';
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const MESSAGES_COLLECTION_ID = (process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID || 'messages');
 const CHAT_ROOMS_COLLECTION_ID = (process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms');
+const MESSAGE_RECEIPTS_COLLECTION_ID = process.env.NEXT_PUBLIC_MESSAGE_RECEIPTS_COLLECTION_ID || 'message_receipts';
 
 export async function GET(
   request: NextRequest,
@@ -66,6 +67,36 @@ export async function GET(
         const readBy = Array.isArray(message.readBy) ? message.readBy : [];
         if (!readBy.includes(auth.userId) && message.senderId !== auth.userId) {
           try {
+            const existingReceipts = await databases.listDocuments(
+              DATABASE_ID,
+              MESSAGE_RECEIPTS_COLLECTION_ID,
+              [
+                Query.equal('messageId', message.$id),
+                Query.equal('userId', auth.userId),
+                Query.limit(1),
+              ]
+            );
+            const now = new Date().toISOString();
+
+            if (existingReceipts.documents.length > 0) {
+              const receipt = existingReceipts.documents[0];
+              await databases.updateDocument(DATABASE_ID, MESSAGE_RECEIPTS_COLLECTION_ID, receipt.$id, {
+                deliveredAt: receipt.deliveredAt || now,
+                readAt: now,
+                updatedAt: now,
+              });
+            } else {
+              await databases.createDocument(DATABASE_ID, MESSAGE_RECEIPTS_COLLECTION_ID, 'unique()', {
+                messageId: message.$id,
+                roomId,
+                userId: auth.userId,
+                deliveredAt: now,
+                readAt: now,
+                createdAt: now,
+                updatedAt: now,
+              });
+            }
+
             await databases.updateDocument(
               DATABASE_ID,
               MESSAGES_COLLECTION_ID,

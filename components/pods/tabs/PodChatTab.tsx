@@ -13,10 +13,15 @@ import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Send, MessageSquare, Loader2, Users, Reply, X } from "lucide-react"
+import { Send, MessageSquare, Loader2, Users, Reply, X, Clock3, Search } from "lucide-react"
 import { chatService, profileService } from "@/lib/appwrite"
+import { attachReplyTargets, formatChatTimestamp, normalizeChatMessage } from "@/lib/chat-domain"
+import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
+import { MessageActionsMenu } from "@/components/chat/message-actions-menu"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
+import { useChatPresence } from "@/hooks/use-chat-presence"
+import { createOutboxMessage, mergeChatMessages, useChatOutbox } from "@/hooks/use-chat-outbox"
 
 interface Message {
   $id: string
@@ -28,6 +33,10 @@ interface Message {
   type: string
   replyTo?: string | null
   replyToMessage?: Message | null
+  readBy?: string[]
+  metadata?: Record<string, any>
+  deletedAt?: string | null
+  deliveryState?: string
 }
 
 interface PodChatTabProps {
@@ -44,17 +53,49 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
   const [isSyncing, setIsSyncing] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
+  const [showCallHistory, setShowCallHistory] = useState(false)
+  const [messageSearchQuery, setMessageSearchQuery] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { user } = useAuth()
   const { toast } = useToast()
+  const { isSomeoneTyping, otherTypingCount, setTyping } = useChatPresence(chatRoomId, user?.$id)
+  const { outboxMessages, queueMessage, markMessageSending, markMessageFailed, removeMessage } = useChatOutbox(chatRoomId)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
 
+  const visibleMessages = messages.filter((message) => {
+    if (!messageSearchQuery.trim()) return true
+    const haystack = `${message.content} ${message.authorName || ""}`.toLowerCase()
+    return haystack.includes(messageSearchQuery.trim().toLowerCase())
+  })
+
+  const mergedMessages = mergeChatMessages(messages, outboxMessages)
+  const visibleMergedMessages = mergedMessages.filter((message) => {
+    if (!messageSearchQuery.trim()) return true
+    const haystack = `${message.content} ${message.authorName || ""} ${message.fileName || ""}`.toLowerCase()
+    return haystack.includes(messageSearchQuery.trim().toLowerCase())
+  })
+
+  const isImageMessage = (message: Message) => Boolean(message.fileUrl && /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(message.fileUrl))
+
+  const updateLocalMessage = (messageId: string, updater: (message: Message) => Message) => {
+    setMessages((prev) => prev.map((message) => (message.$id === messageId ? updater(message) : message)))
+  }
+
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  useEffect(() => {
+    if (!inputValue.trim()) {
+      setTyping(false)
+      return
+    }
+
+    setTyping(true)
+  }, [inputValue, setTyping])
 
   // Load messages
   useEffect(() => {
@@ -74,29 +115,21 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
         setChatRoomId(room.$id)
 
         const res = await chatService.getMessages(room.$id, 100, 0)
-        const messagesData = res.documents || []
-        
+        const messagesData = attachReplyTargets(res.documents || [])
+
         // Enrich messages with author info from members
         const enrichedMessages = messagesData.map((msg: any) => {
           const member = members.find(m => m.id === msg.authorId)
+          const normalized = normalizeChatMessage(msg)
           return {
-            ...msg,
-            authorName: msg.authorName || member?.name || "Unknown",
-            authorAvatar: msg.authorAvatar || member?.avatar || "/placeholder.svg",
+            ...normalized,
+            authorName: normalized.authorName || member?.name || "Unknown",
+            authorAvatar: normalized.authorAvatar || member?.avatar || "/placeholder.svg",
           }
         })
-        
-        // Handle replies
-        const messagesWithReplies = enrichedMessages.map((msg: any) => {
-          if (msg.replyTo) {
-            const replyMessage = enrichedMessages.find((m: any) => m.$id === msg.replyTo)
-            return { ...msg, replyToMessage: replyMessage || null }
-          }
-          return msg
-        })
-        
+
         if (!cancelled) {
-          setMessages(messagesWithReplies)
+          setMessages(enrichedMessages)
         }
       } catch (error) {
         console.error("Failed to load messages:", error)
@@ -120,8 +153,10 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
 
   const handleSend = async () => {
     if (!inputValue.trim() || !user?.$id) return
-    
     setIsSending(true)
+    const originalContent = inputValue.trim()
+    const originalReply = replyingTo
+    let optimisticClientMessageId = ""
     try {
       // Get user's profile for name/avatar
       let authorName = user.name || "User"
@@ -140,30 +175,52 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
         throw new Error("Chat room is not ready yet")
       }
 
-      const msg = await chatService.sendMessage(chatRoomId, user.$id, inputValue.trim(), {
+      const optimisticMessage = createOutboxMessage({
+        roomId: chatRoomId,
+        authorId: user.$id,
+        content: originalContent,
+        authorName,
+        authorAvatar,
+        replyTo: originalReply?.$id || null,
+        replyToMessage: originalReply,
+      })
+      optimisticClientMessageId = optimisticMessage.clientMessageId
+
+      queueMessage({
+        ...optimisticMessage,
+        deliveryState: "sending",
+      })
+      setInputValue("")
+      setReplyingTo(null)
+      setTyping(false)
+
+      const msg = await chatService.sendMessage(chatRoomId, user.$id, originalContent, {
         senderName: authorName,
         senderAvatar: authorAvatar,
-        replyTo: replyingTo?.$id || null,
+        replyTo: originalReply?.$id || null,
+        clientMessageId: optimisticClientMessageId,
       })
       
       const newMessage: Message = {
         ...msg,
-        content: inputValue.trim(),
+        content: msg.content || originalContent,
         authorId: user.$id,
         timestamp: new Date().toISOString(),
         type: "text",
         authorName,
         authorAvatar,
-        replyTo: replyingTo?.$id || null,
-        replyToMessage: replyingTo,
+        replyTo: originalReply?.$id || null,
+        replyToMessage: originalReply,
       }
       
+      removeMessage(optimisticClientMessageId)
       setMessages(prev => [...prev, newMessage])
-      setInputValue("")
-      setReplyingTo(null)
       scrollToBottom()
     } catch (error: any) {
       console.error("Failed to send message:", error)
+      if (optimisticClientMessageId) {
+        markMessageFailed(optimisticClientMessageId, error?.message || "Please try again")
+      }
       toast({
         title: "Failed to send message",
         description: error?.message || "Please try again",
@@ -181,19 +238,114 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
     }
   }
 
-  const formatTime = (timestamp: string) => {
+  const handleRetry = async (message: any) => {
+    if (!chatRoomId || !user?.$id || !message?.clientMessageId) return
+
+    markMessageSending(message.clientMessageId)
+    setIsSending(true)
     try {
-      const date = new Date(timestamp)
-      const now = new Date()
-      const diffMs = now.getTime() - date.getTime()
-      const diffMins = Math.floor(diffMs / 60000)
-      
-      if (diffMins < 1) return "now"
-      if (diffMins < 60) return `${diffMins}m ago`
-      if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`
-      return date.toLocaleDateString()
-    } catch {
-      return ""
+      let authorName = user.name || "User"
+      let authorAvatar = "/placeholder.svg"
+      try {
+        const profile = await profileService.getProfile(user.$id)
+        if (profile) {
+          authorName = profile.name || authorName
+          authorAvatar = profile.avatar || authorAvatar
+        }
+      } catch (profileError) {
+        console.debug('[PodChatTab] Profile fetch failed, using defaults:', profileError)
+      }
+
+      const msg = await chatService.sendMessage(chatRoomId, user.$id, message.content, {
+        senderName: authorName,
+        senderAvatar: authorAvatar,
+        replyTo: message.replyTo || null,
+        clientMessageId: message.clientMessageId,
+      })
+
+      removeMessage(message.clientMessageId)
+      setMessages(prev => [...prev, {
+        ...msg,
+        content: msg.content || message.content,
+        authorId: user.$id,
+        timestamp: new Date().toISOString(),
+        type: "text",
+        authorName,
+        authorAvatar,
+        replyTo: message.replyTo || null,
+        replyToMessage: message.replyToMessage,
+      }])
+      scrollToBottom()
+    } catch (error: any) {
+      markMessageFailed(message.clientMessageId, error?.message || "Please try again")
+      toast({
+        title: "Retry failed",
+        description: error?.message || "Please try again",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  const handleCopyMessage = async (message: Message) => {
+    try {
+      await navigator.clipboard.writeText(message.content)
+      toast({ title: "Copied", description: "Message copied to clipboard." })
+    } catch (error: any) {
+      toast({ title: "Copy failed", description: error?.message || "Please try again", variant: "destructive" })
+    }
+  }
+
+  const handleEditMessage = async (message: Message) => {
+    const nextContent = window.prompt("Edit message", message.content)
+    if (nextContent === null) return
+    const trimmed = nextContent.trim()
+    if (!trimmed) return
+
+    try {
+      const updated = await chatService.updateMessage(message.$id, "edit", { content: trimmed })
+      updateLocalMessage(message.$id, (current) => ({ ...current, ...updated, content: updated.content || trimmed, isEdited: true }))
+    } catch (error: any) {
+      toast({ title: "Edit failed", description: error?.message || "Please try again", variant: "destructive" })
+    }
+  }
+
+  const handleDeleteMessage = async (message: Message) => {
+    if (!window.confirm("Delete this message?")) return
+
+    try {
+      const updated = await chatService.deleteMessage(message.$id)
+      updateLocalMessage(message.$id, (current) => ({ ...current, ...updated, content: "[deleted]", deletedAt: new Date().toISOString(), deliveryState: "deleted" }))
+    } catch (error: any) {
+      toast({ title: "Delete failed", description: error?.message || "Please try again", variant: "destructive" })
+    }
+  }
+
+  const handleTogglePin = async (message: Message) => {
+    try {
+      const updated = await chatService.updateMessage(message.$id, "pin")
+      updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
+    } catch (error: any) {
+      toast({ title: "Pin failed", description: error?.message || "Please try again", variant: "destructive" })
+    }
+  }
+
+  const handleToggleStar = async (message: Message) => {
+    try {
+      const updated = await chatService.updateMessage(message.$id, "star")
+      updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
+    } catch (error: any) {
+      toast({ title: "Star failed", description: error?.message || "Please try again", variant: "destructive" })
+    }
+  }
+
+  const handleReportMessage = async (message: Message) => {
+    try {
+      await chatService.reportMessage(message.$id, user?.$id || "", "policy_violation", `Reported from pod chat ${podName}`)
+      toast({ title: "Reported", description: "The message has been sent for review." })
+    } catch (error: any) {
+      toast({ title: "Report failed", description: error?.message || "Please try again", variant: "destructive" })
     }
   }
 
@@ -220,12 +372,27 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                       <span className="text-green-600">{onlineCount} online</span>
                     </>
                   )}
+                  {isSomeoneTyping && (
+                    <>
+                      <span>•</span>
+                      <span className="text-blue-600">{otherTypingCount} typing</span>
+                    </>
+                  )}
                 </div>
               </div>
               {isSyncing && !isLoading && (
                 <Badge variant="outline" className="text-[10px]">Updating…</Badge>
               )}
             </div>
+          </div>
+          <div className="relative mt-3">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={messageSearchQuery}
+              onChange={(e) => setMessageSearchQuery(e.target.value)}
+              placeholder="Search this pod chat"
+              className="pl-10"
+            />
           </div>
         </CardHeader>
 
@@ -237,15 +404,18 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                 </div>
-              ) : messages.length === 0 ? (
+              ) : visibleMergedMessages.length === 0 ? (
                 <div className="text-center py-8">
                   <MessageSquare className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-                  <p className="text-sm text-muted-foreground">No messages yet. Start the conversation!</p>
+                  <p className="text-sm text-muted-foreground">{messages.length === 0 ? "No messages yet. Start the conversation!" : "No messages match your search."}</p>
                 </div>
               ) : (
-                messages.map((message) => {
+                visibleMergedMessages.map((message) => {
                   const isCurrent = message.authorId === user?.$id
                   const isSystem = message.authorId === "system" || message.type === "system"
+                  const messageMetadata = (message as any).metadata || {}
+                  const isPinned = Array.isArray(messageMetadata.pinnedBy) && messageMetadata.pinnedBy.includes(user?.$id)
+                  const isStarred = Array.isArray(messageMetadata.starredBy) && messageMetadata.starredBy.includes(user?.$id)
                   
                   if (isSystem) {
                     return (
@@ -260,9 +430,14 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                   return (
                     <div
                       key={message.$id}
-                      className={`flex gap-3 group ${isCurrent ? "justify-end" : "justify-start"}`}
-                    >
-                      {!isCurrent && (
+                  <div className="flex items-center gap-2">
+                    {isSyncing && !isLoading && (
+                      <Badge variant="outline" className="text-[10px]">Updating…</Badge>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={() => setShowCallHistory(true)} disabled={!chatRoomId}>
+                      <Clock3 className="w-4 h-4" />
+                    </Button>
+                  </div>
                         <Avatar className="h-8 w-8 shrink-0">
                           <AvatarImage src={message.authorAvatar || "/placeholder.svg"} />
                           <AvatarFallback>{(message.authorName || "U").slice(0, 2).toUpperCase()}</AvatarFallback>
@@ -287,17 +462,60 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                           {!isCurrent && (
                             <p className="text-xs font-medium mb-1 opacity-70">{message.authorName}</p>
                           )}
-                          <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-                          <p className="text-[10px] opacity-60 mt-1">{formatTime(message.timestamp)}</p>
+                          {message.deletedAt ? (
+                            <div className="rounded-lg border border-dashed px-3 py-2 text-xs opacity-70">This message was deleted.</div>
+                          ) : message.fileUrl && isImageMessage(message) ? (
+                            <a href={message.fileUrl} target="_blank" rel="noreferrer" className="mb-2 block overflow-hidden rounded-lg border">
+                              <img src={message.fileUrl} alt={message.fileName || "Attachment"} className="max-h-64 w-full object-cover" />
+                            </a>
+                          ) : message.fileUrl ? (
+                            <a href={message.fileUrl} target="_blank" rel="noreferrer" className="mb-2 block rounded-lg border px-3 py-2 text-sm underline">
+                              {message.fileName || "Attachment"}
+                            </a>
+                          ) : null}
+                          {!message.deletedAt && <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>}
+                          <p className="text-[10px] opacity-60 mt-1">{formatChatTimestamp(message.timestamp)}</p>
+                          {isCurrent && (
+                            <div className="mt-1 flex items-center gap-2 text-[10px] opacity-60">
+                              <span>
+                                {message.deliveryState === "failed"
+                                  ? "Failed to send"
+                                  : message.deliveryState === "sending" || message.deliveryState === "queued"
+                                    ? "Sending..."
+                                    : (message.readBy || []).length > 1
+                                      ? "Read"
+                                      : "Sent"}
+                              </span>
+                              {message.deliveryState === "failed" && (
+                                <button className="underline" onClick={() => handleRetry(message)}>
+                                  Retry
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                         
                         {/* Reply button */}
-                        <button
-                          onClick={() => setReplyingTo(message)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-muted-foreground hover:text-foreground mt-1 flex items-center gap-1"
-                        >
-                          <Reply className="w-3 h-3" /> Reply
-                        </button>
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <button
+                            onClick={() => setReplyingTo(message)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                          >
+                            <Reply className="w-3 h-3" /> Reply
+                          </button>
+                          <MessageActionsMenu
+                            message={message}
+                            isOwnMessage={isCurrent}
+                            isPinned={isPinned}
+                            isStarred={isStarred}
+                            onCopy={handleCopyMessage}
+                            onEdit={handleEditMessage}
+                            onDelete={handleDeleteMessage}
+                            onTogglePin={handleTogglePin}
+                            onToggleStar={handleToggleStar}
+                            onReport={handleReportMessage}
+                          />
+                        </div>
                       </div>
                       
                       {isCurrent && (
@@ -333,6 +551,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyPress}
+              onBlur={() => setTyping(false)}
               disabled={isSending || !user}
               className="flex-1"
             />
@@ -342,6 +561,28 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
           </div>
         </div>
       </Card>
+
+      <CallHistoryDialog
+        roomId={chatRoomId}
+        roomName={`${podName} Chat`}
+        open={showCallHistory}
+        onOpenChange={setShowCallHistory}
+      />
     </div>
+  )
+}
+  )
+}
+      </Card>
+
+      <CallHistoryDialog
+        roomId={chatRoomId}
+        roomName={`${podName} Chat`}
+        open={showCallHistory}
+        onOpenChange={setShowCallHistory}
+      />
+    </div>
+  )
+}
   )
 }

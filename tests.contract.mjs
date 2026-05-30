@@ -115,6 +115,8 @@ test('chat routes enforce authenticated ownership and membership', () => {
   assert.match(sendRoute, /clientMessageId/)
   assert.match(roomRoute, /requireUser\(request\)/)
   assert.match(roomRoute, /!members\.includes\(auth\.userId\)/)
+  assert.match(roomRoute, /MESSAGE_RECEIPTS_COLLECTION_ID/)
+  assert.match(roomRoute, /message_receipts/)
 })
 
 test('call sessions are backed by authenticated routes and durable schema', () => {
@@ -131,6 +133,7 @@ test('call sessions are backed by authenticated routes and durable schema', () =
   assert.match(updateCall, /enforceSameOrigin\(req\)/)
   assert.match(schema, /id: 'call_sessions'/)
   assert.match(schema, /id: 'call_participants'/)
+  assert.match(schema, /id: 'message_receipts'/)
   assert.match(appwrite, /export const callService = \{/)
   assert.match(appwrite, /startRoomCall\(/)
 })

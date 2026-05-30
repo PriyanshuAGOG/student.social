@@ -22,8 +22,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/hooks/use-toast"
 import { useRouter, useSearchParams } from "next/navigation"
 import { callService, chatService } from "@/lib/appwrite"
+import { attachReplyTargets, formatChatTimestamp, normalizeChatRooms } from "@/lib/chat-domain"
+import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
+import { MessageActionsMenu } from "@/components/chat/message-actions-menu"
 import { useAuth } from "@/lib/auth-context"
 import { announceToScreenReader } from "@/lib/accessibility-utils"
+import { useChatPresence } from "@/hooks/use-chat-presence"
+import { createOutboxMessage, mergeChatMessages, useChatOutbox } from "@/hooks/use-chat-outbox"
 
 interface ChatRoom {
   $id: string
@@ -50,43 +55,14 @@ interface Message {
   fileName?: string
   isEdited?: boolean
   mentions?: string[]
+  readBy?: string[]
   replyTo?: string | null
   replyToMessage?: Message | null
-}
-
-function getRoomIdentity(room: Partial<ChatRoom> & { participants?: string[] }) {
-  if (room.type === "pod" || room.podId) {
-    return `pod:${room.podId || room.$id || ""}`
-  }
-
-  const participants = Array.isArray(room.participants) ? [...room.participants].sort() : []
-  return participants.length > 0
-    ? `direct:${participants.join(":")}`
-    : `direct:${room.$id || ""}`
-}
-
-function normalizeRooms(rooms: any[]): ChatRoom[] {
-  const seen = new Set<string>()
-
-  return rooms
-    .map((room: any) => ({
-      ...room,
-      $id: room.$id || room.id,
-      type: room.type === "dm" ? "direct" : (room.type || (room.podId ? "pod" : "direct")),
-      name: room.name || room.displayName || room.podName || room.$id,
-      participants: Array.isArray(room.members)
-        ? room.members
-        : Array.isArray(room.participants)
-          ? room.participants
-          : [],
-    }) as ChatRoom)
-    .sort((a, b) => new Date(b.lastMessageTime || 0).getTime() - new Date(a.lastMessageTime || 0).getTime())
-    .filter((room) => {
-      const identity = getRoomIdentity(room)
-      if (seen.has(identity)) return false
-      seen.add(identity)
-      return true
-    })
+  clientMessageId?: string
+  deliveryState?: string
+  errorMessage?: string | null
+  metadata?: Record<string, any>
+  deletedAt?: string | null
 }
 
 export default function ChatPage() {
@@ -100,15 +76,18 @@ export default function ChatPage() {
   const [showMobileChatList, setShowMobileChatList] = useState(true)
   const [isListening, setIsListening] = useState(false)
   const [isStartingCall, setIsStartingCall] = useState(false)
+  const [showCallHistory, setShowCallHistory] = useState(false)
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'reconnecting' | 'error'>('connected')
+  const [messageSearchQuery, setMessageSearchQuery] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const messageListRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user } = useAuth()
+  const { presenceEntries, isSomeoneTyping, setTyping } = useChatPresence(selectedRoom?.$id || "", user?.$id)
+  const { outboxMessages, queueMessage, markMessageSending, markMessageFailed, removeMessage } = useChatOutbox(selectedRoom?.$id || "")
 
   useEffect(() => {
     const routeRoomId = searchParams.get("room")
@@ -183,7 +162,7 @@ export default function ChatPage() {
       setIsLoadingRooms(true)
       try {
         const { podRooms, directRooms } = await chatService.getUserChatRooms(user.$id)
-        const normalized = normalizeRooms([...(podRooms || []), ...(directRooms || [])])
+        const normalized = normalizeChatRooms([...(podRooms || []), ...(directRooms || [])], user.$id)
         setRooms(normalized)
 
         const routeRoomId = searchParams.get("room")
@@ -194,15 +173,8 @@ export default function ChatPage() {
             setShowMobileChatList(false)
           } else {
             const podRoom = await chatService.getOrCreatePodRoom(routeRoomId, "Pod Chat", [user.$id])
-            const nextRoom = {
-              ...podRoom,
-              $id: podRoom.$id,
-              type: "pod",
-              name: podRoom.name || "Pod Chat",
-              participants: Array.isArray(podRoom.members) ? podRoom.members : [user.$id],
-              podId: routeRoomId,
-            } as ChatRoom
-            setRooms((prev) => normalizeRooms([nextRoom, ...prev.filter((room) => room.$id !== nextRoom.$id)]))
+            const nextRoom = normalizeChatRooms([podRoom], user.$id)[0] as ChatRoom
+            setRooms((prev) => normalizeChatRooms([nextRoom, ...prev.filter((room) => room.$id !== nextRoom.$id)], user.$id) as ChatRoom[])
             setSelectedRoom(nextRoom)
             setShowMobileChatList(false)
           }
@@ -225,21 +197,7 @@ export default function ChatPage() {
           setConnectionStatus("reconnecting")
         }
         const res = await chatService.getMessages(selectedRoom.$id, 50, 0)
-        const messagesWithReplies = await Promise.all(
-          (res.documents || []).map(async (msg: any) => {
-            if (msg.replyTo) {
-              // Find the replied message in the loaded messages or fetch it
-              const replyMessage = (res.documents || []).find((m: any) => m.$id === msg.replyTo)
-              if (replyMessage) {
-                return { ...msg, replyToMessage: replyMessage }
-              }
-              // Fetch the message if not in the current batch
-              const fetchedReply = await chatService.getMessage(msg.replyTo)
-              return { ...msg, replyToMessage: fetchedReply as unknown as unknown as Message }
-            }
-            return msg
-          })
-        )
+        const messagesWithReplies = attachReplyTargets(res.documents || []) as unknown as Message[]
         setMessages(messagesWithReplies)
         setConnectionStatus("connected")
       } catch (error) {
@@ -253,19 +211,54 @@ export default function ChatPage() {
     return () => clearInterval(interval)
   }, [selectedRoom])
 
+  useEffect(() => {
+    if (!inputValue.trim()) {
+      setTyping(false)
+      return
+    }
+
+    setTyping(true)
+  }, [inputValue, setTyping])
+
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !selectedRoom || !user?.$id) return
 
     setIsLoading(true)
-    const original = inputValue
+    const original = inputValue.trim()
     const replyToId = replyingTo?.$id || null
+    const senderName = user.name || "You"
+    const senderAvatar = user?.avatar || "/placeholder.svg"
+    const optimisticMessage = createOutboxMessage({
+      roomId: selectedRoom.$id,
+      authorId: user.$id,
+      content: original,
+      authorName: senderName,
+      authorAvatar: senderAvatar,
+      replyTo: replyToId,
+      replyToMessage: replyingTo,
+    })
+    const clientMessageId = optimisticMessage.clientMessageId
+
+    queueMessage({
+      ...optimisticMessage,
+      deliveryState: "sending",
+    })
+    setInputValue("")
+    setReplyingTo(null)
+    setTyping(false)
     try {
-      const msg = await chatService.sendMessage(selectedRoom.$id, user.$id, original, "text", { replyTo: replyToId }) as unknown as Message
+      const msg = await chatService.sendMessage(selectedRoom.$id, user.$id, original, "text", { replyTo: replyToId, clientMessageId }) as unknown as Message
       // Attach reply info to the new message for display
       const newMessage: Message = {
         ...msg,
+        content: msg.content || original,
+        authorId: user.$id,
+        authorName: senderName,
+        authorAvatar: senderAvatar,
+        timestamp: msg.timestamp || msg.$createdAt || new Date().toISOString(),
         replyToMessage: replyingTo,
       }
+      removeMessage(clientMessageId)
       setMessages((prev) => [...prev, newMessage])
       setRooms((prev) =>
         prev.map((room) =>
@@ -275,9 +268,8 @@ export default function ChatPage() {
         ),
       )
       const shouldAskAI = original.includes("@ai")
-      setInputValue("")
-      setReplyingTo(null)
       scrollToBottom()
+      announceToScreenReader(`Sent message in ${selectedRoom.name}`)
 
       if (shouldAskAI) {
         const aiPayload = {
@@ -319,9 +311,103 @@ export default function ChatPage() {
       }
     } catch (error: any) {
       console.error(error)
+      markMessageFailed(clientMessageId, error?.message || "Try again")
       toast({ title: "Failed to send message", description: error?.message, variant: "destructive" })
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleRetryMessage = async (message: Message) => {
+    if (!selectedRoom || !user?.$id || !message.clientMessageId) return
+
+    markMessageSending(message.clientMessageId)
+    setIsLoading(true)
+    try {
+      const retrySenderName = user.name || "You"
+      const retrySenderAvatar = user?.avatar || "/placeholder.svg"
+      const msg = await chatService.sendMessage(selectedRoom.$id, user.$id, message.content, "text", {
+        replyTo: message.replyTo || null,
+        clientMessageId: message.clientMessageId,
+        senderName: retrySenderName,
+        senderAvatar: retrySenderAvatar,
+      }) as unknown as Message
+
+      removeMessage(message.clientMessageId)
+      setMessages((prev) => [...prev, { ...msg, content: msg.content || message.content, replyToMessage: message.replyToMessage }])
+      scrollToBottom()
+    } catch (error: any) {
+      markMessageFailed(message.clientMessageId, error?.message || "Try again")
+      toast({ title: "Retry failed", description: error?.message || "Try again", variant: "destructive" })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const updateLocalMessage = (messageId: string, updater: (message: Message) => Message) => {
+    setMessages((prev) => prev.map((message) => (message.$id === messageId ? updater(message) : message)))
+  }
+
+  const isImageMessage = (message: Message) => Boolean(message.fileUrl && /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(message.fileUrl))
+
+  const handleCopyMessage = async (message: Message) => {
+    try {
+      await navigator.clipboard.writeText(message.content)
+      toast({ title: "Copied", description: "Message copied to clipboard." })
+    } catch (error: any) {
+      toast({ title: "Copy failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
+  const handleEditMessage = async (message: Message) => {
+    const nextContent = window.prompt("Edit message", message.content)
+    if (nextContent === null) return
+    const trimmed = nextContent.trim()
+    if (!trimmed) return
+
+    try {
+      const updated = await chatService.updateMessage(message.$id, "edit", { content: trimmed })
+      updateLocalMessage(message.$id, (current) => ({ ...current, ...updated, content: updated.content || trimmed, isEdited: true }))
+    } catch (error: any) {
+      toast({ title: "Edit failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
+  const handleDeleteMessage = async (message: Message) => {
+    if (!window.confirm("Delete this message?")) return
+
+    try {
+      const updated = await chatService.deleteMessage(message.$id)
+      updateLocalMessage(message.$id, (current) => ({ ...current, ...updated, content: "[deleted]", deletedAt: new Date().toISOString(), deliveryState: "deleted" }))
+    } catch (error: any) {
+      toast({ title: "Delete failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
+  const handleTogglePin = async (message: Message) => {
+    try {
+      const updated = await chatService.updateMessage(message.$id, "pin")
+      updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
+    } catch (error: any) {
+      toast({ title: "Pin failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
+  const handleToggleStar = async (message: Message) => {
+    try {
+      const updated = await chatService.updateMessage(message.$id, "star")
+      updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
+    } catch (error: any) {
+      toast({ title: "Star failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
+  const handleReportMessage = async (message: Message) => {
+    try {
+      await chatService.reportMessage(message.$id, user?.$id || "", "policy_violation", `Reported from room ${selectedRoom?.name || selectedRoom?.$id || 'conversation'}`)
+      toast({ title: "Reported", description: "The message has been sent for review." })
+    } catch (error: any) {
+      toast({ title: "Report failed", description: error?.message || "Try again", variant: "destructive" })
     }
   }
 
@@ -388,20 +474,12 @@ export default function ChatPage() {
   }
 
   const filteredRooms = rooms.filter((room) => (room.name || room.$id).toLowerCase().includes(searchQuery.toLowerCase()))
-
-  const formatTime = (dateValue: Date | string) => {
-    const date = typeof dateValue === "string" ? new Date(dateValue) : dateValue
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-    const minutes = Math.floor(diff / (1000 * 60))
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-
-    if (minutes < 1) return "now"
-    if (minutes < 60) return `${minutes}m`
-    if (hours < 24) return `${hours}h`
-    return `${days}d`
-  }
+  const selectedRoomPresence = presenceEntries.find((entry) => entry.userId && entry.userId !== user?.$id)
+  const visibleMessages = mergeChatMessages(messages, outboxMessages).filter((message) => {
+    if (!messageSearchQuery.trim()) return true
+    const haystack = `${message.content} ${message.authorName || ""}`.toLowerCase()
+    return haystack.includes(messageSearchQuery.trim().toLowerCase())
+  })
 
   const insertAIMention = () => {
     const currentValue = inputValue
@@ -496,7 +574,7 @@ export default function ChatPage() {
                           <div className="flex items-center justify-between">
                             <p className="font-medium text-sm truncate">{room.name}</p>
                             {room.lastMessageTime && (
-                              <span className="text-xs text-muted-foreground">{formatTime(room.lastMessageTime)}</span>
+                              <span className="text-xs text-muted-foreground">{formatChatTimestamp(room.lastMessageTime)}</span>
                             )}
                           </div>
                           <div className="flex items-center justify-between">
@@ -543,7 +621,7 @@ export default function ChatPage() {
                               <p className="font-medium text-sm truncate">{room.name}</p>
                               {room.lastMessageTime && (
                                 <span className="text-xs text-muted-foreground">
-                                  {formatTime(room.lastMessageTime)}
+                                  {formatChatTimestamp(room.lastMessageTime)}
                                 </span>
                               )}
                             </div>
@@ -586,7 +664,7 @@ export default function ChatPage() {
                               <p className="font-medium text-sm truncate">{room.name}</p>
                               {room.lastMessageTime && (
                                 <span className="text-xs text-muted-foreground">
-                                  {formatTime(room.lastMessageTime)}
+                                  {formatChatTimestamp(room.lastMessageTime)}
                                 </span>
                               )}
                             </div>
@@ -657,7 +735,7 @@ export default function ChatPage() {
                           <div className="flex items-center justify-between">
                             <p className="font-medium text-sm truncate">{room.name}</p>
                             {room.lastMessageTime && (
-                              <span className="text-xs text-muted-foreground">{formatTime(room.lastMessageTime)}</span>
+                              <span className="text-xs text-muted-foreground">{formatChatTimestamp(room.lastMessageTime)}</span>
                             )}
                           </div>
                           <div className="flex items-center justify-between">
@@ -700,7 +778,7 @@ export default function ChatPage() {
                             <div className="flex items-center justify-between">
                               <p className="font-medium text-sm truncate">{room.name}</p>
                               {room.lastMessageTime && (
-                                <span className="text-xs text-muted-foreground">{formatTime(room.lastMessageTime)}</span>
+                                <span className="text-xs text-muted-foreground">{formatChatTimestamp(room.lastMessageTime)}</span>
                               )}
                             </div>
                             <p className="text-xs text-muted-foreground truncate">{room.lastMessage}</p>
@@ -739,7 +817,7 @@ export default function ChatPage() {
                             <div className="flex items-center justify-between">
                               <p className="font-medium text-sm truncate">{room.name}</p>
                               {room.lastMessageTime && (
-                                <span className="text-xs text-muted-foreground">{formatTime(room.lastMessageTime)}</span>
+                                <span className="text-xs text-muted-foreground">{formatChatTimestamp(room.lastMessageTime)}</span>
                               )}
                             </div>
                             <p className="text-xs text-muted-foreground truncate">{room.lastMessage}</p>
@@ -782,9 +860,11 @@ export default function ChatPage() {
                       {selectedRoom.type === "pod" ? (
                         <span className="flex items-center gap-1">
                           <Users className="h-3 w-3" />
-                          Study Group
+                          {isSomeoneTyping ? `${selectedRoomPresence ? 1 : 0} typing` : "Study Group"}
                         </span>
-                      ) : selectedRoom.isOnline ? (
+                      ) : isSomeoneTyping ? (
+                        "Typing..."
+                      ) : (selectedRoomPresence?.isOnline ?? selectedRoom.isOnline) ? (
                         "Online"
                       ) : (
                         "Last seen recently"
@@ -800,6 +880,17 @@ export default function ChatPage() {
                     <Phone className="h-4 w-4" />
                   </Button>
                 </div>
+              </div>
+            </div>
+            <div className="p-3 md:p-4 border-b bg-card/80 backdrop-blur-sm">
+              <div className="relative max-w-4xl mx-auto">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={messageSearchQuery}
+                  onChange={(e) => setMessageSearchQuery(e.target.value)}
+                  placeholder="Search messages in this conversation"
+                  className="pl-10"
+                />
               </div>
             </div>
 
@@ -824,9 +915,11 @@ export default function ChatPage() {
                       {selectedRoom.type === "pod" ? (
                         <span className="flex items-center gap-1">
                           <Users className="h-3 w-3" />
-                          Study Group
+                          {isSomeoneTyping ? "Typing..." : "Study Group"}
                         </span>
-                      ) : selectedRoom.isOnline ? (
+                      ) : isSomeoneTyping ? (
+                        "Typing..."
+                      ) : (selectedRoomPresence?.isOnline ?? selectedRoom.isOnline) ? (
                         "Online"
                       ) : (
                         "Last seen recently"
@@ -855,6 +948,10 @@ export default function ChatPage() {
                       <DropdownMenuItem>
                         <Calendar className="h-4 w-4 mr-2" />
                         Schedule Meeting
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setShowCallHistory(true)}>
+                        <Phone className="h-4 w-4 mr-2" />
+                        Call History
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem>
@@ -900,7 +997,11 @@ export default function ChatPage() {
             <div className="flex-1 overflow-hidden relative">
               <ScrollArea className="h-full">
                 <div className="p-4 pb-4 space-y-4 max-w-4xl mx-auto">
-                  {messages.map((message) => {
+                  {messages.length > 0 && visibleMessages.length === 0 ? (
+                    <div className="py-10 text-center text-sm text-muted-foreground">
+                      No messages match your search.
+                    </div>
+                  ) : visibleMessages.map((message) => {
                   const isCurrent = message.authorId === user?.$id
                   const isAI = message.authorId === "ai"
                   const bubbleClass = isCurrent
@@ -960,12 +1061,27 @@ export default function ChatPage() {
                                 )}
                               </p>
                             )}
-                            {message.type === "file" && message.fileUrl ? (
+                            {message.deletedAt ? (
+                              <div className="rounded-lg border border-dashed px-3 py-2 text-xs opacity-70">This message was deleted.</div>
+                            ) : message.type === "file" && message.fileUrl && isImageMessage(message) ? (
                               <a
                                 href={message.fileUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="text-sm underline font-medium"
+                                className="mb-2 block overflow-hidden rounded-lg border"
+                              >
+                                <img
+                                  src={message.fileUrl}
+                                  alt={message.fileName || "Attachment"}
+                                  className="max-h-64 w-full object-cover"
+                                />
+                              </a>
+                            ) : message.type === "file" && message.fileUrl ? (
+                              <a
+                                href={message.fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mb-2 block rounded-lg border px-3 py-2 text-sm underline font-medium"
                               >
                                 {message.fileName || "Attachment"}
                               </a>
@@ -984,23 +1100,49 @@ export default function ChatPage() {
                               </p>
                             )}
                             <p className="text-xs opacity-70 mt-2">
-                              {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              {formatChatTimestamp(message.timestamp)}
                               {message.isEdited && <span className="ml-1">(edited)</span>}
                             </p>
+                            {isCurrent && (
+                              <div className="mt-1 flex items-center gap-2 text-[10px] opacity-60">
+                                <span>
+                                  {message.deliveryState === "failed"
+                                    ? "Failed to send"
+                                    : message.deliveryState === "sending" || message.deliveryState === "queued"
+                                      ? "Sending..."
+                                      : (message.readBy || []).length > 1
+                                        ? "Read"
+                                        : "Sent"}
+                                </span>
+                                {message.deliveryState === "failed" && (
+                                  <button className="underline" onClick={() => handleRetryMessage(message)}>
+                                    Retry
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              <button
+                                className="text-[11px] font-medium opacity-70 hover:opacity-100"
+                                onClick={() => setReplyingTo(message)}
+                              >
+                                Reply
+                              </button>
+                              <MessageActionsMenu
+                                message={message}
+                                isOwnMessage={isCurrent}
+                                isPinned={Boolean(Array.isArray((message as any).metadata?.pinnedBy) && (message as any).metadata.pinnedBy.includes(user?.$id))}
+                                isStarred={Boolean(Array.isArray((message as any).metadata?.starredBy) && (message as any).metadata.starredBy.includes(user?.$id))}
+                                onCopy={handleCopyMessage}
+                                onEdit={handleEditMessage}
+                                onDelete={handleDeleteMessage}
+                                onTogglePin={handleTogglePin}
+                                onToggleStar={handleToggleStar}
+                                onReport={handleReportMessage}
+                              />
+                            </div>
                           </div>
 
-                          {/* Reply button for own messages - show on right */}
-                          {isCurrent && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity order-first"
-                              onClick={() => setReplyingTo(message)}
-                              title="Reply"
-                            >
-                              <Reply className="h-3 w-3" />
-                            </Button>
-                          )}
                         </div>
                       </div>
 
@@ -1051,6 +1193,7 @@ export default function ChatPage() {
                       value={inputValue}
                       onChange={(e) => setInputValue(e.target.value)}
                       onKeyPress={handleKeyPress}
+                      onBlur={() => setTyping(false)}
                       placeholder={replyingTo ? `Reply to ${replyingTo.authorName || 'message'}...` : `Message ${selectedRoom.name}...`}
                       className="min-h-[44px] max-h-24 md:max-h-32 resize-none pr-12 md:pr-32 text-base"
                       disabled={isLoading}
@@ -1113,6 +1256,15 @@ export default function ChatPage() {
               onChange={handleFileUpload}
               accept="image/*,application/pdf,.doc,.docx,.txt"
             />
+
+            {selectedRoom && (
+              <CallHistoryDialog
+                roomId={selectedRoom.$id}
+                roomName={selectedRoom.name || "Conversation"}
+                open={showCallHistory}
+                onOpenChange={setShowCallHistory}
+              />
+            )}
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center">
@@ -1148,6 +1300,44 @@ export default function ChatPage() {
                 </>
               )}
             </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">No conversations yet</h3>
+                  <p className="text-muted-foreground">Join a pod or start a direct message to begin chatting</p>
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Select a conversation</h3>
+                  <p className="text-muted-foreground">Choose a chat from the sidebar to start messaging</p>
+                  <div className="mt-4 md:hidden">
+                    <Button variant="outline" onClick={() => setShowMobileChatList(true)}>
+                      Open chat list
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
           </div>
         )}
       </div>

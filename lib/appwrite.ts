@@ -128,6 +128,7 @@ export const COLLECTIONS = {
   POSTS: "posts",
   COMMENTS: "comments",
   MESSAGES: "messages",
+  CHAT_PRESENCE: "chat_presence",
   RESOURCES: "resources",
   NOTIFICATIONS: "notifications",
   PODS: "pods",
@@ -2281,6 +2282,53 @@ export const chatService = {
     }
   },
 
+  async updateMessage(messageId: string, action: 'edit' | 'delete' | 'pin' | 'star', payload: { content?: string } = {}) {
+    if (!messageId || !action) {
+      throw new Error('Message ID and action are required')
+    }
+
+    const response = await apiJson(`/api/messages/${encodeURIComponent(messageId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        action,
+        content: payload.content || '',
+      }),
+    })
+
+    return response.message || response.data || response
+  },
+
+  async deleteMessage(messageId: string) {
+    if (!messageId) {
+      throw new Error('Message ID is required')
+    }
+
+    const response = await apiJson(`/api/messages/${encodeURIComponent(messageId)}`, {
+      method: 'DELETE',
+    })
+
+    return response.message || response.data || response
+  },
+
+  async reportMessage(messageId: string, reporterId: string, reason = 'policy_violation', description = '') {
+    if (!messageId || !reporterId) {
+      throw new Error('Message ID and reporter ID are required')
+    }
+
+    const response = await apiJson('/api/reports', {
+      method: 'POST',
+      body: JSON.stringify({
+        reporterId,
+        contentId: messageId,
+        contentType: 'message',
+        reason,
+        description,
+      }),
+    })
+
+    return response.reportId || response.message || response.data || response
+  },
+
   /**
    * Get messages from a chat room with pagination - FIXED
    */
@@ -2313,21 +2361,112 @@ export const chatService = {
 
   // Subscribe to real-time messages using client subscription
   subscribeToMessages(roomId: string, callback: (message: any) => void) {
-    // For now, we'll use polling instead of real-time subscriptions
-    // In production, you'd set up Appwrite realtime subscriptions
-    const pollMessages = async () => {
-      try {
-        const messages = await this.getMessages(roomId, 1)
-        if (messages.documents.length > 0) {
-          callback(messages.documents[0])
-        }
-      } catch (error) {
-        console.error("Poll messages error:", error)
+    const cleanupFns: Array<() => void> = []
+    const subscribe = (client as any).subscribe
+
+    const pushMessageIfRelevant = (payload: any) => {
+      const messageRoomId = payload?.roomId || payload?.data?.roomId
+      if (messageRoomId === roomId) {
+        callback(payload?.payload || payload?.data || payload)
       }
     }
 
-    const interval = setInterval(pollMessages, 2000) // Poll every 2 seconds
-    return () => clearInterval(interval)
+    const pushRoomIfRelevant = (payload: any) => {
+      const roomPayload = payload?.payload || payload?.data || payload
+      if (roomPayload?.$id === roomId || roomPayload?.roomId === roomId) {
+        callback(roomPayload)
+      }
+    }
+
+    const registerCleanup = (subscription: any) => {
+      if (typeof subscription === 'function') {
+        cleanupFns.push(subscription)
+      } else if (subscription && typeof subscription.unsubscribe === 'function') {
+        cleanupFns.push(() => subscription.unsubscribe())
+      } else if (subscription && typeof subscription.close === 'function') {
+        cleanupFns.push(() => subscription.close())
+      }
+    }
+
+    if (typeof subscribe === 'function') {
+      registerCleanup(subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.MESSAGES}.documents`, pushMessageIfRelevant))
+      registerCleanup(subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_ROOMS}.documents`, pushRoomIfRelevant))
+    }
+
+    if (cleanupFns.length === 0) {
+      const pollMessages = async () => {
+        try {
+          const messages = await this.getMessages(roomId, 1)
+          if (messages.documents.length > 0) {
+            callback(messages.documents[0])
+          }
+        } catch (error) {
+          console.error("Poll messages error:", error)
+        }
+      }
+
+      const interval = setInterval(pollMessages, 2000)
+      cleanupFns.push(() => clearInterval(interval))
+    }
+
+    return () => {
+      cleanupFns.forEach((cleanup) => cleanup())
+    }
+  },
+
+  subscribeToChatRooms(userId: string, callback: (room: any) => void) {
+    const cleanupFns: Array<() => void> = []
+    const subscribe = (client as any).subscribe
+
+    const pushRoomIfRelevant = (payload: any) => {
+      const room = payload?.payload || payload?.data || payload
+      const members = Array.isArray(room?.members)
+        ? room.members
+        : typeof room?.members === 'string'
+          ? (() => { try { return JSON.parse(room.members) } catch { return [] } })()
+          : []
+      if (members.includes(userId) || room?.roomId === userId) {
+        callback(room)
+      }
+    }
+
+    const registerCleanup = (subscription: any) => {
+      if (typeof subscription === 'function') {
+        cleanupFns.push(subscription)
+      } else if (subscription && typeof subscription.unsubscribe === 'function') {
+        cleanupFns.push(() => subscription.unsubscribe())
+      } else if (subscription && typeof subscription.close === 'function') {
+        cleanupFns.push(() => subscription.close())
+      }
+    }
+
+    if (typeof subscribe === 'function') {
+      registerCleanup(subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_ROOMS}.documents`, pushRoomIfRelevant))
+      registerCleanup(subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.MESSAGES}.documents`, (payload: any) => {
+        const messageRoomId = payload?.roomId || payload?.data?.roomId || payload?.payload?.roomId
+        if (messageRoomId) {
+          callback(payload?.payload || payload?.data || payload)
+        }
+      }))
+    }
+
+    if (cleanupFns.length === 0) {
+      const pollRooms = async () => {
+        try {
+          const rooms = await this.getUserChatRooms(userId)
+          ;[...(rooms.podRooms || []), ...(rooms.directRooms || [])].forEach((room: any) => callback(room))
+        } catch (error) {
+          console.error("Poll rooms error:", error)
+        }
+      }
+
+      const interval = setInterval(pollRooms, 5000)
+      cleanupFns.push(() => clearInterval(interval))
+    }
+
+    return () => {
+      cleanupFns.forEach((cleanup) => cleanup())
+    }
   },
 
   // Upload file attachment
@@ -2467,6 +2606,74 @@ export const callService = {
       documents: response.sessions || response.documents || [],
       total: response.total || 0,
     }
+  },
+}
+
+export const presenceService = {
+  async updatePresence(roomId: string, options: { isTyping?: boolean; isOnline?: boolean } = {}) {
+    if (!roomId) {
+      throw new Error('Room ID is required')
+    }
+
+    const response = await apiJson('/api/chat/presence', {
+      method: 'POST',
+      body: JSON.stringify({
+        roomId,
+        isTyping: Boolean(options.isTyping),
+        isOnline: options.isOnline === undefined ? true : Boolean(options.isOnline),
+      }),
+    })
+
+    return response.presence || response.data || response
+  },
+
+  async getPresence(roomId: string) {
+    if (!roomId) {
+      throw new Error('Room ID is required')
+    }
+
+    const response = await apiJson(`/api/chat/presence?roomId=${encodeURIComponent(roomId)}`)
+    return response.presence || response.data || []
+  },
+
+  subscribeToPresence(roomId: string, callback: (presence: any) => void) {
+    const cleanupFns: Array<() => void> = []
+    const subscribe = (client as any).subscribe
+
+    const pushIfRelevant = (payload: any) => {
+      const presence = payload?.payload || payload?.data || payload
+      if (presence?.roomId === roomId) {
+        callback(presence)
+      }
+    }
+
+    const registerCleanup = (subscription: any) => {
+      if (typeof subscription === 'function') {
+        cleanupFns.push(subscription)
+      } else if (subscription && typeof subscription.unsubscribe === 'function') {
+        cleanupFns.push(() => subscription.unsubscribe())
+      } else if (subscription && typeof subscription.close === 'function') {
+        cleanupFns.push(() => subscription.close())
+      }
+    }
+
+    if (typeof subscribe === 'function') {
+      registerCleanup(subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_PRESENCE}.documents`, pushIfRelevant))
+    }
+
+    if (cleanupFns.length === 0) {
+      const interval = setInterval(async () => {
+        try {
+          const presence = await this.getPresence(roomId)
+          presence.forEach((entry: any) => callback(entry))
+        } catch (error) {
+          console.error('Poll presence error:', error)
+        }
+      }, 4000)
+      cleanupFns.push(() => clearInterval(interval))
+    }
+
+    return () => cleanupFns.forEach((cleanup) => cleanup())
   },
 }
 

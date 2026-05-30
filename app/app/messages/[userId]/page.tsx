@@ -8,10 +8,14 @@ import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ArrowLeft, Loader2, MessageSquare, Phone, Send, User, Video } from "lucide-react"
+import { ArrowLeft, Clock3, Loader2, MessageSquare, Phone, Search, Send, User, Video } from "lucide-react"
+import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
+import { MessageActionsMenu } from "@/components/chat/message-actions-menu"
 import { useAuth } from "@/lib/auth-context"
 import { callService, chatService, profileService } from "@/lib/appwrite"
+import { attachReplyTargets, formatChatTimestamp, normalizeChatMessage } from "@/lib/chat-domain"
 import { useToast } from "@/hooks/use-toast"
+import { useChatPresence } from "@/hooks/use-chat-presence"
 
 interface Message {
   $id: string
@@ -20,6 +24,15 @@ interface Message {
   authorName?: string
   authorAvatar?: string
   timestamp: string
+  type?: string
+  replyTo?: string | null
+  replyToMessage?: Message | null
+  isEdited?: boolean
+  fileUrl?: string | null
+  readBy?: string[]
+  metadata?: Record<string, any>
+  deletedAt?: string | null
+  deliveryState?: string
 }
 
 export default function DirectMessagePage() {
@@ -37,14 +50,27 @@ export default function DirectMessagePage() {
   const [isSyncing, setIsSyncing] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [isStartingCall, setIsStartingCall] = useState(false)
+  const [showCallHistory, setShowCallHistory] = useState(false)
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const [selfProfile, setSelfProfile] = useState<any>(null)
+  const [messageSearchQuery, setMessageSearchQuery] = useState("")
   const endRef = useRef<HTMLDivElement>(null)
+  const { presenceEntries, isSomeoneTyping, setTyping } = useChatPresence(roomId, user?.$id)
 
   const scrollToBottom = () => endRef.current?.scrollIntoView({ behavior: "smooth" })
 
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  useEffect(() => {
+    if (!inputValue.trim()) {
+      setTyping(false)
+      return
+    }
+
+    setTyping(true)
+  }, [inputValue, setTyping])
 
   useEffect(() => {
     let cancelled = false
@@ -99,18 +125,21 @@ export default function DirectMessagePage() {
     try {
       if (!firstLoad) setIsSyncing(true)
       const res = await chatService.getMessages(rid, 100, 0)
-      const docs = res.documents || []
+      const docs = attachReplyTargets(res.documents || [])
       const self = (profiles?.selfProfile ?? selfProfile) as any
       const target = (profiles?.targetProfile ?? targetProfile) as any
       const selfName = self?.name || user?.name
       const selfAvatar = self?.avatar || "/placeholder.svg"
-      const enriched: Message[] = docs.map((msg: any): Message => ({
-        ...msg,
-        content: msg.content || "",
-        timestamp: msg.timestamp || msg.$createdAt || new Date().toISOString(),
-        authorName: msg.authorName || (msg.authorId === user?.$id ? selfName : target?.name) || "User",
-        authorAvatar: msg.authorAvatar || (msg.authorId === user?.$id ? selfAvatar : target?.avatar) || "/placeholder.svg",
-      }))
+      const enriched: Message[] = docs.map((msg: any): Message => {
+        const normalized = normalizeChatMessage(msg)
+        return {
+          ...normalized,
+          content: normalized.content || "",
+          timestamp: normalized.timestamp,
+          authorName: normalized.authorName || (normalized.authorId === user?.$id ? selfName : target?.name) || "User",
+          authorAvatar: normalized.authorAvatar || (normalized.authorId === user?.$id ? selfAvatar : target?.avatar) || "/placeholder.svg",
+        }
+      })
       setMessages(enriched)
     } catch (err) {
       console.error("DM load failed", err)
@@ -131,6 +160,7 @@ export default function DirectMessagePage() {
       const msg = await chatService.sendMessage(roomId, user.$id, inputValue.trim(), {
         senderName,
         senderAvatar,
+        replyTo: replyingTo?.$id || null,
       })
       const newMessage: Message = {
         ...msg,
@@ -139,12 +169,56 @@ export default function DirectMessagePage() {
         authorName: senderName,
         authorAvatar: senderAvatar,
         timestamp: msg.timestamp || msg.$createdAt || new Date().toISOString(),
+        replyTo: replyingTo?.$id || null,
+        replyToMessage: replyingTo,
       }
       setMessages((prev: Message[]) => [...prev, newMessage])
       setInputValue("")
+      setReplyingTo(null)
+      setTyping(false)
       scrollToBottom()
     } catch (err: any) {
       toast({ title: "Failed to send", description: err?.message || "Try again", variant: "destructive" })
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  const handleRetry = async (message: any) => {
+    if (!roomId || !user?.$id || !message?.clientMessageId) return
+
+    markMessageSending(message.clientMessageId)
+    setIsSending(true)
+    try {
+      const senderProfile = selfProfile ?? (await profileService.getProfile(user.$id))
+      if (!selfProfile && senderProfile) setSelfProfile(senderProfile)
+      const senderName = senderProfile?.name || user.name || "You"
+      const senderAvatar = senderProfile?.avatar || "/placeholder.svg"
+      const msg = await chatService.sendMessage(roomId, user.$id, message.content, {
+        senderName,
+        senderAvatar,
+        replyTo: message.replyTo || null,
+        clientMessageId: message.clientMessageId,
+      })
+
+      removeMessage(message.clientMessageId)
+      setMessages((prev: Message[]) => [
+        ...prev,
+        {
+          ...msg,
+          content: msg.content || message.content,
+          authorId: user.$id,
+          authorName: senderName,
+          authorAvatar: senderAvatar,
+          timestamp: msg.timestamp || msg.$createdAt || new Date().toISOString(),
+          replyTo: message.replyTo || null,
+          replyToMessage: message.replyToMessage || null,
+        },
+      ])
+      scrollToBottom()
+    } catch (error: any) {
+      markMessageFailed(message.clientMessageId, error?.message || "Try again")
+      toast({ title: "Retry failed", description: error?.message || "Try again", variant: "destructive" })
     } finally {
       setIsSending(false)
     }
@@ -178,6 +252,94 @@ export default function DirectMessagePage() {
     }
   }
 
+  const peerPresence = presenceEntries.find((entry) => entry.userId && entry.userId !== user?.$id)
+  const visibleMessages = messages.filter((msg) => {
+    if (!messageSearchQuery.trim()) return true
+    const haystack = `${msg.content} ${msg.authorName || ""}`.toLowerCase()
+    return haystack.includes(messageSearchQuery.trim().toLowerCase())
+  })
+
+  const isImageMessage = (message: Message) => {
+    const url = message.fileUrl || message.content
+    return Boolean(url && /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(url))
+  }
+
+  const updateLocalMessage = (messageId: string, updater: (message: Message) => Message) => {
+    setMessages((prev) => prev.map((message) => (message.$id === messageId ? updater(message) : message)))
+  }
+
+  const handleCopyMessage = async (message: Message) => {
+    try {
+      await navigator.clipboard.writeText(message.content)
+      toast({ title: "Copied", description: "Message copied to clipboard." })
+    } catch (error: any) {
+      toast({ title: "Copy failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
+  const handleEditMessage = async (message: Message) => {
+    const nextContent = window.prompt("Edit message", message.content)
+    if (nextContent === null) return
+    const trimmed = nextContent.trim()
+    if (!trimmed) return
+
+    try {
+      const updated = await chatService.updateMessage(message.$id, "edit", { content: trimmed })
+      updateLocalMessage(message.$id, (current) => ({
+        ...current,
+        ...updated,
+        content: updated.content || trimmed,
+        isEdited: true,
+      }))
+    } catch (error: any) {
+      toast({ title: "Edit failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
+  const handleDeleteMessage = async (message: Message) => {
+    if (!window.confirm("Delete this message?")) return
+
+    try {
+      const updated = await chatService.deleteMessage(message.$id)
+      updateLocalMessage(message.$id, (current) => ({
+        ...current,
+        ...updated,
+        content: "[deleted]",
+        deletedAt: new Date().toISOString(),
+        deliveryState: "deleted",
+      }))
+    } catch (error: any) {
+      toast({ title: "Delete failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
+  const handleTogglePin = async (message: Message) => {
+    try {
+      const updated = await chatService.updateMessage(message.$id, "pin")
+      updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
+    } catch (error: any) {
+      toast({ title: "Pin failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
+  const handleToggleStar = async (message: Message) => {
+    try {
+      const updated = await chatService.updateMessage(message.$id, "star")
+      updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
+    } catch (error: any) {
+      toast({ title: "Star failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
+  const handleReportMessage = async (message: Message) => {
+    try {
+      await chatService.reportMessage(message.$id, user?.$id || "", "policy_violation", `Reported from DM with ${targetProfile?.name || "member"}`)
+      toast({ title: "Reported", description: "The message has been sent for review." })
+    } catch (error: any) {
+      toast({ title: "Report failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
   if (!user?.$id) {
     return null
   }
@@ -194,9 +356,14 @@ export default function DirectMessagePage() {
         </Avatar>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm truncate">{targetProfile?.name || "Direct Message"}</p>
-          <p className="text-xs text-muted-foreground truncate">Private conversation</p>
+          <p className="text-xs text-muted-foreground truncate">
+            {isSomeoneTyping ? "Typing..." : peerPresence?.isOnline ? "Online" : "Private conversation"}
+          </p>
         </div>
         {isSyncing && !isLoading && <Badge variant="outline" className="text-[10px]">Syncing...</Badge>}
+        <Button variant="ghost" size="icon" onClick={() => setShowCallHistory(true)} disabled={isLoading} title="Call history">
+          <Clock3 className="w-4 h-4" />
+        </Button>
         <Button variant="ghost" size="icon" onClick={() => startCall('voice')} disabled={isStartingCall || isLoading} title="Voice call">
           <Phone className="w-4 h-4" />
         </Button>
@@ -212,6 +379,15 @@ export default function DirectMessagePage() {
               <MessageSquare className="w-4 h-4" />
               Direct Messages
             </CardTitle>
+            <div className="relative mt-3">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={messageSearchQuery}
+                onChange={(e) => setMessageSearchQuery(e.target.value)}
+                placeholder="Search this conversation"
+                className="pl-10"
+              />
+            </div>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col overflow-hidden p-0">
             {isLoading ? (
@@ -227,14 +403,79 @@ export default function DirectMessagePage() {
                         Start the conversation with {targetProfile?.name || "this member"}.
                       </div>
                     )}
-                    {messages.map((msg) => {
+                    {messages.length > 0 && visibleMessages.length === 0 && (
+                      <div className="text-center text-sm text-muted-foreground py-6">
+                        No messages match your search.
+                      </div>
+                    )}
+                    {visibleMessages.map((msg) => {
                       const isMe = msg.authorId === user.$id
+                      const messageMetadata = msg.metadata || {}
+                      const isPinned = Array.isArray(messageMetadata.pinnedBy) && messageMetadata.pinnedBy.includes(user.$id)
+                      const isStarred = Array.isArray(messageMetadata.starredBy) && messageMetadata.starredBy.includes(user.$id)
                       return (
                         <div key={msg.$id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                           <div className={`max-w-[78%] rounded-2xl px-4 py-3 shadow-sm ${isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted rounded-bl-md"}`}>
                             {!isMe && <p className="text-xs font-medium mb-1 opacity-70">{msg.authorName}</p>}
-                            <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                            <p className="text-[10px] opacity-60 mt-1">{new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                            {msg.deletedAt ? (
+                              <div className="rounded-lg border border-dashed px-3 py-2 text-xs opacity-70">
+                                This message was deleted.
+                              </div>
+                            ) : msg.fileUrl && isImageMessage(msg) ? (
+                              <a href={msg.fileUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border mb-2">
+                                <img src={msg.fileUrl} alt={msg.fileName || "Attachment"} className="max-h-64 w-full object-cover" />
+                              </a>
+                            ) : msg.fileUrl ? (
+                              <a href={msg.fileUrl} target="_blank" rel="noreferrer" className="mb-2 block rounded-lg border px-3 py-2 text-sm underline">
+                                {msg.fileName || "Attachment"}
+                              </a>
+                            ) : null}
+                            {msg.replyToMessage && (
+                              <div className="mb-2 rounded-lg border border-black/5 bg-black/5 px-2 py-1 text-xs opacity-80">
+                                <p className="font-medium">{msg.replyToMessage.authorName || "Someone"}</p>
+                                <p className="truncate">{msg.replyToMessage.content}</p>
+                              </div>
+                            )}
+                            {!msg.deletedAt && <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}
+                            <p className="text-[10px] opacity-60 mt-1">{formatChatTimestamp(msg.timestamp)}</p>
+                            {isMe && (
+                              <div className="mt-1 flex items-center gap-2 text-[10px] opacity-60">
+                                <span>
+                                  {msg.deliveryState === "failed"
+                                    ? "Failed to send"
+                                    : msg.deliveryState === "sending" || msg.deliveryState === "queued"
+                                      ? "Sending..."
+                                      : (msg.readBy || []).length > 1
+                                        ? "Read"
+                                        : "Sent"}
+                                </span>
+                                {msg.deliveryState === "failed" && (
+                                  <button className="underline" onClick={() => handleRetry(msg)}>
+                                    Retry
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              <button
+                                className="text-[11px] font-medium opacity-70 hover:opacity-100"
+                                onClick={() => setReplyingTo(msg)}
+                              >
+                                Reply
+                              </button>
+                              <MessageActionsMenu
+                                message={msg}
+                                isOwnMessage={isMe}
+                                isPinned={isPinned}
+                                isStarred={isStarred}
+                                onCopy={handleCopyMessage}
+                                onEdit={handleEditMessage}
+                                onDelete={handleDeleteMessage}
+                                onTogglePin={handleTogglePin}
+                                onToggleStar={handleToggleStar}
+                                onReport={handleReportMessage}
+                              />
+                            </div>
                           </div>
                         </div>
                       )
@@ -243,12 +484,24 @@ export default function DirectMessagePage() {
                   </div>
                 </ScrollArea>
                 <div className="border-t p-3">
+                  {replyingTo && (
+                    <div className="mb-2 rounded-lg border bg-muted/50 px-3 py-2 text-xs flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium">Replying to {replyingTo.authorName || "message"}</p>
+                        <p className="truncate text-muted-foreground">{replyingTo.content}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setReplyingTo(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
                   <div className="flex gap-2">
                     <Input
                       placeholder={`Message ${targetProfile?.name || "member"}`}
                       value={inputValue}
                       onChange={(e) => setInputValue(e.target.value)}
                       onKeyDown={handleKeyPress}
+                      onBlur={() => setTyping(false)}
                       disabled={isSending}
                       className="h-11"
                     />
@@ -262,6 +515,24 @@ export default function DirectMessagePage() {
           </CardContent>
         </Card>
       </div>
+
+      <CallHistoryDialog
+        roomId={roomId}
+        roomName={targetProfile?.name || "Direct Message"}
+        open={showCallHistory}
+        onOpenChange={setShowCallHistory}
+      />
+    </div>
+  )
+}
+      </div>
+
+      <CallHistoryDialog
+        roomId={roomId}
+        roomName={targetProfile?.name || "Direct Message"}
+        open={showCallHistory}
+        onOpenChange={setShowCallHistory}
+      />
     </div>
   )
 }
