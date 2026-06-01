@@ -67,6 +67,23 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
   const { isSomeoneTyping, otherTypingCount, setTyping } = useChatPresence(chatRoomId, user?.$id)
   const { outboxMessages, queueMessage, markMessageSending, markMessageFailed, removeMessage } = useChatOutbox(chatRoomId)
   const { latestTask: latestSummaryTask, isLoading: isLoadingSummaryTasks, error: summaryTaskError } = useAiSummaryTasks(chatRoomId)
+  const prevSummaryStatusRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const task = latestSummaryTask
+    if (!task) return
+    const prev = prevSummaryStatusRef.current
+    if (prev && prev !== task.status) {
+      if (task.status === 'processing') {
+        toast({ title: 'Summary processing', description: `AI is summarizing recent messages...` })
+      } else if (task.status === 'done') {
+        toast({ title: 'Summary ready', description: 'AI summary is available.' })
+      } else if (task.status === 'failed') {
+        toast({ title: 'Summary failed', description: task.lastError || 'Processing failed', variant: 'destructive' })
+      }
+    }
+    prevSummaryStatusRef.current = task.status || null
+  }, [latestSummaryTask, toast])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })

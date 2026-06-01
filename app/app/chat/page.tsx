@@ -13,25 +13,56 @@ import { Textarea } from "@/components/ui/textarea"
 import { Send, Search, Phone, Video, MoreVertical, Users, Hash, Plus, Smile, Paperclip, ImageIcon, Calendar, Settings, MessageSquare, X, Menu, ArrowLeft, AtSign, Mic, Loader2, Reply, CornerUpLeft, WifiOff, RefreshCw } from 'lucide-react'
 import {
   DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useToast } from "@/hooks/use-toast"
+import { useRouter, useSearchParams } from "next/navigation"
+import { chatService, profileService } from "@/lib/appwrite"
+import { useAuth } from "@/lib/auth-context"
+import { announceToScreenReader } from "@/lib/accessibility-utils"
+export default function ChatPage() {
+
   const [searchQuery, setSearchQuery] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [isLoadingRooms, setIsLoadingRooms] = useState(true)
-  const [showMobileChatList, setShowMobileChatList] = useState(true)
-  const [isListening, setIsListening] = useState(false)
-  const [isStartingCall, setIsStartingCall] = useState(false)
-  const [showCallHistory, setShowCallHistory] = useState(false)
-  const [replyingTo, setReplyingTo] = useState<Message | null>(null)
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'reconnecting' | 'error'>('connected')
-  const [messageSearchQuery, setMessageSearchQuery] = useState("")
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const { user } = useAuth()
-  const { presenceEntries, isSomeoneTyping, setTyping } = useChatPresence(selectedRoom?.$id || "", user?.$id)
-  const { outboxMessages, queueMessage, markMessageSending, markMessageFailed, removeMessage } = useChatOutbox(selectedRoom?.$id || "")
-  const { latestTask: latestSummaryTask, isLoading: isLoadingSummaryTasks, error: summaryTaskError } = useAiSummaryTasks(selectedRoom?.$id || "")
+const [isLoading, setIsLoading] = useState(false)
+const [isLoadingRooms, setIsLoadingRooms] = useState(true)
+const [showMobileChatList, setShowMobileChatList] = useState(true)
+const [isListening, setIsListening] = useState(false)
+const [isStartingCall, setIsStartingCall] = useState(false)
+const [showCallHistory, setShowCallHistory] = useState(false)
+const [replyingTo, setReplyingTo] = useState<Message | null>(null)
+const [connectionStatus, setConnectionStatus] = useState<'connected' | 'reconnecting' | 'error'>('connected')
+const [messageSearchQuery, setMessageSearchQuery] = useState("")
+const messagesEndRef = useRef<HTMLDivElement>(null)
+const textareaRef = useRef<HTMLTextAreaElement>(null)
+const fileInputRef = useRef<HTMLInputElement>(null)
+const router = useRouter()
+const searchParams = useSearchParams()
+const { user } = useAuth()
+const { toast } = useToast()
+const { presenceEntries, isSomeoneTyping, setTyping } = useChatPresence(selectedRoom?.$id || "", user?.$id)
+const { outboxMessages, queueMessage, markMessageSending, markMessageFailed, removeMessage } = useChatOutbox(selectedRoom?.$id || "")
+const { latestTask: latestSummaryTask, isLoading: isLoadingSummaryTasks, error: summaryTaskError } = useAiSummaryTasks(selectedRoom?.$id || "")
+const prevSummaryStatusRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const task = latestSummaryTask
+    if (!task) return
+    const prev = prevSummaryStatusRef.current
+    if (prev && prev !== task.status) {
+      if (task.status === 'processing') {
+        toast({ title: 'Summary processing', description: `AI is summarizing recent messages...` })
+      } else if (task.status === 'done') {
+        toast({ title: 'Summary ready', description: 'AI summary is available.' })
+      } else if (task.status === 'failed') {
+        toast({ title: 'Summary failed', description: task.lastError || 'Processing failed', variant: 'destructive' })
+      }
+    }
+    prevSummaryStatusRef.current = task.status || null
+  }, [latestSummaryTask])
 
   useEffect(() => {
     const routeRoomId = searchParams.get("room")

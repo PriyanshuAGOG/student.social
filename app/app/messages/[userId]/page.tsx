@@ -61,6 +61,23 @@ export default function DirectMessagePage() {
   const endRef = useRef<HTMLDivElement>(null)
   const { presenceEntries, isSomeoneTyping, setTyping } = useChatPresence(roomId, user?.$id)
   const { latestTask: latestSummaryTask, isLoading: isLoadingSummaryTasks, error: summaryTaskError } = useAiSummaryTasks(roomId)
+  const prevSummaryStatusRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const task = latestSummaryTask
+    if (!task) return
+    const prev = prevSummaryStatusRef.current
+    if (prev && prev !== task.status) {
+      if (task.status === 'processing') {
+        toast({ title: 'Summary processing', description: `AI is summarizing recent messages...` })
+      } else if (task.status === 'done') {
+        toast({ title: 'Summary ready', description: 'AI summary is available.' })
+      } else if (task.status === 'failed') {
+        toast({ title: 'Summary failed', description: task.lastError || 'Processing failed', variant: 'destructive' })
+      }
+    }
+    prevSummaryStatusRef.current = task.status || null
+  }, [latestSummaryTask])
 
   const scrollToBottom = () => endRef.current?.scrollIntoView({ behavior: "smooth" })
 
