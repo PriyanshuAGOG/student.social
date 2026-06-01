@@ -282,7 +282,13 @@ export function subscribeToMeetingUpdates(
   onUpdate: (meeting: Models.Document) => void
 ) {
   try {
-    const unsubscribe = client.subscribe(
+    const subscribeFn = typeof client?.subscribe === 'function' ? client.subscribe.bind(client) : undefined
+    if (!subscribeFn) {
+      console.warn('Appwrite client.subscribe not available for meeting updates')
+      return () => {}
+    }
+
+    const unsubscribe = subscribeFn(
       `databases.${DATABASE_ID}.collections.${COLLECTIONS.POD_MEETINGS || "pod_meetings"}.documents.meeting-${meetingId}`,
       (message: RealtimeResponseEvent<Models.Document>) => {
         onUpdate(message.payload)
@@ -305,7 +311,13 @@ export function subscribeToWhiteboardUpdates(
   onUpdate: (whiteboard: Models.Document) => void
 ) {
   try {
-    const unsubscribe = client.subscribe(
+    const subscribeFn = typeof client?.subscribe === 'function' ? client.subscribe.bind(client) : undefined
+    if (!subscribeFn) {
+      console.warn('Appwrite client.subscribe not available for whiteboard updates')
+      return () => {}
+    }
+
+    const unsubscribe = subscribeFn(
       `databases.${DATABASE_ID}.collections.${COLLECTIONS.POD_WHITEBOARDS || "pod_whiteboards"}.documents.whiteboard-${podId}-${meetingId}`,
       (message: RealtimeResponseEvent<Models.Document>) => {
         onUpdate(message.payload)

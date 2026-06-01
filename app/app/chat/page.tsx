@@ -1139,6 +1139,8 @@ export default function ChatPage() {
                                 onTogglePin={handleTogglePin}
                                 onToggleStar={handleToggleStar}
                                 onReport={handleReportMessage}
+                                onRequestSummary={handleRequestSummary}
+                                onRequestCallback={handleRequestCallback}
                               />
                             </div>
                           </div>
@@ -1319,6 +1321,31 @@ export default function ChatPage() {
                 </>
               ) : (
                 <>
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Select a conversation</h3>
+                  <p className="text-muted-foreground">Choose a chat from the sidebar to start messaging</p>
+                  <div className="mt-4 md:hidden">
+                    <Button variant="outline" onClick={() => setShowMobileChatList(true)}>
+                      Open chat list
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
                   <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
                     <MessageSquare className="h-8 w-8 text-muted-foreground" />
                   </div>

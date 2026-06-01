@@ -514,6 +514,16 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                             onTogglePin={handleTogglePin}
                             onToggleStar={handleToggleStar}
                             onReport={handleReportMessage}
+                            onRequestSummary={async (m) => {
+                              try {
+                                await fetch('/api/ai/summaries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: roomId, messageIds: [m.$id], requestedBy: user?.$id }) })
+                              } catch (e) { console.warn(e) }
+                            }}
+                            onRequestCallback={async (m) => {
+                              try {
+                                await fetch('/api/calls/callback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fromUserId: user?.$id, toUserId: m.authorId, roomId }) })
+                              } catch (e) { console.warn(e) }
+                            }}
                           />
                         </div>
                       </div>

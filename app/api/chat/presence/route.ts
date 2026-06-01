@@ -1,6 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { withErrorHandling } from '@/lib/error-handler'
+import { requireUser } from '@/lib/api-security'
+
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
+const CHAT_PRESENCE_COLLECTION_ID = (process.env.NEXT_PUBLIC_CHAT_PRESENCE_COLLECTION_ID || 'chat_presence')
+
+export async function GET(request: NextRequest) {
+  const { data, error } = await withErrorHandling(async () => {
+    const auth = requireUser(request)
+    const roomId = request.nextUrl.searchParams.get('roomId')
+    if (!roomId) throw new Error('roomId is required')
+
+    const { databases } = await createAdminClient()
+
+    const presenceList = await databases.listDocuments(
+      DATABASE_ID,
+      CHAT_PRESENCE_COLLECTION_ID,
+      [
+        Query.equal('roomId', roomId),
+        Query.orderDesc('lastSeen'),
+        Query.limit(200),
+      ]
+    )
+
+    const items = (presenceList?.documents || []).map((p: any) => ({
+      userId: p.userId,
+      lastSeen: p.lastSeen,
+      isActive: !!p.isActive,
+    }))
+
+    return { success: true, presence: items, total: items.length }
+  }, { operation: 'getChatPresence' })
+
+  if (error) {
+    return NextResponse.json({ success: false, error: error.userMessage }, { status: 500 })
+  }
+
+  return NextResponse.json(data)
+}
+import { NextRequest, NextResponse } from 'next/server'
+import { Query } from 'node-appwrite'
+import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'

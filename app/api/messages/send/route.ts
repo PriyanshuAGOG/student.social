@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
     requireOwnership(senderId, auth.userId)
 
     const { databases } = await createAdminClient();
+    console.debug('[messages/send] createAdminClient succeeded for sender:', senderId, 'recipient:', recipientId)
 
     // Get or create room
     let room;
@@ -139,6 +140,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create message
+    console.debug('[messages/send] creating message in room:', room.$id)
     const message = await databases.createDocument(
       DATABASE_ID,
       MESSAGES_COLLECTION_ID,
@@ -162,6 +164,7 @@ export async function POST(request: NextRequest) {
     );
 
     // Update room last message time
+    console.debug('[messages/send] updating lastMessageAt for room:', room.$id)
     await databases.updateDocument(
       DATABASE_ID,
       CHAT_ROOMS_COLLECTION_ID,
@@ -227,76 +230,86 @@ export async function GET(request: NextRequest) {
     validateInput({ userId }, { userId: { required: true } });
     requireOwnership(userId!, auth.userId)
 
-    const { databases } = await createAdminClient();
+    try {
+      const { databases } = await createAdminClient();
 
-    // Get all DM rooms where user is a member
-    const allRooms = await databases.listDocuments(
-      DATABASE_ID,
-      CHAT_ROOMS_COLLECTION_ID,
-      [
-        Query.orderDesc('lastMessageAt'),
-        Query.limit(100),
-      ]
-    );
+      // Get all DM rooms where user is a member
+      const allRooms = await databases.listDocuments(
+        DATABASE_ID,
+        CHAT_ROOMS_COLLECTION_ID,
+        [
+          Query.orderDesc('lastMessageAt'),
+          Query.limit(100),
+        ]
+      );
 
-    // Filter rooms where user is a member
-    const userRooms = allRooms.documents.filter((room: any) => {
-      if (!['direct', 'dm'].includes(room.type)) return false;
-      const members = Array.isArray(room.members)
-        ? room.members
-        : typeof room.members === 'string'
-          ? (() => { try { return JSON.parse(room.members) } catch { return [] } })()
-          : [];
-      return members.includes(userId);
-    });
+      // Filter rooms where user is a member
+      const userRooms = (allRooms?.documents || []).filter((room: any) => {
+        if (!['direct', 'dm'].includes(room.type)) return false;
+        const members = Array.isArray(room.members)
+          ? room.members
+          : typeof room.members === 'string'
+            ? (() => { try { return JSON.parse(room.members) } catch { return [] } })()
+            : [];
+        return members.includes(userId);
+      });
 
-    // Enrich each room with other user's profile
-    const enrichedRooms = [];
-    for (const room of userRooms) {
-      const members = Array.isArray(room.members)
-        ? room.members
-        : typeof room.members === 'string'
-          ? (() => { try { return JSON.parse(room.members) } catch { return [] } })()
-          : [];
-      const otherUserId = members.find((id: string) => id !== userId);
+      // Enrich each room with other user's profile
+      const enrichedRooms: any[] = [];
+      for (const room of userRooms) {
+        const members = Array.isArray(room.members)
+          ? room.members
+          : typeof room.members === 'string'
+            ? (() => { try { return JSON.parse(room.members) } catch { return [] } })()
+            : [];
+        const otherUserId = members.find((id: string) => id !== userId);
 
-      if (otherUserId) {
-        try {
-          const otherUser = await databases.getDocument(
-            DATABASE_ID,
-            PROFILES_COLLECTION_ID,
-            otherUserId
-          );
+        if (otherUserId) {
+          try {
+            const otherUser = await databases.getDocument(
+              DATABASE_ID,
+              PROFILES_COLLECTION_ID,
+              otherUserId
+            );
 
-          enrichedRooms.push({
-            ...room,
-            otherUser: {
-              id: otherUserId,
-              name: otherUser.name || 'User',
-              avatar: otherUser.avatar || '',
-              isOnline: otherUser.isOnline || false,
-            },
-          });
-        } catch (profileError) {
-          console.error('Failed to fetch other user profile:', profileError);
-          enrichedRooms.push({
-            ...room,
-            otherUser: {
-              id: otherUserId,
-              name: 'User',
-              avatar: '',
-              isOnline: false,
-            },
-          });
+            enrichedRooms.push({
+              ...room,
+              otherUser: {
+                id: otherUserId,
+                name: otherUser.name || 'User',
+                avatar: otherUser.avatar || '',
+                isOnline: otherUser.isOnline || false,
+              },
+            });
+          } catch (profileError) {
+            console.error('Failed to fetch other user profile:', profileError);
+            enrichedRooms.push({
+              ...room,
+              otherUser: {
+                id: otherUserId,
+                name: 'User',
+                avatar: '',
+                isOnline: false,
+              },
+            });
+          }
         }
       }
-    }
 
-    return {
-      success: true,
-      rooms: enrichedRooms,
-      total: enrichedRooms.length,
-    };
+      return {
+        success: true,
+        rooms: enrichedRooms,
+        total: enrichedRooms.length,
+      };
+    } catch (e: any) {
+      console.error('[messages/send GET] Error fetching rooms:', e)
+      // Fail gracefully for clients - return empty list instead of 500 where appropriate
+      return {
+        success: true,
+        rooms: [],
+        total: 0,
+      }
+    }
   }, { operation: 'getUserDMRooms' });
 
   if (error) {

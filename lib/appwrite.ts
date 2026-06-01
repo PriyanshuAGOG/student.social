@@ -2362,7 +2362,7 @@ export const chatService = {
   // Subscribe to real-time messages using client subscription
   subscribeToMessages(roomId: string, callback: (message: any) => void) {
     const cleanupFns: Array<() => void> = []
-    const subscribe = (client as any).subscribe
+    const subscribe = typeof (client as any)?.subscribe === 'function' ? (client as any).subscribe.bind(client) : undefined
 
     const pushMessageIfRelevant = (payload: any) => {
       const messageRoomId = payload?.roomId || payload?.data?.roomId
@@ -2416,7 +2416,7 @@ export const chatService = {
 
   subscribeToChatRooms(userId: string, callback: (room: any) => void) {
     const cleanupFns: Array<() => void> = []
-    const subscribe = (client as any).subscribe
+    const subscribe = typeof (client as any)?.subscribe === 'function' ? (client as any).subscribe.bind(client) : undefined
 
     const pushRoomIfRelevant = (payload: any) => {
       const room = payload?.payload || payload?.data || payload
@@ -2638,7 +2638,7 @@ export const presenceService = {
 
   subscribeToPresence(roomId: string, callback: (presence: any) => void) {
     const cleanupFns: Array<() => void> = []
-    const subscribe = (client as any).subscribe
+    const subscribe = typeof (client as any)?.subscribe === 'function' ? (client as any).subscribe.bind(client) : undefined
 
     const pushIfRelevant = (payload: any) => {
       const presence = payload?.payload || payload?.data || payload

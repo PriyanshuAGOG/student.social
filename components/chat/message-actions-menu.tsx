@@ -1,6 +1,6 @@
 "use client"
 
-import { Copy, Edit3, Flag, Pin, Star, Trash2, MoreVertical } from "lucide-react"
+import { Copy, Edit3, Flag, Pin, Star, Trash2, MoreVertical, Zap, Phone } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -33,6 +33,8 @@ interface MessageActionsMenuProps {
   onTogglePin?: (message: ChatMessageActionTarget) => void
   onToggleStar?: (message: ChatMessageActionTarget) => void
   onReport?: (message: ChatMessageActionTarget) => void
+  onRequestSummary?: (message: ChatMessageActionTarget) => void
+  onRequestCallback?: (message: ChatMessageActionTarget) => void
 }
 
 export function MessageActionsMenu({
@@ -46,6 +48,8 @@ export function MessageActionsMenu({
   onTogglePin,
   onToggleStar,
   onReport,
+  onRequestSummary,
+  onRequestCallback,
 }: MessageActionsMenuProps) {
   return (
     <DropdownMenu>
@@ -75,6 +79,18 @@ export function MessageActionsMenu({
           <DropdownMenuItem onSelect={() => onToggleStar(message)}>
             <Star className="mr-2 h-4 w-4" />
             {isStarred ? 'Unstar' : 'Star'}
+          </DropdownMenuItem>
+        )}
+        {onRequestSummary && (
+          <DropdownMenuItem onSelect={() => onRequestSummary(message)}>
+            <Zap className="mr-2 h-4 w-4" />
+            Summarize
+          </DropdownMenuItem>
+        )}
+        {onRequestCallback && (
+          <DropdownMenuItem onSelect={() => onRequestCallback(message)}>
+            <Phone className="mr-2 h-4 w-4" />
+            Request callback
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />

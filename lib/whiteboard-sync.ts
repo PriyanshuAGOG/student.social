@@ -100,7 +100,13 @@ export async function subscribeToWhiteboardUpdates(
   onUpdate: (state: WhiteboardState) => void
 ) {
   try {
-    const unsubscribe = appwrite.client.subscribe(
+    const subscribeFn = typeof appwrite?.client?.subscribe === 'function' ? appwrite.client.subscribe.bind(appwrite.client) : undefined
+    if (!subscribeFn) {
+      console.warn('Appwrite client or subscribe not available for whiteboard updates')
+      return () => {}
+    }
+
+    const unsubscribe = subscribeFn(
       `databases.${process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db'}.collections.pod_whiteboards.documents`,
       (response) => {
         const payload = response.payload as unknown as WhiteboardState

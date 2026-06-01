@@ -29,7 +29,9 @@ import {
 
 const FALLBACK_POD = {
   name: "Loading pod...",
-  description: "",
+      const subscribeFn = typeof client?.subscribe === 'function' ? client.subscribe.bind(client) : undefined
+      if (!subscribeFn || !podId) return
+      const unsubscribe = subscribeFn(channels as any, (event: any) => {
   members: 0,
   rating: 0,
   difficulty: "",
@@ -148,8 +150,9 @@ export default function PodDetailPage() {
   }, [podId, user?.$id])
 
   useEffect(() => {
-    if (!client?.subscribe || !podId) return
-    
+    const subscribeFn = typeof client?.subscribe === 'function' ? client.subscribe.bind(client) : undefined
+    if (!subscribeFn || !podId) return
+
     // Initialize WebSocket manager
     const wsManager = initializeWebSocketManager()
     
@@ -157,7 +160,7 @@ export default function PodDetailPage() {
       `databases.${DATABASE_ID}.collections.${COLLECTIONS.RESOURCES}.documents`,
       `databases.${DATABASE_ID}.collections.${COLLECTIONS.CALENDAR_EVENTS}.documents`,
     ]
-    const unsubscribe = client.subscribe(channels as any, (event: any) => {
+    const unsubscribe = subscribeFn(channels as any, (event: any) => {
       const payload = event?.payload || {}
       if (payload.podId && payload.podId !== podId) return
 
@@ -468,9 +471,10 @@ export default function PodDetailPage() {
     }
     loadReactions()
 
-    if (client?.subscribe) {
+    const subscribeFn = typeof client?.subscribe === 'function' ? client.subscribe.bind(client) : undefined
+    if (subscribeFn) {
       const wsManager = getWebSocketManager()
-      const unsubscribe = client.subscribe(
+      const unsubscribe = subscribeFn(
         [`databases.${DATABASE_ID}.collections.pod_reactions.documents`],
         () => loadReactions()
       )
@@ -531,7 +535,8 @@ export default function PodDetailPage() {
   }, [resources, resourceFilter, selectedTag, resourceSearch])
 
   useEffect(() => {
-    if (!client?.subscribe) return
+    const subscribeFn = typeof client?.subscribe === 'function' ? client.subscribe.bind(client) : undefined
+    if (!subscribeFn) return
     const memberSet = new Set(
       Array.isArray(pod.members)
         ? pod.members
@@ -542,7 +547,7 @@ export default function PodDetailPage() {
     if (memberSet.size === 0) return
 
     const wsManager = getWebSocketManager()
-    const unsubscribe = client.subscribe(
+    const unsubscribe = subscribeFn(
       [`databases.${DATABASE_ID}.collections.${COLLECTIONS.PROFILES}.documents`],
       (event: any) => {
         const payload = event?.payload || {}
