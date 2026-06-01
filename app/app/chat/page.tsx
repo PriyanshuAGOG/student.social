@@ -13,63 +13,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Send, Search, Phone, Video, MoreVertical, Users, Hash, Plus, Smile, Paperclip, ImageIcon, Calendar, Settings, MessageSquare, X, Menu, ArrowLeft, AtSign, Mic, Loader2, Reply, CornerUpLeft, WifiOff, RefreshCw } from 'lucide-react'
 import {
   DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { toast } from "@/hooks/use-toast"
-import { useRouter, useSearchParams } from "next/navigation"
-import { callService, chatService } from "@/lib/appwrite"
-import { attachReplyTargets, formatChatTimestamp, normalizeChatRooms } from "@/lib/chat-domain"
-import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
-import { MessageActionsMenu } from "@/components/chat/message-actions-menu"
-import { useAuth } from "@/lib/auth-context"
-import { announceToScreenReader } from "@/lib/accessibility-utils"
-import { useChatPresence } from "@/hooks/use-chat-presence"
-import { createOutboxMessage, mergeChatMessages, useChatOutbox } from "@/hooks/use-chat-outbox"
-
-interface ChatRoom {
-  $id: string
-  name?: string
-  type: "pod" | "direct"
-  avatar?: string
-  lastMessage?: string
-  lastMessageTime?: string
-  unreadCount?: number
-  isOnline?: boolean
-  participants?: string[]
-  podId?: string
-}
-
-interface Message {
-  $id: string
-  content: string
-  authorId: string
-  authorName?: string
-  authorAvatar?: string
-  timestamp: string
-  type: "text" | "image" | "file" | "system"
-  fileUrl?: string
-  fileName?: string
-  isEdited?: boolean
-  mentions?: string[]
-  readBy?: string[]
-  replyTo?: string | null
-  replyToMessage?: Message | null
-  clientMessageId?: string
-  deliveryState?: string
-  errorMessage?: string | null
-  metadata?: Record<string, any>
-  deletedAt?: string | null
-}
-
-export default function ChatPage() {
-  const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null)
-  const [rooms, setRooms] = useState<ChatRoom[]>([])
-  const [messages, setMessages] = useState<Message[]>([])
-  const [inputValue, setInputValue] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingRooms, setIsLoadingRooms] = useState(true)
@@ -88,6 +31,7 @@ export default function ChatPage() {
   const { user } = useAuth()
   const { presenceEntries, isSomeoneTyping, setTyping } = useChatPresence(selectedRoom?.$id || "", user?.$id)
   const { outboxMessages, queueMessage, markMessageSending, markMessageFailed, removeMessage } = useChatOutbox(selectedRoom?.$id || "")
+  const { latestTask: latestSummaryTask, isLoading: isLoadingSummaryTasks, error: summaryTaskError } = useAiSummaryTasks(selectedRoom?.$id || "")
 
   useEffect(() => {
     const routeRoomId = searchParams.get("room")
@@ -227,7 +171,7 @@ export default function ChatPage() {
     const original = inputValue.trim()
     const replyToId = replyingTo?.$id || null
     const senderName = user.name || "You"
-    const senderAvatar = user?.avatar || "/placeholder.svg"
+    const senderAvatar = (user as any)?.avatar || "/placeholder.svg"
     const optimisticMessage = createOutboxMessage({
       roomId: selectedRoom.$id,
       authorId: user.$id,
@@ -325,7 +269,7 @@ export default function ChatPage() {
     setIsLoading(true)
     try {
       const retrySenderName = user.name || "You"
-      const retrySenderAvatar = user?.avatar || "/placeholder.svg"
+      const retrySenderAvatar = (user as any)?.avatar || "/placeholder.svg"
       const msg = await chatService.sendMessage(selectedRoom.$id, user.$id, message.content, "text", {
         replyTo: message.replyTo || null,
         clientMessageId: message.clientMessageId,
@@ -350,7 +294,7 @@ export default function ChatPage() {
 
   const isImageMessage = (message: Message) => Boolean(message.fileUrl && /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(message.fileUrl))
 
-  const handleCopyMessage = async (message: Message) => {
+  const handleCopyMessage = async (message: ChatMessageActionTarget) => {
     try {
       await navigator.clipboard.writeText(message.content)
       toast({ title: "Copied", description: "Message copied to clipboard." })
@@ -359,7 +303,7 @@ export default function ChatPage() {
     }
   }
 
-  const handleEditMessage = async (message: Message) => {
+  const handleEditMessage = async (message: ChatMessageActionTarget) => {
     const nextContent = window.prompt("Edit message", message.content)
     if (nextContent === null) return
     const trimmed = nextContent.trim()
@@ -373,7 +317,7 @@ export default function ChatPage() {
     }
   }
 
-  const handleDeleteMessage = async (message: Message) => {
+  const handleDeleteMessage = async (message: ChatMessageActionTarget) => {
     if (!window.confirm("Delete this message?")) return
 
     try {
@@ -384,7 +328,7 @@ export default function ChatPage() {
     }
   }
 
-  const handleTogglePin = async (message: Message) => {
+  const handleTogglePin = async (message: ChatMessageActionTarget) => {
     try {
       const updated = await chatService.updateMessage(message.$id, "pin")
       updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
@@ -393,7 +337,7 @@ export default function ChatPage() {
     }
   }
 
-  const handleToggleStar = async (message: Message) => {
+  const handleToggleStar = async (message: ChatMessageActionTarget) => {
     try {
       const updated = await chatService.updateMessage(message.$id, "star")
       updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
@@ -402,12 +346,67 @@ export default function ChatPage() {
     }
   }
 
-  const handleReportMessage = async (message: Message) => {
+  const handleReportMessage = async (message: ChatMessageActionTarget) => {
     try {
       await chatService.reportMessage(message.$id, user?.$id || "", "policy_violation", `Reported from room ${selectedRoom?.name || selectedRoom?.$id || 'conversation'}`)
       toast({ title: "Reported", description: "The message has been sent for review." })
     } catch (error: any) {
       toast({ title: "Report failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
+  const handleRequestSummary = async (message: ChatMessageActionTarget) => {
+    if (!selectedRoom || !user?.$id) return
+
+    try {
+      const response = await fetch("/api/ai/summaries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ roomId: selectedRoom.$id, messageIds: [message.$id], requestedBy: user.$id }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || `Failed to queue summary (${response.status})`)
+      }
+
+      const task = payload.task
+      toast({
+        title: "Summary queued",
+        description: task?.$id ? `Task #${String(task.$id).slice(-6)} is ${task.status || "queued"}.` : "Processing in the background.",
+      })
+    } catch (error: any) {
+      toast({ title: "Summary request failed", description: error?.message || "Please try again.", variant: "destructive" })
+    }
+  }
+
+  const handleRequestCallback = async (message: ChatMessageActionTarget) => {
+    if (!selectedRoom || !user?.$id) return
+
+    try {
+      const response = await fetch("/api/calls/callback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ fromUserId: user.$id, toUserId: message.authorId, roomId: selectedRoom.$id, reason: "Requested from chat" }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || `Failed to create callback (${response.status})`)
+      }
+
+      const joinUrl = payload.joinUrl || payload.session?.joinUrl
+      if (joinUrl && typeof window !== "undefined") {
+        const opened = window.open(joinUrl, "_blank", "noopener,noreferrer")
+        if (!opened) router.push(joinUrl)
+      }
+
+      toast({
+        title: "Callback ready",
+        description: joinUrl ? "Opened the call UI in a new tab." : "The recipient was notified.",
+      })
+    } catch (error: any) {
+      toast({ title: "Callback failed", description: error?.message || "Please try again.", variant: "destructive" })
     }
   }
 
@@ -993,6 +992,10 @@ export default function ChatPage() {
               </div>
             )}
 
+            <div className="px-4 pt-3">
+              <SummaryTaskStatus task={latestSummaryTask} isLoading={isLoadingSummaryTasks} error={summaryTaskError} />
+            </div>
+
             {/* Messages */}
             <div className="flex-1 overflow-hidden relative">
               <ScrollArea className="h-full">
@@ -1001,16 +1004,17 @@ export default function ChatPage() {
                     <div className="py-10 text-center text-sm text-muted-foreground">
                       No messages match your search.
                     </div>
-                  ) : visibleMessages.map((message) => {
-                  const isCurrent = message.authorId === user?.$id
-                  const isAI = message.authorId === "ai"
-                  const bubbleClass = isCurrent
-                    ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md"
-                    : isAI
-                      ? "bg-blue-100 dark:bg-blue-900/20 text-blue-900 dark:text-blue-100 rounded-2xl rounded-bl-md border border-blue-200 dark:border-blue-800"
-                      : "bg-muted rounded-2xl rounded-bl-md"
+                  ) : visibleMessages.map((rawMessage) => {
+                    const message = rawMessage as Message
+                    const isCurrent = message.authorId === user?.$id
+                    const isAI = message.authorId === "ai"
+                    const bubbleClass = isCurrent
+                      ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md"
+                      : isAI
+                        ? "bg-blue-100 dark:bg-blue-900/20 text-blue-900 dark:text-blue-100 rounded-2xl rounded-bl-md border border-blue-200 dark:border-blue-800"
+                        : "bg-muted rounded-2xl rounded-bl-md"
 
-                  return (
+                    return (
                     <div
                       key={message.$id}
                       className={`flex gap-3 group ${isCurrent ? "justify-end" : "justify-start"}`}
@@ -1043,7 +1047,7 @@ export default function ChatPage() {
                               variant="ghost"
                               size="sm"
                               className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => setReplyingTo(message)}
+                              onClick={() => setReplyingTo(message as Message)}
                               title="Reply"
                             >
                               <Reply className="h-3 w-3" />
@@ -1124,7 +1128,7 @@ export default function ChatPage() {
                             <div className="mt-2 flex items-center justify-between gap-2">
                               <button
                                 className="text-[11px] font-medium opacity-70 hover:opacity-100"
-                                onClick={() => setReplyingTo(message)}
+                                onClick={() => setReplyingTo(message as Message)}
                               >
                                 Reply
                               </button>
@@ -1302,69 +1306,6 @@ export default function ChatPage() {
                 </>
               )}
             </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">No conversations yet</h3>
-                  <p className="text-muted-foreground">Join a pod or start a direct message to begin chatting</p>
-                </>
-              ) : (
-                <>
-                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">Select a conversation</h3>
-                  <p className="text-muted-foreground">Choose a chat from the sidebar to start messaging</p>
-                  <div className="mt-4 md:hidden">
-                    <Button variant="outline" onClick={() => setShowMobileChatList(true)}>
-                      Open chat list
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">Select a conversation</h3>
-                  <p className="text-muted-foreground">Choose a chat from the sidebar to start messaging</p>
-                  <div className="mt-4 md:hidden">
-                    <Button variant="outline" onClick={() => setShowMobileChatList(true)}>
-                      Open chat list
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
           </div>
         )}
       </div>

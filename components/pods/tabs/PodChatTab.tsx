@@ -17,7 +17,7 @@ import { Send, MessageSquare, Loader2, Users, Reply, X, Clock3, Search } from "l
 import { chatService, profileService } from "@/lib/appwrite"
 import { attachReplyTargets, formatChatTimestamp, normalizeChatMessage } from "@/lib/chat-domain"
 import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
-import { MessageActionsMenu } from "@/components/chat/message-actions-menu"
+import { MessageActionsMenu, type ChatMessageActionTarget } from "@/components/chat/message-actions-menu"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
 import { useChatPresence } from "@/hooks/use-chat-presence"
@@ -31,6 +31,10 @@ interface Message {
   authorAvatar?: string
   timestamp: string
   type: string
+  fileUrl?: string | null
+  fileName?: string | null
+  fileSize?: number | null
+  clientMessageId?: string
   replyTo?: string | null
   replyToMessage?: Message | null
   readBy?: string[]
@@ -288,7 +292,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
     }
   }
 
-  const handleCopyMessage = async (message: Message) => {
+  const handleCopyMessage = async (message: ChatMessageActionTarget) => {
     try {
       await navigator.clipboard.writeText(message.content)
       toast({ title: "Copied", description: "Message copied to clipboard." })
@@ -297,7 +301,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
     }
   }
 
-  const handleEditMessage = async (message: Message) => {
+  const handleEditMessage = async (message: ChatMessageActionTarget) => {
     const nextContent = window.prompt("Edit message", message.content)
     if (nextContent === null) return
     const trimmed = nextContent.trim()
@@ -311,7 +315,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
     }
   }
 
-  const handleDeleteMessage = async (message: Message) => {
+  const handleDeleteMessage = async (message: ChatMessageActionTarget) => {
     if (!window.confirm("Delete this message?")) return
 
     try {
@@ -322,7 +326,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
     }
   }
 
-  const handleTogglePin = async (message: Message) => {
+  const handleTogglePin = async (message: ChatMessageActionTarget) => {
     try {
       const updated = await chatService.updateMessage(message.$id, "pin")
       updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
@@ -331,7 +335,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
     }
   }
 
-  const handleToggleStar = async (message: Message) => {
+  const handleToggleStar = async (message: ChatMessageActionTarget) => {
     try {
       const updated = await chatService.updateMessage(message.$id, "star")
       updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
@@ -340,7 +344,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
     }
   }
 
-  const handleReportMessage = async (message: Message) => {
+  const handleReportMessage = async (message: ChatMessageActionTarget) => {
     try {
       await chatService.reportMessage(message.$id, user?.$id || "", "policy_violation", `Reported from pod chat ${podName}`)
       toast({ title: "Reported", description: "The message has been sent for review." })
@@ -384,6 +388,9 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                 <Badge variant="outline" className="text-[10px]">Updating…</Badge>
               )}
             </div>
+            <Button variant="ghost" size="sm" onClick={() => setShowCallHistory(true)} disabled={!chatRoomId}>
+              <Clock3 className="w-4 h-4" />
+            </Button>
           </div>
           <div className="relative mt-3">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -410,7 +417,8 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                   <p className="text-sm text-muted-foreground">{messages.length === 0 ? "No messages yet. Start the conversation!" : "No messages match your search."}</p>
                 </div>
               ) : (
-                visibleMergedMessages.map((message) => {
+                visibleMergedMessages.map((rawMessage) => {
+                  const message = rawMessage as Message
                   const isCurrent = message.authorId === user?.$id
                   const isSystem = message.authorId === "system" || message.type === "system"
                   const messageMetadata = (message as any).metadata || {}
@@ -430,14 +438,9 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                   return (
                     <div
                       key={message.$id}
-                  <div className="flex items-center gap-2">
-                    {isSyncing && !isLoading && (
-                      <Badge variant="outline" className="text-[10px]">Updating…</Badge>
-                    )}
-                    <Button variant="ghost" size="sm" onClick={() => setShowCallHistory(true)} disabled={!chatRoomId}>
-                      <Clock3 className="w-4 h-4" />
-                    </Button>
-                  </div>
+                      className={`group flex gap-3 ${isCurrent ? "justify-end" : "justify-start"}`}
+                    >
+                      {!isCurrent && (
                         <Avatar className="h-8 w-8 shrink-0">
                           <AvatarImage src={message.authorAvatar || "/placeholder.svg"} />
                           <AvatarFallback>{(message.authorName || "U").slice(0, 2).toUpperCase()}</AvatarFallback>
@@ -579,20 +582,5 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
         onOpenChange={setShowCallHistory}
       />
     </div>
-  )
-}
-  )
-}
-      </Card>
-
-      <CallHistoryDialog
-        roomId={chatRoomId}
-        roomName={`${podName} Chat`}
-        open={showCallHistory}
-        onOpenChange={setShowCallHistory}
-      />
-    </div>
-  )
-}
   )
 }

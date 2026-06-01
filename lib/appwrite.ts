@@ -2208,6 +2208,7 @@ export const chatService = {
       fileUrl?: string
       fileName?: string
       fileSize?: number
+      clientMessageId?: string
     } = "text",
     metadata: {
       senderName?: string
