@@ -19,8 +19,10 @@ import { attachReplyTargets, formatChatTimestamp, normalizeChatMessage } from "@
 import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
 import { MessageActionsMenu, type ChatMessageActionTarget } from "@/components/chat/message-actions-menu"
 import { SummaryTaskStatus } from "@/components/chat/summary-task-status"
+import { SummaryViewer } from "@/components/chat/summary-viewer"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
+import { ToastAction } from "@/components/ui/toast"
 import { useChatPresence } from "@/hooks/use-chat-presence"
 import { createOutboxMessage, mergeChatMessages, useChatOutbox } from "@/hooks/use-chat-outbox"
 import { useAiSummaryTasks } from "@/hooks/use-ai-summary-tasks"
@@ -67,6 +69,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
   const { isSomeoneTyping, otherTypingCount, setTyping } = useChatPresence(chatRoomId, user?.$id)
   const { outboxMessages, queueMessage, markMessageSending, markMessageFailed, removeMessage } = useChatOutbox(chatRoomId)
   const { latestTask: latestSummaryTask, isLoading: isLoadingSummaryTasks, error: summaryTaskError } = useAiSummaryTasks(chatRoomId)
+  const [previewTaskId, setPreviewTaskId] = useState<string | null>(null)
   const prevSummaryStatusRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -389,10 +392,31 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
       }
 
       const task = payload.task
-      toast({
-        title: "Summary queued",
-        description: task?.$id ? `Task #${String(task.$id).slice(-6)} is ${task.status || "queued"}.` : "Processing in the background.",
-      })
+        setPreviewTaskId(task?.$id || null)
+        // optimistic placeholder
+        setMessages((prev) => [
+          ...prev,
+          {
+            $id: `ai_task_${task.$id}`,
+            authorId: 'system',
+            authorName: 'AI',
+            authorAvatar: '',
+            content: `AI summary queued — preview available.`,
+            timestamp: new Date().toISOString(),
+            type: 'system',
+            metadata: { aiTaskId: task.$id },
+          },
+        ])
+
+        toast({
+          title: "Summary queued",
+          description: task?.$id ? `Task #${String(task.$id).slice(-6)} is ${task.status || "queued"}.` : "Processing in the background.",
+          action: task?.$id ? (
+            <ToastAction asChild altText="Open summary">
+                  <a href={`/ai/summaries/${encodeURIComponent(task.$id)}`} target="_blank" rel="noreferrer">Open</a>
+                </ToastAction>
+          ) : undefined,
+        })
     } catch (error: any) {
       toast({ title: "Summary request failed", description: error?.message || "Please try again.", variant: "destructive" })
     }
@@ -477,6 +501,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
             />
           </div>
           <SummaryTaskStatus task={latestSummaryTask} isLoading={isLoadingSummaryTasks} error={summaryTaskError} className="mt-3" />
+          <SummaryViewer taskId={previewTaskId} autoOpen />
         </CardHeader>
 
         {/* Messages */}

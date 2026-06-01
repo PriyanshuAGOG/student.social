@@ -29,9 +29,6 @@ import {
 
 const FALLBACK_POD = {
   name: "Loading pod...",
-      const subscribeFn = typeof client?.subscribe === 'function' ? client.subscribe.bind(client) : undefined
-      if (!subscribeFn || !podId) return
-      const unsubscribe = subscribeFn(channels as any, (event: any) => {
   members: 0,
   rating: 0,
   difficulty: "",

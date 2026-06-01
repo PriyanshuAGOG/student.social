@@ -18,6 +18,8 @@ import { attachReplyTargets, formatChatTimestamp, normalizeChatMessage } from "@
 import { useToast } from "@/hooks/use-toast"
 import { useChatPresence } from "@/hooks/use-chat-presence"
 import { useAiSummaryTasks } from "@/hooks/use-ai-summary-tasks"
+import { SummaryViewer } from "@/components/chat/summary-viewer"
+import { ToastAction } from "@/components/ui/toast"
 
 interface Message {
   $id: string
@@ -61,6 +63,7 @@ export default function DirectMessagePage() {
   const endRef = useRef<HTMLDivElement>(null)
   const { presenceEntries, isSomeoneTyping, setTyping } = useChatPresence(roomId, user?.$id)
   const { latestTask: latestSummaryTask, isLoading: isLoadingSummaryTasks, error: summaryTaskError } = useAiSummaryTasks(roomId)
+  const [previewTaskId, setPreviewTaskId] = useState<string | null>(null)
   const prevSummaryStatusRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -84,6 +87,8 @@ export default function DirectMessagePage() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  
 
   useEffect(() => {
     if (!inputValue.trim()) {
@@ -372,11 +377,31 @@ export default function DirectMessagePage() {
       if (!response.ok || !payload?.success) {
         throw new Error(payload?.error || `Failed to queue summary (${response.status})`)
       }
-
       const task = payload.task
+      setPreviewTaskId(task?.$id || null)
+      // optimistic inline placeholder
+      setMessages((prev) => [
+        ...prev,
+        {
+          $id: `ai_task_${task.$id}`,
+          authorId: 'system',
+          authorName: 'AI',
+          authorAvatar: '',
+          content: `AI summary queued — preview available.`,
+          timestamp: new Date().toISOString(),
+          type: 'system',
+          metadata: { aiTaskId: task.$id },
+        },
+      ])
+
       toast({
         title: "Summary queued",
         description: task?.$id ? `Task #${String(task.$id).slice(-6)} is ${task.status || "queued"}.` : "Processing in the background.",
+        action: task?.$id ? (
+          <ToastAction asChild altText="Open summary">
+            <a href={`/ai/summaries/${encodeURIComponent(task.$id)}`} target="_blank" rel="noreferrer">Open</a>
+          </ToastAction>
+        ) : undefined,
       })
     } catch (error: any) {
       toast({ title: "Summary request failed", description: error?.message || "Try again", variant: "destructive" })
@@ -447,6 +472,7 @@ export default function DirectMessagePage() {
 
       <div className="px-4 pt-3 max-w-4xl mx-auto">
         <SummaryTaskStatus task={latestSummaryTask} isLoading={isLoadingSummaryTasks} error={summaryTaskError} />
+        <SummaryViewer taskId={previewTaskId} autoOpen />
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-6">

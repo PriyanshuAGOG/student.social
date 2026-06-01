@@ -20,8 +20,17 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
+import { ToastAction } from "@/components/ui/toast"
+import { SummaryViewer } from "@/components/chat/summary-viewer"
 import { useRouter, useSearchParams } from "next/navigation"
-import { chatService, profileService } from "@/lib/appwrite"
+import { chatService, profileService, callService } from "@/lib/appwrite"
+import { attachReplyTargets, normalizeChatRooms, formatChatTimestamp, type ChatRoomType } from "@/lib/chat-domain"
+import { SummaryTaskStatus } from "@/components/chat/summary-task-status"
+import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
+import { MessageActionsMenu, type ChatMessageActionTarget } from "@/components/chat/message-actions-menu"
+import { useChatPresence } from "@/hooks/use-chat-presence"
+import { createOutboxMessage, mergeChatMessages, useChatOutbox } from "@/hooks/use-chat-outbox"
+import { useAiSummaryTasks } from "@/hooks/use-ai-summary-tasks"
 import { useAuth } from "@/lib/auth-context"
 import { announceToScreenReader } from "@/lib/accessibility-utils"
 export default function ChatPage() {
@@ -43,10 +52,50 @@ const router = useRouter()
 const searchParams = useSearchParams()
 const { user } = useAuth()
 const { toast } = useToast()
+
+interface ChatRoom {
+  $id: string
+  name?: string
+  type: ChatRoomType
+  avatar?: string
+  lastMessage?: string
+  lastMessageTime?: string
+  unreadCount?: number
+  isOnline?: boolean
+  participants?: string[]
+  podId?: string | null
+}
+
+interface Message {
+  $id: string
+  content: string
+  authorId: string
+  authorName?: string
+  authorAvatar?: string
+  timestamp: string
+  type?: string
+  replyTo?: string | null
+  replyToMessage?: Message | null
+  isEdited?: boolean
+  fileUrl?: string | null
+  fileName?: string | null
+  clientMessageId?: string
+  readBy?: string[]
+  metadata?: Record<string, any>
+  deletedAt?: string | null
+  deliveryState?: string
+}
+
+const [rooms, setRooms] = useState<ChatRoom[]>([])
+const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null)
+const [messages, setMessages] = useState<Message[]>([])
+const [inputValue, setInputValue] = useState("")
+
 const { presenceEntries, isSomeoneTyping, setTyping } = useChatPresence(selectedRoom?.$id || "", user?.$id)
 const { outboxMessages, queueMessage, markMessageSending, markMessageFailed, removeMessage } = useChatOutbox(selectedRoom?.$id || "")
 const { latestTask: latestSummaryTask, isLoading: isLoadingSummaryTasks, error: summaryTaskError } = useAiSummaryTasks(selectedRoom?.$id || "")
 const prevSummaryStatusRef = useRef<string | null>(null)
+  const [previewTaskId, setPreviewTaskId] = useState<string | null>(null)
 
   useEffect(() => {
     const task = latestSummaryTask
@@ -230,7 +279,7 @@ const prevSummaryStatusRef = useRef<string | null>(null)
         authorId: user.$id,
         authorName: senderName,
         authorAvatar: senderAvatar,
-        timestamp: msg.timestamp || msg.$createdAt || new Date().toISOString(),
+        timestamp: msg.timestamp || (msg as any).$createdAt || new Date().toISOString(),
         replyToMessage: replyingTo,
       }
       removeMessage(clientMessageId)
@@ -402,9 +451,30 @@ const prevSummaryStatusRef = useRef<string | null>(null)
       }
 
       const task = payload.task
+      setPreviewTaskId(task?.$id || null)
+      // optimistic inline placeholder message
+      setMessages((prev) => [
+        ...prev,
+        {
+          $id: `ai_task_${task.$id}`,
+          authorId: 'system',
+          authorName: 'AI',
+          authorAvatar: '',
+          content: `AI summary queued — preview available.`,
+          timestamp: new Date().toISOString(),
+          type: 'system',
+          metadata: { aiTaskId: task.$id },
+        },
+      ])
+
       toast({
         title: "Summary queued",
         description: task?.$id ? `Task #${String(task.$id).slice(-6)} is ${task.status || "queued"}.` : "Processing in the background.",
+        action: task?.$id ? (
+          <ToastAction asChild altText="Open summary">
+            <a href={`/ai/summaries/${encodeURIComponent(task.$id)}`} target="_blank" rel="noreferrer">Open</a>
+          </ToastAction>
+        ) : undefined,
       })
     } catch (error: any) {
       toast({ title: "Summary request failed", description: error?.message || "Please try again.", variant: "destructive" })
@@ -1025,6 +1095,7 @@ const prevSummaryStatusRef = useRef<string | null>(null)
 
             <div className="px-4 pt-3">
               <SummaryTaskStatus task={latestSummaryTask} isLoading={isLoadingSummaryTasks} error={summaryTaskError} />
+              <SummaryViewer taskId={previewTaskId} autoOpen />
             </div>
 
             {/* Messages */}
