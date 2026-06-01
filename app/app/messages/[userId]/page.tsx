@@ -11,11 +11,13 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { ArrowLeft, Clock3, Loader2, MessageSquare, Phone, Search, Send, User, Video } from "lucide-react"
 import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
 import { MessageActionsMenu, type ChatMessageActionTarget } from "@/components/chat/message-actions-menu"
+import { SummaryTaskStatus } from "@/components/chat/summary-task-status"
 import { useAuth } from "@/lib/auth-context"
 import { callService, chatService, profileService } from "@/lib/appwrite"
 import { attachReplyTargets, formatChatTimestamp, normalizeChatMessage } from "@/lib/chat-domain"
 import { useToast } from "@/hooks/use-toast"
 import { useChatPresence } from "@/hooks/use-chat-presence"
+import { useAiSummaryTasks } from "@/hooks/use-ai-summary-tasks"
 
 interface Message {
   $id: string
@@ -58,6 +60,7 @@ export default function DirectMessagePage() {
   const [messageSearchQuery, setMessageSearchQuery] = useState("")
   const endRef = useRef<HTMLDivElement>(null)
   const { presenceEntries, isSomeoneTyping, setTyping } = useChatPresence(roomId, user?.$id)
+  const { latestTask: latestSummaryTask, isLoading: isLoadingSummaryTasks, error: summaryTaskError } = useAiSummaryTasks(roomId)
 
   const scrollToBottom = () => endRef.current?.scrollIntoView({ behavior: "smooth" })
 
@@ -338,6 +341,61 @@ export default function DirectMessagePage() {
     }
   }
 
+  const handleRequestSummary = async (message: ChatMessageActionTarget) => {
+    if (!roomId || !user?.$id) return
+
+    try {
+      const response = await fetch("/api/ai/summaries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ roomId, messageIds: [message.$id], requestedBy: user.$id }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || `Failed to queue summary (${response.status})`)
+      }
+
+      const task = payload.task
+      toast({
+        title: "Summary queued",
+        description: task?.$id ? `Task #${String(task.$id).slice(-6)} is ${task.status || "queued"}.` : "Processing in the background.",
+      })
+    } catch (error: any) {
+      toast({ title: "Summary request failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
+  const handleRequestCallback = async (message: ChatMessageActionTarget) => {
+    if (!roomId || !user?.$id) return
+
+    try {
+      const response = await fetch("/api/calls/callback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ fromUserId: user.$id, toUserId: message.authorId, roomId, reason: "Requested from DM" }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || `Failed to create callback (${response.status})`)
+      }
+
+      const joinUrl = payload.joinUrl || payload.session?.joinUrl
+      if (joinUrl && typeof window !== "undefined") {
+        const opened = window.open(joinUrl, "_blank", "noopener,noreferrer")
+        if (!opened) router.push(joinUrl)
+      }
+
+      toast({
+        title: "Callback ready",
+        description: joinUrl ? "Opened the call UI in a new tab." : "The recipient was notified.",
+      })
+    } catch (error: any) {
+      toast({ title: "Callback failed", description: error?.message || "Try again", variant: "destructive" })
+    }
+  }
+
   if (!user?.$id) {
     return null
   }
@@ -368,6 +426,10 @@ export default function DirectMessagePage() {
         <Button variant="ghost" size="icon" onClick={() => startCall('video')} disabled={isStartingCall || isLoading} title="Video call">
           <Video className="w-4 h-4" />
         </Button>
+      </div>
+
+      <div className="px-4 pt-3 max-w-4xl mx-auto">
+        <SummaryTaskStatus task={latestSummaryTask} isLoading={isLoadingSummaryTasks} error={summaryTaskError} />
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-6">
@@ -472,16 +534,8 @@ export default function DirectMessagePage() {
                                 onTogglePin={handleTogglePin}
                                 onToggleStar={handleToggleStar}
                                 onReport={handleReportMessage}
-                                onRequestSummary={async (m) => {
-                                  try {
-                                    await fetch('/api/ai/summaries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: roomId, messageIds: [m.$id], requestedBy: user?.$id }) })
-                                  } catch (e) { console.warn(e) }
-                                }}
-                                onRequestCallback={async (m) => {
-                                  try {
-                                    await fetch('/api/calls/callback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fromUserId: user?.$id, toUserId: m.authorId, roomId }) })
-                                  } catch (e) { console.warn(e) }
-                                }}
+                                onRequestSummary={handleRequestSummary}
+                                onRequestCallback={handleRequestCallback}
                               />
                             </div>
                           </div>

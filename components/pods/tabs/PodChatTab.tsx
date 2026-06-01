@@ -18,10 +18,12 @@ import { chatService, profileService } from "@/lib/appwrite"
 import { attachReplyTargets, formatChatTimestamp, normalizeChatMessage } from "@/lib/chat-domain"
 import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
 import { MessageActionsMenu, type ChatMessageActionTarget } from "@/components/chat/message-actions-menu"
+import { SummaryTaskStatus } from "@/components/chat/summary-task-status"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
 import { useChatPresence } from "@/hooks/use-chat-presence"
 import { createOutboxMessage, mergeChatMessages, useChatOutbox } from "@/hooks/use-chat-outbox"
+import { useAiSummaryTasks } from "@/hooks/use-ai-summary-tasks"
 
 interface Message {
   $id: string
@@ -64,6 +66,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
   const { toast } = useToast()
   const { isSomeoneTyping, otherTypingCount, setTyping } = useChatPresence(chatRoomId, user?.$id)
   const { outboxMessages, queueMessage, markMessageSending, markMessageFailed, removeMessage } = useChatOutbox(chatRoomId)
+  const { latestTask: latestSummaryTask, isLoading: isLoadingSummaryTasks, error: summaryTaskError } = useAiSummaryTasks(chatRoomId)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -353,6 +356,61 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
     }
   }
 
+  const handleRequestSummary = async (message: ChatMessageActionTarget) => {
+    if (!chatRoomId || !user?.$id) return
+
+    try {
+      const response = await fetch("/api/ai/summaries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ roomId: chatRoomId, messageIds: [message.$id], requestedBy: user.$id }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || `Failed to queue summary (${response.status})`)
+      }
+
+      const task = payload.task
+      toast({
+        title: "Summary queued",
+        description: task?.$id ? `Task #${String(task.$id).slice(-6)} is ${task.status || "queued"}.` : "Processing in the background.",
+      })
+    } catch (error: any) {
+      toast({ title: "Summary request failed", description: error?.message || "Please try again.", variant: "destructive" })
+    }
+  }
+
+  const handleRequestCallback = async (message: ChatMessageActionTarget) => {
+    if (!chatRoomId || !user?.$id) return
+
+    try {
+      const response = await fetch("/api/calls/callback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ fromUserId: user.$id, toUserId: message.authorId, roomId: chatRoomId, reason: "Requested from pod chat" }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || `Failed to create callback (${response.status})`)
+      }
+
+      const joinUrl = payload.joinUrl || payload.session?.joinUrl
+      if (joinUrl && typeof window !== "undefined") {
+        const opened = window.open(joinUrl, "_blank", "noopener,noreferrer")
+        if (!opened) window.location.href = joinUrl
+      }
+
+      toast({
+        title: "Callback ready",
+        description: joinUrl ? "Opened the call UI in a new tab." : "The recipient was notified.",
+      })
+    } catch (error: any) {
+      toast({ title: "Callback failed", description: error?.message || "Please try again.", variant: "destructive" })
+    }
+  }
+
   const onlineCount = members.filter(m => m.isOnline).length
 
   return (
@@ -401,6 +459,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
               className="pl-10"
             />
           </div>
+          <SummaryTaskStatus task={latestSummaryTask} isLoading={isLoadingSummaryTasks} error={summaryTaskError} className="mt-3" />
         </CardHeader>
 
         {/* Messages */}
@@ -517,16 +576,8 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                             onTogglePin={handleTogglePin}
                             onToggleStar={handleToggleStar}
                             onReport={handleReportMessage}
-                            onRequestSummary={async (m) => {
-                              try {
-                                await fetch('/api/ai/summaries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: roomId, messageIds: [m.$id], requestedBy: user?.$id }) })
-                              } catch (e) { console.warn(e) }
-                            }}
-                            onRequestCallback={async (m) => {
-                              try {
-                                await fetch('/api/calls/callback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fromUserId: user?.$id, toUserId: m.authorId, roomId }) })
-                              } catch (e) { console.warn(e) }
-                            }}
+                            onRequestSummary={handleRequestSummary}
+                            onRequestCallback={handleRequestCallback}
                           />
                         </div>
                       </div>

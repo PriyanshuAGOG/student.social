@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 
+function buildJoinUrl(sessionId: string): string {
+  return `https://meet.jit.si/student-social-${sessionId.replace(/[^a-zA-Z0-9_-]/g, '')}`
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -12,6 +16,10 @@ export async function POST(request: NextRequest) {
 
     const { databases } = await createAdminClient()
 
+    const startedAt = new Date().toISOString()
+    const providerSessionId = `student-social-callback-${Date.now()}`
+    const joinUrl = buildJoinUrl(providerSessionId)
+
     const doc = await databases.createDocument(
       process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db',
       process.env.NEXT_PUBLIC_CALL_SESSIONS_COLLECTION_ID || 'call_sessions',
@@ -19,13 +27,16 @@ export async function POST(request: NextRequest) {
       {
         roomId: roomId || null,
         callerId: fromUserId,
-        participantIds: JSON.stringify([fromUserId, toUserId]),
+        participantIds: [fromUserId, toUserId],
+        mediaType: 'voice',
         state: 'ringing',
         provider: 'jitsi',
-        providerSessionId: `call-${Date.now()}`,
-        joinUrl: `/app/calls/${Date.now()}`,
-        startedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
+        providerSessionId,
+        joinUrl,
+        startedAt,
+        createdAt: startedAt,
+        lastActivityAt: startedAt,
+        ringTimeoutAt: new Date(Date.now() + 60_000).toISOString(),
         metadata: { reason: reason || null },
       }
     )
@@ -42,15 +53,15 @@ export async function POST(request: NextRequest) {
           actor: fromUserId,
           message: 'You have a callback request',
           isRead: false,
-          timestamp: new Date().toISOString(),
-          actionUrl: `/app/calls/${doc.$id}`,
+          timestamp: startedAt,
+          actionUrl: joinUrl,
         }
       )
     } catch (notifErr) {
       console.warn('Failed to create callback notification', notifErr)
     }
 
-    return NextResponse.json({ success: true, session: doc }, { status: 201 })
+    return NextResponse.json({ success: true, session: doc, joinUrl }, { status: 201 })
   } catch (error) {
     console.error('[calls/callback] error:', error)
     return NextResponse.json({ success: false, error: 'Internal error' }, { status: 500 })
