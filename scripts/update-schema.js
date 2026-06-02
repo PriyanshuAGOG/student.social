@@ -213,6 +213,26 @@ const collections = [
     ],
   },
   {
+    id: 'ai_tasks',
+    name: 'AI Summary Tasks',
+    attrs: [
+      { key: 'roomId', type: 'string', size: 255, required: true },
+      { key: 'messageIds', type: 'string', size: 255, array: true, required: true },
+      { key: 'requestedBy', type: 'string', size: 255 },
+      { key: 'summaryType', type: 'string', size: 80 },
+      { key: 'status', type: 'string', size: 80, required: true },
+      { key: 'summary', type: 'string', size: 5000 },
+      { key: 'lastError', type: 'string', size: 1000 },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+      { key: 'updatedAt', type: 'string', size: 255 },
+      { key: 'processedAt', type: 'string', size: 255 },
+    ],
+    indexes: [
+      { key: 'idx_ai_tasks_room_updated', type: 'key', attributes: ['roomId', 'updatedAt'], orders: ['ASC', 'DESC'] },
+      { key: 'idx_ai_tasks_status_created', type: 'key', attributes: ['status', 'createdAt'], orders: ['ASC', 'ASC'] },
+    ],
+  },
+  {
     id: 'comments',
     name: 'Comments',
     permissions: {

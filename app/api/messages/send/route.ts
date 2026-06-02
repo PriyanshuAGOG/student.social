@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
             members: [senderId, recipientId],
             createdAt: new Date().toISOString(),
             isActive: true,
-            lastMessageAt: new Date().toISOString(),
+            lastMessageTime: new Date().toISOString(),
           }
         );
       }
@@ -148,18 +148,19 @@ export async function POST(request: NextRequest) {
       {
         roomId: room.$id,
         senderId,
-          authorId: senderId,
-          clientMessageId: clientMessageId || null,
-          senderName,
-          senderAvatar,
-          content: content.trim(),
-          type,
-          contentType: type,
-          deliveryState: 'sent',
-          readBy: [senderId],
-          replyTo: metadata.replyTo || null,
-            fileUrl: metadata.fileUrl || metadata.attachmentUrl || null,
-          timestamp: new Date().toISOString(),
+        authorId: senderId,
+        ...(clientMessageId ? { clientMessageId: String(clientMessageId) } : {}),
+        senderName,
+        senderAvatar,
+        content: content.trim(),
+        type,
+        contentType: type,
+        deliveryState: 'sent',
+        readBy: [senderId],
+        ...(metadata.replyTo ? { replyTo: String(metadata.replyTo) } : {}),
+        ...(metadata.fileUrl || metadata.attachmentUrl ? { fileUrl: String(metadata.fileUrl || metadata.attachmentUrl) } : {}),
+        metadata: JSON.stringify(metadata || {}).slice(0, 5000),
+        timestamp: new Date().toISOString(),
       }
     );
 
@@ -170,9 +171,9 @@ export async function POST(request: NextRequest) {
       CHAT_ROOMS_COLLECTION_ID,
       room.$id,
       {
-        lastMessageAt: new Date().toISOString(),
+        lastMessageTime: new Date().toISOString(),
         lastMessage: content.substring(0, 100),
-        lastMessageSender: senderId,
+        lastMessageSenderId: senderId,
       }
     );
 
@@ -185,7 +186,10 @@ export async function POST(request: NextRequest) {
         {
           userId: recipientId,
           type: 'message',
-          actor: senderId,
+          title: 'New message',
+          actorId: senderId,
+          actorName: senderName,
+          actorAvatar: senderAvatar,
           message: `${senderName} sent you a message`,
           isRead: false,
           timestamp: new Date().toISOString(),
@@ -238,7 +242,7 @@ export async function GET(request: NextRequest) {
         DATABASE_ID,
         CHAT_ROOMS_COLLECTION_ID,
         [
-          Query.orderDesc('lastMessageAt'),
+          Query.orderDesc('lastMessageTime'),
           Query.limit(100),
         ]
       );
