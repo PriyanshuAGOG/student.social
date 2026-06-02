@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
 import { withErrorHandling, validateInput } from '@/lib/error-handler';
-import { enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const CHAT_ROOMS_COLLECTION_ID = (process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms');
@@ -17,17 +17,45 @@ const MESSAGES_COLLECTION_ID = (process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID |
 const PROFILES_COLLECTION_ID = (process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles');
 const NOTIFICATIONS_COLLECTION_ID = (process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications');
 
+function parseMembers(room: any): string[] {
+  if (Array.isArray(room?.members)) return room.members.filter(Boolean)
+  if (typeof room?.members === 'string') {
+    try {
+      const parsed = JSON.parse(room.members)
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+function isNotFound(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase()
+  return error?.code === 404 || message.includes('not found') || message.includes('could not be found')
+}
+
+function internalError(message: string, error: any) {
+  return NextResponse.json(
+    {
+      success: false,
+      error: process.env.NODE_ENV === 'development' ? `${message}: ${error?.message || 'Unknown error'}` : message,
+    },
+    { status: 500 },
+  )
+}
+
 /**
  * POST /api/messages/send - Send a direct message
  */
 export async function POST(request: NextRequest) {
-  const { data, error } = await withErrorHandling(async () => {
+  try {
     enforceSameOrigin(request)
     enforceRateLimit(request, { key: 'messages:send', max: 60, windowMs: 60 * 1000 })
 
     const auth = requireUser(request)
-    const body = await request.json();
-    const { senderId, recipientId, roomId, content, type = 'text', metadata = {}, clientMessageId } = body;
+    const body = await request.json().catch(() => ({}))
+    const { senderId, recipientId, roomId, content, type = 'text', metadata = {}, clientMessageId } = body
 
     validateInput(
       { senderId, content },
@@ -35,59 +63,48 @@ export async function POST(request: NextRequest) {
         senderId: { required: true },
         content: { required: true, minLength: 1, maxLength: 5000 },
       }
-    );
+    )
     requireOwnership(senderId, auth.userId)
 
-    const { databases } = await createAdminClient();
-    console.debug('[messages/send] createAdminClient succeeded for sender:', senderId, 'recipient:', recipientId)
+    const { databases } = await createAdminClient()
 
-    // Get or create room
-    let room;
+    let room: any = null
 
     if (roomId) {
-      room = await databases.getDocument(
-        DATABASE_ID,
-        CHAT_ROOMS_COLLECTION_ID,
-        roomId
-      );
+      try {
+        room = await databases.getDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, String(roomId))
+      } catch (error: any) {
+        if (isNotFound(error)) {
+          return NextResponse.json({ success: false, error: 'Room not found', code: 'ROOM_NOT_FOUND' }, { status: 404 })
+        }
+        throw error
+      }
 
-      const roomMembers = Array.isArray(room.members)
-        ? room.members
-        : typeof room.members === 'string'
-          ? (() => { try { return JSON.parse(room.members) } catch { return [] } })()
-          : [];
+      const roomMembers = parseMembers(room)
       if (!roomMembers.includes(senderId)) {
-        throw new Error('You do not have access to this conversation');
+        throw new ApiError(403, 'FORBIDDEN', 'You do not have access to this conversation')
       }
     }
 
     if (!room) {
       if (!recipientId) {
-        throw new Error('recipientId is required when roomId is not provided');
+        throw new ApiError(400, 'INVALID_INPUT', 'recipientId is required when roomId is not provided')
       }
 
-      // Try to find existing room between these two users
       const existingRooms = await databases.listDocuments(
         DATABASE_ID,
         CHAT_ROOMS_COLLECTION_ID,
-        [
-          Query.limit(100), // Get recent rooms and filter direct-room variants in app code.
-        ]
-      );
+        [Query.limit(100)]
+      )
 
-      // Check if room exists between these two users
-      room = existingRooms.documents.find((r: any) => {
-        if (!['direct', 'dm'].includes(r.type)) return false;
-        const members = Array.isArray(r.members)
-          ? r.members
-          : typeof r.members === 'string'
-            ? (() => { try { return JSON.parse(r.members) } catch { return [] } })()
-            : [];
-        return members.includes(senderId) && members.includes(recipientId);
-      });
+      room = existingRooms.documents.find((candidate: any) => {
+        if (!['direct', 'dm'].includes(candidate.type)) return false
+        const members = parseMembers(candidate)
+        return members.includes(senderId) && members.includes(recipientId)
+      })
 
-      // Create room if doesn't exist
       if (!room) {
+        const now = new Date().toISOString()
         room = await databases.createDocument(
           DATABASE_ID,
           CHAT_ROOMS_COLLECTION_ID,
@@ -95,11 +112,11 @@ export async function POST(request: NextRequest) {
           {
             type: 'direct',
             members: [senderId, recipientId],
-            createdAt: new Date().toISOString(),
+            createdAt: now,
             isActive: true,
-            lastMessageTime: new Date().toISOString(),
+            lastMessageTime: now,
           }
-        );
+        )
       }
     }
 
@@ -115,111 +132,102 @@ export async function POST(request: NextRequest) {
       )
 
       if (existingMessages.documents.length > 0) {
-        return {
+        return NextResponse.json({
           success: true,
           message: existingMessages.documents[0],
           roomId: room.$id,
           deduplicated: true,
-        }
+        })
       }
     }
 
-    // Get sender profile
-    let senderName = 'User';
-    let senderAvatar = '';
+    let senderName = 'User'
+    let senderAvatar = ''
     try {
-      const profile = await databases.getDocument(
-        DATABASE_ID,
-        PROFILES_COLLECTION_ID,
-        senderId
-      );
-      senderName = profile.name || senderName;
-      senderAvatar = profile.avatar || '';
+      const profile = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, senderId)
+      senderName = profile.name || senderName
+      senderAvatar = profile.avatar || ''
     } catch (profileError) {
-      console.debug('[messages/send] Profile fetch failed for sender, using defaults:', senderId);
+      console.debug('[messages/send] Profile fetch failed for sender, using defaults:', senderId)
     }
 
-    // Create message
-    console.debug('[messages/send] creating message in room:', room.$id)
-    const message = await databases.createDocument(
-      DATABASE_ID,
-      MESSAGES_COLLECTION_ID,
-      'unique()',
-      {
-        roomId: room.$id,
-        senderId,
-        authorId: senderId,
-        ...(clientMessageId ? { clientMessageId: String(clientMessageId) } : {}),
-        senderName,
-        senderAvatar,
-        content: content.trim(),
-        type,
-        contentType: type,
-        deliveryState: 'sent',
-        readBy: [senderId],
-        ...(metadata.replyTo ? { replyTo: String(metadata.replyTo) } : {}),
-        ...(metadata.fileUrl || metadata.attachmentUrl ? { fileUrl: String(metadata.fileUrl || metadata.attachmentUrl) } : {}),
-        metadata: JSON.stringify(metadata || {}).slice(0, 5000),
-        timestamp: new Date().toISOString(),
-      }
-    );
-
-    // Update room last message time
-    console.debug('[messages/send] updating lastMessageAt for room:', room.$id)
-    await databases.updateDocument(
-      DATABASE_ID,
-      CHAT_ROOMS_COLLECTION_ID,
-      room.$id,
-      {
-        lastMessageTime: new Date().toISOString(),
-        lastMessage: content.substring(0, 100),
-        lastMessageSenderId: senderId,
-      }
-    );
-
-    // Create notification for recipient
+    let message
     try {
-      await databases.createDocument(
+      message = await databases.createDocument(
         DATABASE_ID,
-        NOTIFICATIONS_COLLECTION_ID,
+        MESSAGES_COLLECTION_ID,
         'unique()',
         {
-          userId: recipientId,
-          type: 'message',
-          title: 'New message',
-          actorId: senderId,
-          actorName: senderName,
-          actorAvatar: senderAvatar,
-          message: `${senderName} sent you a message`,
-          isRead: false,
+          roomId: room.$id,
+          senderId,
+          authorId: senderId,
+          ...(clientMessageId ? { clientMessageId: String(clientMessageId) } : {}),
+          senderName,
+          senderAvatar,
+          content: String(content).trim(),
+          type,
+          contentType: type,
+          deliveryState: 'sent',
+          readBy: [senderId],
+          ...(metadata.replyTo ? { replyTo: String(metadata.replyTo) } : {}),
+          ...(metadata.fileUrl || metadata.attachmentUrl ? { fileUrl: String(metadata.fileUrl || metadata.attachmentUrl) } : {}),
+          metadata: JSON.stringify(metadata || {}).slice(0, 5000),
           timestamp: new Date().toISOString(),
-          actionUrl: `/app/messages/${senderId}`,
         }
-      );
-    } catch (notifError) {
-      console.error('Failed to create message notification:', notifError);
+      )
+    } catch (error: any) {
+      console.error('[messages/send] Failed to insert message:', error)
+      return internalError('Failed to send message', error)
     }
 
-    return {
-      success: true,
-      message,
-      roomId: room.$id,
-    };
-  }, { operation: 'sendDirectMessage' });
+    try {
+      await databases.updateDocument(
+        DATABASE_ID,
+        CHAT_ROOMS_COLLECTION_ID,
+        room.$id,
+        {
+          lastMessageTime: new Date().toISOString(),
+          lastMessage: String(content).substring(0, 100),
+          lastMessageSenderId: senderId,
+        }
+      )
+    } catch (roomUpdateError) {
+      console.error('[messages/send] Failed to update room last message metadata:', roomUpdateError)
+    }
 
-  if (error) {
-    const status = error.code === 'UNAUTHORIZED' || error.code === 'FORBIDDEN'
-      ? (error.code === 'UNAUTHORIZED' ? 401 : 403)
-      : error.code === 'VALIDATION_ERROR'
-        ? 400
-        : 500
-    return NextResponse.json(
-      { success: false, error: error.userMessage, details: error },
-      { status }
-    );
+    if (recipientId) {
+      try {
+        await databases.createDocument(
+          DATABASE_ID,
+          NOTIFICATIONS_COLLECTION_ID,
+          'unique()',
+          {
+            userId: recipientId,
+            type: 'message',
+            title: 'New message',
+            actorId: senderId,
+            actorName: senderName,
+            actorAvatar: senderAvatar,
+            message: `${senderName} sent you a message`,
+            isRead: false,
+            timestamp: new Date().toISOString(),
+            actionUrl: `/app/messages/${senderId}`,
+          }
+        )
+      } catch (notifError) {
+        console.error('Failed to create message notification:', notifError)
+      }
+    }
+
+    return NextResponse.json({ success: true, message, roomId: room.$id }, { status: 201 })
+  } catch (error: any) {
+    if (error instanceof ApiError) {
+      return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
+    }
+
+    console.error('[messages/send] Failed to send message:', error)
+    return internalError('Failed to send message', error)
   }
-
-  return NextResponse.json(data, { status: 201 });
 }
 
 /**

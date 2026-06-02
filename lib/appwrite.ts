@@ -63,7 +63,14 @@ async function apiJson(path: string, init: RequestInit = {}) {
 
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    throw new Error(payload?.error || payload?.message || `Request failed with ${response.status}`)
+    const message = typeof payload?.error === 'string'
+      ? payload.error
+      : payload?.error?.message || payload?.message || `Request failed with ${response.status}`
+    const error = new Error(message) as Error & { status?: number; code?: string; details?: unknown }
+    error.status = response.status
+    error.code = payload?.code || payload?.error?.code || payload?.details?.code
+    error.details = payload?.details || payload
+    throw error
   }
 
   return payload
@@ -2581,7 +2588,14 @@ export const callService = {
       body: JSON.stringify({ roomId, mediaType }),
     })
 
-    return response.session || response.data || response
+    const session = response.session || response.data || response
+    return {
+      ...session,
+      joinUrl: session?.joinUrl || response.joinUrl,
+      participantMessage: response.participantMessage,
+      participants: response.participants,
+      invitedParticipants: response.invitedParticipants,
+    }
   },
 
   async updateSession(sessionId: string, action: 'accept' | 'decline' | 'end' | 'join' | 'leave', reason?: string) {
@@ -2670,7 +2684,7 @@ export const presenceService = {
         } catch (error) {
           console.error('Poll presence error:', error)
         }
-      }, 4000)
+      }, 30000)
       cleanupFns.push(() => clearInterval(interval))
     }
 

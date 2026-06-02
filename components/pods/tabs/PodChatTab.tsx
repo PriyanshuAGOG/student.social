@@ -135,12 +135,11 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
   }, [messages])
 
   useEffect(() => {
-    if (!inputValue.trim()) {
-      setTyping(false)
-      return
-    }
+    const timeout = setTimeout(() => {
+      setTyping(Boolean(inputValue.trim()))
+    }, 750)
 
-    setTyping(true)
+    return () => clearTimeout(timeout)
   }, [inputValue, setTyping])
 
   // Load messages
