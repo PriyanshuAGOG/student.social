@@ -111,6 +111,36 @@ const prevSummaryStatusRef = useRef<string | null>(null)
       }
     }
     prevSummaryStatusRef.current = task.status || null
+    // Update optimistic placeholder message when task status changes
+    setMessages((prev) =>
+      prev.map((m) => {
+        try {
+          const aiTaskId = m?.metadata?.aiTaskId || (typeof m.$id === 'string' && m.$id.startsWith('ai_task_') ? String(m.$id).replace(/^ai_task_/, '') : null)
+          if (!aiTaskId || aiTaskId !== task.$id) return m
+          if (task.status === 'done') {
+            // attach summary metadata and update content
+            return {
+              ...m,
+              content: 'AI summary ready — preview available.',
+              metadata: { ...(m.metadata || {}), aiTaskStatus: task.status, summary: task.summary },
+            }
+          }
+          if (task.status === 'failed') {
+            return {
+              ...m,
+              content: `AI summary failed: ${task.lastError || 'processing error'}`,
+              metadata: { ...(m.metadata || {}), aiTaskStatus: task.status, lastError: task.lastError },
+            }
+          }
+        } catch (e) {
+          return m
+        }
+        return m
+      }),
+    )
+    if (task.status === 'done') {
+      setPreviewTaskId(task.$id || null)
+    }
   }, [latestSummaryTask])
 
   useEffect(() => {

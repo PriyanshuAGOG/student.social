@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 
-export async function GET(request: NextRequest, { params }: { params: { taskId: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
-    const { taskId } = params
+    const { taskId } = await params
     if (!taskId) return NextResponse.json({ success: false, error: 'taskId required' }, { status: 400 })
 
     const { databases } = await createAdminClient()
