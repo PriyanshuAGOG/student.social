@@ -5,23 +5,17 @@ const env = getEnv()
 
 const endpoint = normalizeAppwriteEndpoint(
   env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT,
-)
-const projectId = env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID || ''
+) || 'https://fra.cloud.appwrite.io/v1'
+const projectId = env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID || '694ed12f003c942317f4'
 const apiKey = process.env.APPWRITE_API_KEY || ''
 
-if (!endpoint) {
-  throw new Error('Missing Appwrite endpoint for server client')
-}
+const serverClient = new Client().setEndpoint(endpoint).setProject(projectId)
 
-if (!projectId) {
-  throw new Error('Missing Appwrite project ID for server client')
+if (apiKey) {
+  serverClient.setKey(apiKey)
+} else if (process.env.NODE_ENV === 'development') {
+  console.warn('[Appwrite] APPWRITE_API_KEY is not set; server Appwrite operations may be limited by project permissions.')
 }
-
-if (!apiKey) {
-  throw new Error('Missing APPWRITE_API_KEY for server Appwrite client')
-}
-
-const serverClient = new Client().setEndpoint(endpoint).setProject(projectId).setKey(apiKey)
 
 export const serverDatabases = new Databases(serverClient)
 export const serverStorage = new Storage(serverClient)
