@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { databases, DATABASE_ID } from '@/lib/appwrite'
 import { requireUser, enforceSameOrigin, enforceRateLimit, ApiError } from '@/lib/api-security'
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db'
-const CALLS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALLS_COLLECTION_ID || 'calls'
-const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'
+const CALLS_COLLECTION = 'calls'
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,12 +17,11 @@ export async function GET(req: NextRequest) {
     }
 
     const userId = auth.userId
-    const { databases } = createAdminClient()
 
     // Get active or ringing calls involving this user as receiver
     const incomingCalls = await databases.listDocuments(
       DATABASE_ID,
-      CALLS_COLLECTION_ID,
+      CALLS_COLLECTION,
       [
         Query.equal('receiverId', userId),
         Query.or([
@@ -40,7 +37,7 @@ export async function GET(req: NextRequest) {
         try {
           const callerProfile = await databases.getDocument(
             DATABASE_ID,
-            PROFILES_COLLECTION_ID,
+            'profiles',
             call.callerId
           )
           return {

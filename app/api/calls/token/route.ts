@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { databases, DATABASE_ID } from '@/lib/appwrite'
 import { generateLiveKitToken } from '@/lib/livekit-service'
 import { requireUser, enforceSameOrigin, enforceRateLimit, ApiError } from '@/lib/api-security'
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db'
-const CALLS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALLS_COLLECTION_ID || 'calls'
-const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'
+const CALLS_COLLECTION = 'calls'
+const PROFILES_COLLECTION = 'profiles'
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,12 +27,10 @@ export async function POST(req: NextRequest) {
       throw new ApiError(400, 'INVALID_REQUEST', 'Invalid callId')
     }
 
-    const { databases } = createAdminClient()
-
     // Get call record
     let callRecord: any
     try {
-      callRecord = await databases.getDocument(DATABASE_ID, CALLS_COLLECTION_ID, callId)
+      callRecord = await databases.getDocument(DATABASE_ID, CALLS_COLLECTION, callId)
     } catch {
       throw new ApiError(404, 'NOT_FOUND', 'Call not found')
     }
@@ -46,7 +43,7 @@ export async function POST(req: NextRequest) {
     // Get user profile for display info
     let userProfile: any
     try {
-      userProfile = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, userId)
+      userProfile = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION, userId)
     } catch {
       userProfile = { name: 'User' }
     }
