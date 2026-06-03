@@ -11,15 +11,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { ArrowLeft, Clock3, Loader2, MessageSquare, Phone, Search, Send, User, Video } from "lucide-react"
 import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
 import { MessageActionsMenu, type ChatMessageActionTarget } from "@/components/chat/message-actions-menu"
-import { SummaryTaskStatus } from "@/components/chat/summary-task-status"
 import { useAuth } from "@/lib/auth-context"
 import { callService, chatService, profileService } from "@/lib/appwrite"
 import { attachReplyTargets, formatChatTimestamp, normalizeChatMessage } from "@/lib/chat-domain"
 import { useToast } from "@/hooks/use-toast"
 import { useChatPresence } from "@/hooks/use-chat-presence"
-import { useAiSummaryTasks } from "@/hooks/use-ai-summary-tasks"
-import { SummaryViewer } from "@/components/chat/summary-viewer"
-import { ToastAction } from "@/components/ui/toast"
 
 interface Message {
   $id: string
@@ -53,7 +49,6 @@ export default function DirectMessagePage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(true)
-  const [isSyncing, setIsSyncing] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [isStartingCall, setIsStartingCall] = useState(false)
   const [showCallHistory, setShowCallHistory] = useState(false)
@@ -62,44 +57,6 @@ export default function DirectMessagePage() {
   const [messageSearchQuery, setMessageSearchQuery] = useState("")
   const endRef = useRef<HTMLDivElement>(null)
   const { presenceEntries, isSomeoneTyping, setTyping } = useChatPresence(roomId, user?.$id)
-  const { latestTask: latestSummaryTask, isLoading: isLoadingSummaryTasks, error: summaryTaskError } = useAiSummaryTasks(roomId)
-  const [previewTaskId, setPreviewTaskId] = useState<string | null>(null)
-  const prevSummaryStatusRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    const task = latestSummaryTask
-    if (!task) return
-    const prev = prevSummaryStatusRef.current
-    if (prev && prev !== task.status) {
-      if (task.status === 'processing') {
-        toast({ title: 'Summary processing', description: `AI is summarizing recent messages...` })
-      } else if (task.status === 'done') {
-        toast({ title: 'Summary ready', description: 'AI summary is available.' })
-      } else if (task.status === 'failed') {
-        toast({ title: 'Summary failed', description: task.lastError || 'Processing failed', variant: 'destructive' })
-      }
-    }
-    prevSummaryStatusRef.current = task.status || null
-    // update optimistic placeholder
-    setMessages((prev) =>
-      prev.map((m) => {
-        try {
-          const aiTaskId = m?.metadata?.aiTaskId || (typeof m.$id === 'string' && m.$id.startsWith('ai_task_') ? String(m.$id).replace(/^ai_task_/, '') : null)
-          if (!aiTaskId || aiTaskId !== task.$id) return m
-          if (task.status === 'done') {
-            return { ...m, content: 'AI summary ready — preview available.', metadata: { ...(m.metadata || {}), aiTaskStatus: task.status, summary: task.summary } }
-          }
-          if (task.status === 'failed') {
-            return { ...m, content: `AI summary failed: ${task.lastError || 'processing error'}`, metadata: { ...(m.metadata || {}), aiTaskStatus: task.status, lastError: task.lastError } }
-          }
-        } catch (e) {
-          return m
-        }
-        return m
-      }),
-    )
-    if (task.status === 'done') setPreviewTaskId(task.$id || null)
-  }, [latestSummaryTask])
 
   const scrollToBottom = () => endRef.current?.scrollIntoView({ behavior: "smooth" })
 
@@ -158,8 +115,15 @@ export default function DirectMessagePage() {
 
   useEffect(() => {
     if (!roomId) return
-    const interval = setInterval(() => loadMessages(roomId, false), 2500)
-    return () => clearInterval(interval)
+    const unsubscribe = chatService.subscribeToMessages(roomId, (incoming: Message) => {
+      const incomingRoomId = (incoming as any)?.roomId
+      if (!incoming?.$id || incomingRoomId !== roomId) return
+      setMessages((prev) => {
+        const next = prev.filter((message) => message.$id !== incoming.$id && message.clientMessageId !== incoming.clientMessageId)
+        return attachReplyTargets([...next, incoming]) as unknown as Message[]
+      })
+    })
+    return () => unsubscribe?.()
   }, [roomId])
 
   const loadMessages = async (
@@ -168,7 +132,6 @@ export default function DirectMessagePage() {
     profiles?: { selfProfile?: any; targetProfile?: any }
   ) => {
     try {
-      if (!firstLoad) setIsSyncing(true)
       const res = await chatService.getMessages(rid, 100, 0)
       const docs = attachReplyTargets(res.documents || [])
       const self = (profiles?.selfProfile ?? selfProfile) as any
@@ -188,8 +151,6 @@ export default function DirectMessagePage() {
       setMessages(enriched)
     } catch (err) {
       console.error("DM load failed", err)
-    } finally {
-      setIsSyncing(false)
     }
   }
 
@@ -381,51 +342,6 @@ export default function DirectMessagePage() {
     }
   }
 
-  const handleRequestSummary = async (message: ChatMessageActionTarget) => {
-    if (!roomId || !user?.$id) return
-
-    try {
-      const response = await fetch("/api/ai/summaries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ roomId, messageIds: [message.$id], requestedBy: user.$id }),
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || `Failed to queue summary (${response.status})`)
-      }
-      const task = payload.task
-      setPreviewTaskId(task?.$id || null)
-      // optimistic inline placeholder
-      setMessages((prev) => [
-        ...prev,
-        {
-          $id: `ai_task_${task.$id}`,
-          authorId: 'system',
-          authorName: 'AI',
-          authorAvatar: '',
-          content: `AI summary queued — preview available.`,
-          timestamp: new Date().toISOString(),
-          type: 'system',
-          metadata: { aiTaskId: task.$id },
-        },
-      ])
-
-      toast({
-        title: "Summary queued",
-        description: task?.$id ? `Task #${String(task.$id).slice(-6)} is ${task.status || "queued"}.` : "Processing in the background.",
-        action: task?.$id ? (
-          <ToastAction asChild altText="Open summary">
-            <a href={`/ai/summaries/${encodeURIComponent(task.$id)}`} target="_blank" rel="noreferrer">Open</a>
-          </ToastAction>
-        ) : undefined,
-      })
-    } catch (error: any) {
-      toast({ title: "Summary request failed", description: error?.message || "Try again", variant: "destructive" })
-    }
-  }
-
   const handleRequestCallback = async (message: ChatMessageActionTarget) => {
     if (!roomId || !user?.$id) return
 
@@ -476,7 +392,6 @@ export default function DirectMessagePage() {
             {isSomeoneTyping ? "Typing..." : peerPresence?.isOnline ? "Online" : "Private conversation"}
           </p>
         </div>
-        {isSyncing && !isLoading && <Badge variant="outline" className="text-[10px]">Syncing...</Badge>}
         <Button variant="ghost" size="icon" onClick={() => setShowCallHistory(true)} disabled={isLoading} title="Call history">
           <Clock3 className="w-4 h-4" />
         </Button>
@@ -489,8 +404,6 @@ export default function DirectMessagePage() {
       </div>
 
       <div className="px-4 pt-3 max-w-4xl mx-auto">
-        <SummaryTaskStatus task={latestSummaryTask} isLoading={isLoadingSummaryTasks} error={summaryTaskError} />
-        <SummaryViewer taskId={previewTaskId} autoOpen />
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-6">
@@ -595,7 +508,6 @@ export default function DirectMessagePage() {
                                 onTogglePin={handleTogglePin}
                                 onToggleStar={handleToggleStar}
                                 onReport={handleReportMessage}
-                                onRequestSummary={handleRequestSummary}
                                 onRequestCallback={handleRequestCallback}
                               />
                             </div>

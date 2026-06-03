@@ -36,6 +36,54 @@ function isNotFound(error: any): boolean {
   return error?.code === 404 || message.includes('not found') || message.includes('could not be found')
 }
 
+
+function getUnknownAttribute(error: any): string | null {
+  const message = String(error?.message || '')
+  return message.match(/Unknown attribute:\s*"([^"]+)"/)?.[1] || null
+}
+
+function isSchemaOrCollectionError(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase()
+  return error?.code === 401 || error?.code === 403 || isNotFound(error) || Boolean(getUnknownAttribute(error)) || message.includes('attribute') || message.includes('collection') || message.includes('index') || message.includes('permission')
+}
+
+async function createDocumentWithSchemaRetry(databases: any, collectionId: string, payload: Record<string, unknown>) {
+  const data = { ...payload }
+  const removed = new Set<string>()
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    try {
+      return await databases.createDocument(DATABASE_ID, collectionId, 'unique()', data)
+    } catch (error: any) {
+      const unknownAttribute = getUnknownAttribute(error)
+      if (!unknownAttribute || removed.has(unknownAttribute)) throw error
+      removed.add(unknownAttribute)
+      delete data[unknownAttribute]
+    }
+  }
+
+  throw new Error(`Unable to create ${collectionId} after schema compatibility retries`)
+}
+
+function buildEphemeralSession(roomId: string, callerId: string, mediaType: 'voice' | 'video', startedAt: string, providerSessionId: string, joinUrl: string) {
+  return {
+    $id: providerSessionId,
+    roomId,
+    callerId,
+    participantIds: [],
+    mediaType,
+    provider: 'jitsi',
+    providerSessionId,
+    joinUrl,
+    state: 'ringing',
+    startedAt,
+    lastActivityAt: startedAt,
+    createdAt: startedAt,
+    updatedAt: startedAt,
+    degraded: true,
+  }
+}
+
 function internalError(message: string, error: any) {
   return NextResponse.json(
     {
@@ -98,52 +146,67 @@ export async function POST(req: NextRequest) {
       // Use fallback display name if the profile lookup fails.
     }
 
-    const session = await databases.createDocument(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, 'unique()', {
-      roomId,
-      callerId: auth.userId,
-      participantIds,
-      mediaType,
-      provider: 'jitsi',
-      providerSessionId,
-      joinUrl,
-      state: 'ringing',
-      startedAt,
-      lastActivityAt: startedAt,
-      ringTimeoutAt: new Date(Date.now() + 60_000).toISOString(),
-      createdAt: startedAt,
-      updatedAt: startedAt,
-    })
-
-    await databases.createDocument(DATABASE_ID, CALL_PARTICIPANTS_COLLECTION_ID, 'unique()', {
-      callSessionId: session.$id,
-      roomId,
-      userId: auth.userId,
-      role: 'caller',
-      state: 'joined',
-      joinedAt: startedAt,
-      muted: mediaType === 'video' ? false : false,
-      videoEnabled: mediaType === 'video',
-      connectionState: 'connected',
-      createdAt: startedAt,
-      updatedAt: startedAt,
-    })
-
-    for (const participantId of participantIds) {
-      await databases.createDocument(DATABASE_ID, CALL_PARTICIPANTS_COLLECTION_ID, 'unique()', {
-        callSessionId: session.$id,
+    let session
+    try {
+      session = await createDocumentWithSchemaRetry(databases, CALL_SESSIONS_COLLECTION_ID, {
         roomId,
-        userId: participantId,
-        role: 'guest',
-        state: 'invited',
-        muted: false,
-        videoEnabled: mediaType === 'video',
-        connectionState: 'waiting',
+        callerId: auth.userId,
+        participantIds,
+        mediaType,
+        provider: 'jitsi',
+        providerSessionId,
+        joinUrl,
+        state: 'ringing',
+        startedAt,
+        lastActivityAt: startedAt,
+        ringTimeoutAt: new Date(Date.now() + 60_000).toISOString(),
         createdAt: startedAt,
         updatedAt: startedAt,
       })
+    } catch (sessionError: any) {
+      if (!isSchemaOrCollectionError(sessionError)) throw sessionError
+      console.warn('[calls/sessions POST] Durable call session unavailable; returning ephemeral call:', sessionError?.message || sessionError)
+      session = buildEphemeralSession(roomId, auth.userId, mediaType, startedAt, providerSessionId, joinUrl)
+    }
+
+    try {
+      await createDocumentWithSchemaRetry(databases, CALL_PARTICIPANTS_COLLECTION_ID, {
+        callSessionId: session.$id,
+        roomId,
+        userId: auth.userId,
+        role: 'caller',
+        state: 'joined',
+        joinedAt: startedAt,
+        muted: false,
+        videoEnabled: mediaType === 'video',
+        connectionState: 'connected',
+        createdAt: startedAt,
+        updatedAt: startedAt,
+      })
+    } catch (participantError: any) {
+      console.warn('[calls/sessions POST] Caller participant write skipped:', participantError?.message || participantError)
+    }
+
+    for (const participantId of participantIds) {
+      try {
+        await createDocumentWithSchemaRetry(databases, CALL_PARTICIPANTS_COLLECTION_ID, {
+          callSessionId: session.$id,
+          roomId,
+          userId: participantId,
+          role: 'guest',
+          state: 'invited',
+          muted: false,
+          videoEnabled: mediaType === 'video',
+          connectionState: 'waiting',
+          createdAt: startedAt,
+          updatedAt: startedAt,
+        })
+      } catch (participantError: any) {
+        console.warn('[calls/sessions POST] Guest participant write skipped:', participantError?.message || participantError)
+      }
 
       try {
-        await databases.createDocument(DATABASE_ID, NOTIFICATIONS_COLLECTION_ID, 'unique()', {
+        await createDocumentWithSchemaRetry(databases, NOTIFICATIONS_COLLECTION_ID, {
           userId: participantId,
           title: `${callerName} is calling`,
           message: `${callerName} started a ${mediaType} call`,
@@ -191,11 +254,18 @@ export async function GET(req: NextRequest) {
     const { databases } = await createAdminClient()
     await getRoomForMember(databases, roomId, auth.userId)
 
-    const sessions = await databases.listDocuments(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, [
-      Query.equal('roomId', roomId),
-      Query.orderDesc('startedAt'),
-      Query.limit(limit),
-    ])
+    let sessions: any = { documents: [] }
+    try {
+      sessions = await databases.listDocuments(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, [
+        Query.equal('roomId', roomId),
+        Query.orderDesc('startedAt'),
+        Query.limit(limit),
+      ])
+    } catch (sessionsError: any) {
+      if (!isSchemaOrCollectionError(sessionsError)) throw sessionsError
+      console.warn('[calls/sessions GET] Durable call history unavailable; returning empty history:', sessionsError?.message || sessionsError)
+      return NextResponse.json({ success: true, degraded: true, sessions: [], total: 0 })
+    }
 
     const visibleSessions = (sessions.documents || []).filter((session: any) => {
       const participants = Array.isArray(session.participantIds) ? session.participantIds : []

@@ -1,4 +1,4 @@
-import { AppwriteException, Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query } from "appwrite"
+import { AppwriteException, Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query, Realtime } from "appwrite"
 import { rankPodsForUser } from "./pod-matching"
 import { getEnv, normalizeAppwriteEndpoint, requireEnv } from "./env"
 
@@ -107,6 +107,7 @@ export const teams = new Teams(client)
 export const avatars = new Avatars(client)
 export const functions = new Functions(client)
 export const messaging = new Messaging(client)
+const realtime = new Realtime(client)
 const matchCache = new Map<string, { timestamp: number; data: any[] }>()
 const MATCH_CACHE_TTL = 1000 * 60 * 5 // 5 minutes
 
@@ -2367,129 +2368,103 @@ export const chatService = {
     }
   },
 
-  // Subscribe to real-time messages using client subscription
+  // Subscribe to real-time messages using the Appwrite Realtime service.
+  // Appwrite's current Web SDK keeps one socket per Realtime instance and updates
+  // subscriptions in-place, which avoids reconnect flicker and CONNECTING-state sends.
   subscribeToMessages(roomId: string, callback: (message: any) => void) {
-    const cleanupFns: Array<() => void> = []
-    const subscribe = typeof (client as any)?.subscribe === 'function' ? (client as any).subscribe.bind(client) : undefined
+    let closed = false
+    let subscription: { close?: () => Promise<void> | void } | null = null
 
-    const pushMessageIfRelevant = (payload: any) => {
-      const messageRoomId = payload?.roomId || payload?.data?.roomId
+    const pushIfRelevant = (event: any) => {
+      const payload = event?.payload || event?.data || event
+      const messageRoomId = payload?.roomId || payload?.data?.roomId || payload?.payload?.roomId
       if (messageRoomId === roomId) {
         callback(payload?.payload || payload?.data || payload)
       }
     }
 
-    const pushRoomIfRelevant = (payload: any) => {
-      const roomPayload = payload?.payload || payload?.data || payload
-      if (roomPayload?.$id === roomId || roomPayload?.roomId === roomId) {
-        callback(roomPayload)
-      }
-    }
-
-    const registerCleanup = (subscription: any) => {
-      if (typeof subscription === 'function') {
-        cleanupFns.push(subscription)
-      } else if (subscription && typeof subscription.unsubscribe === 'function') {
-        cleanupFns.push(() => subscription.unsubscribe())
-      } else if (subscription && typeof subscription.close === 'function') {
-        cleanupFns.push(() => subscription.close())
-      }
-    }
-
-    if (typeof subscribe === 'function') {
-      registerCleanup(subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.MESSAGES}.documents`, pushMessageIfRelevant))
-      registerCleanup(subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_ROOMS}.documents`, pushRoomIfRelevant))
-    }
-
-    if (cleanupFns.length === 0) {
-      const pollMessages = async () => {
-        try {
-          const messages = await this.getMessages(roomId, 1)
-          if (messages.documents.length > 0) {
-            callback(messages.documents[0])
-          }
-        } catch (error) {
-          console.error("Poll messages error:", error)
+    realtime
+      .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.MESSAGES}.documents`, pushIfRelevant)
+      .then((nextSubscription) => {
+        if (closed) {
+          void nextSubscription.close?.()
+          return
         }
-      }
-
-      const interval = setInterval(pollMessages, 2000)
-      cleanupFns.push(() => clearInterval(interval))
-    }
+        subscription = nextSubscription
+      })
+      .catch((error) => {
+        if (!closed) console.warn('Realtime message subscription unavailable:', error)
+      })
 
     return () => {
-      cleanupFns.forEach((cleanup) => cleanup())
+      closed = true
+      void subscription?.close?.()
     }
   },
 
   subscribeToChatRooms(userId: string, callback: (room: any) => void) {
-    const cleanupFns: Array<() => void> = []
-    const subscribe = typeof (client as any)?.subscribe === 'function' ? (client as any).subscribe.bind(client) : undefined
+    let closed = false
+    let subscription: { close?: () => Promise<void> | void } | null = null
 
-    const pushRoomIfRelevant = (payload: any) => {
-      const room = payload?.payload || payload?.data || payload
+    const pushIfRelevant = (event: any) => {
+      const room = event?.payload || event?.data || event
       const members = Array.isArray(room?.members)
         ? room.members
         : typeof room?.members === 'string'
           ? (() => { try { return JSON.parse(room.members) } catch { return [] } })()
           : []
-      if (members.includes(userId) || room?.roomId === userId) {
+      if (members.includes(userId) || room?.roomId === userId || room?.lastMessageSenderId) {
         callback(room)
       }
     }
 
-    const registerCleanup = (subscription: any) => {
-      if (typeof subscription === 'function') {
-        cleanupFns.push(subscription)
-      } else if (subscription && typeof subscription.unsubscribe === 'function') {
-        cleanupFns.push(() => subscription.unsubscribe())
-      } else if (subscription && typeof subscription.close === 'function') {
-        cleanupFns.push(() => subscription.close())
-      }
-    }
-
-    if (typeof subscribe === 'function') {
-      registerCleanup(subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_ROOMS}.documents`, pushRoomIfRelevant))
-      registerCleanup(subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.MESSAGES}.documents`, (payload: any) => {
-        const messageRoomId = payload?.roomId || payload?.data?.roomId || payload?.payload?.roomId
-        if (messageRoomId) {
-          callback(payload?.payload || payload?.data || payload)
+    realtime
+      .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_ROOMS}.documents`, pushIfRelevant)
+      .then((nextSubscription) => {
+        if (closed) {
+          void nextSubscription.close?.()
+          return
         }
-      }))
-    }
-
-    if (cleanupFns.length === 0) {
-      const pollRooms = async () => {
-        try {
-          const rooms = await this.getUserChatRooms(userId)
-          ;[...(rooms.podRooms || []), ...(rooms.directRooms || [])].forEach((room: any) => callback(room))
-        } catch (error) {
-          console.error("Poll rooms error:", error)
-        }
-      }
-
-      const interval = setInterval(pollRooms, 5000)
-      cleanupFns.push(() => clearInterval(interval))
-    }
+        subscription = nextSubscription
+      })
+      .catch((error) => {
+        if (!closed) console.warn('Realtime room subscription unavailable:', error)
+      })
 
     return () => {
-      cleanupFns.forEach((cleanup) => cleanup())
+      closed = true
+      void subscription?.close?.()
     }
   },
 
-  // Upload file attachment
+  // Upload file attachment through the authenticated server route so storage
+  // permissions are applied by the Appwrite Server SDK instead of relying on a
+  // public bucket-level create grant.
   async uploadAttachment(file: File, userId: string) {
     try {
-      const uploaded = await storage.createFile(BUCKETS.ATTACHMENTS, "unique()", file)
-      const fileUrl = storage.getFileView(BUCKETS.ATTACHMENTS, uploaded.$id)
+      if (!file) throw new Error('File is required')
+      if (!userId) throw new Error('User ID is required')
 
-      return {
-        fileId: uploaded.$id,
-        fileUrl: fileUrl.toString(),
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.type,
+      const sessionUser = await fetchSessionUser()
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/messages/attachments', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          ...(sessionUser?.$id ? { 'x-user-id': sessionUser.$id } : {}),
+          ...(sessionUser?.role ? { 'x-user-role': sessionUser.role } : {}),
+        },
+        body: formData,
+      })
+
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || `Upload failed with ${response.status}`)
       }
+
+      return payload.attachment
     } catch (error) {
       console.error("Upload attachment error:", error)
       throw error
@@ -2652,43 +2627,33 @@ export const presenceService = {
   },
 
   subscribeToPresence(roomId: string, callback: (presence: any) => void) {
-    const cleanupFns: Array<() => void> = []
-    const subscribe = typeof (client as any)?.subscribe === 'function' ? (client as any).subscribe.bind(client) : undefined
+    let closed = false
+    let subscription: { close?: () => Promise<void> | void } | null = null
 
-    const pushIfRelevant = (payload: any) => {
-      const presence = payload?.payload || payload?.data || payload
+    const pushIfRelevant = (event: any) => {
+      const presence = event?.payload || event?.data || event
       if (presence?.roomId === roomId) {
         callback(presence)
       }
     }
 
-    const registerCleanup = (subscription: any) => {
-      if (typeof subscription === 'function') {
-        cleanupFns.push(subscription)
-      } else if (subscription && typeof subscription.unsubscribe === 'function') {
-        cleanupFns.push(() => subscription.unsubscribe())
-      } else if (subscription && typeof subscription.close === 'function') {
-        cleanupFns.push(() => subscription.close())
-      }
-    }
-
-    if (typeof subscribe === 'function') {
-      registerCleanup(subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_PRESENCE}.documents`, pushIfRelevant))
-    }
-
-    if (cleanupFns.length === 0) {
-      const interval = setInterval(async () => {
-        try {
-          const presence = await this.getPresence(roomId)
-          presence.forEach((entry: any) => callback(entry))
-        } catch (error) {
-          console.error('Poll presence error:', error)
+    realtime
+      .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_PRESENCE}.documents`, pushIfRelevant)
+      .then((nextSubscription) => {
+        if (closed) {
+          void nextSubscription.close?.()
+          return
         }
-      }, 30000)
-      cleanupFns.push(() => clearInterval(interval))
-    }
+        subscription = nextSubscription
+      })
+      .catch((error) => {
+        if (!closed) console.warn('Realtime presence subscription unavailable:', error)
+      })
 
-    return () => cleanupFns.forEach((cleanup) => cleanup())
+    return () => {
+      closed = true
+      void subscription?.close?.()
+    }
   },
 }
 
