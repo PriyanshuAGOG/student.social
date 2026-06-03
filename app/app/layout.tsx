@@ -4,6 +4,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { MobileNavigation } from "@/components/mobile-navigation"
 import { Toaster } from "@/components/ui/toaster"
 import { ProtectRoute } from "@/lib/protect-route"
+import { CallProvider } from "@/components/call/CallProvider"
 
 export default function AppLayout({
   children,
@@ -12,19 +13,21 @@ export default function AppLayout({
 }) {
   return (
     <ProtectRoute>
-      <SidebarProvider>
-        <div className="flex min-h-dvh w-full overflow-x-hidden bg-background">
-          {/* Desktop Sidebar */}
-          <AppSidebar className="hidden md:flex" />
+      <CallProvider>
+        <SidebarProvider>
+          <div className="flex min-h-dvh w-full overflow-x-hidden bg-background">
+            {/* Desktop Sidebar */}
+            <AppSidebar className="hidden md:flex" />
 
-          {/* Main Content */}
-          <main className="min-w-0 flex-1 overflow-x-hidden pb-safe-nav md:pb-0">{children}</main>
+            {/* Main Content */}
+            <main className="min-w-0 flex-1 overflow-x-hidden pb-safe-nav md:pb-0">{children}</main>
 
-          {/* Mobile Navigation */}
-          <MobileNavigation />
-        </div>
-        <Toaster />
-      </SidebarProvider>
+            {/* Mobile Navigation */}
+            <MobileNavigation />
+          </div>
+          <Toaster />
+        </SidebarProvider>
+      </CallProvider>
     </ProtectRoute>
   )
 }
