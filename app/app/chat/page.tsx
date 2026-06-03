@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
+import { useCallContext } from '@/components/call/CallProvider'
 import { chatService } from '@/lib/appwrite'
 import { normalizeMessage, type StandardizedMessage } from '@/lib/message-normalizer'
 import { LeftRail } from '@/components/chat/premium/LeftRail'
@@ -42,6 +43,7 @@ export default function PremiumChatPage() {
   const searchParams = useSearchParams()
   const { user } = useAuth()
   const { toast } = useToast()
+  const callContext = useCallContext()
 
   // State
   const [rooms, setRooms] = useState<ChatRoom[]>([])
@@ -102,7 +104,9 @@ export default function PremiumChatPage() {
     setIsLoadingRooms(true)
     try {
       const res = await chatService.getUserChatRooms(user.$id)
-      const normalizedRooms = (res.documents || []).map((room: any) => ({
+      // Combine direct and pod rooms
+      const allRooms = [...(res.directRooms || []), ...(res.podRooms || [])]
+      const normalizedRooms = allRooms.map((room: any) => ({
         $id: room.$id,
         name: room.name || 'Unknown',
         type: room.type || 'direct',
@@ -133,7 +137,7 @@ export default function PremiumChatPage() {
       const res = await chatService.getMessages(selectedRoom.$id, 50)
       const normalized = (res.documents || [])
         .map((msg: any) => normalizeMessage(msg, user?.$id))
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+        .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
       setMessages(normalized)
     } catch (error: any) {
       toast({
@@ -298,6 +302,28 @@ export default function PremiumChatPage() {
             totalMembers={selectedRoom.participants?.length || 1}
             showBackButton={window.innerWidth < 1024}
             onBack={() => setShowMobileChatList(true)}
+            onCall={
+              selectedRoom.type === 'direct' && selectedRoom.participants?.[0]
+                ? () => {
+                    callContext.startCall(
+                      selectedRoom.participants![0],
+                      selectedRoom.$id,
+                      'audio'
+                    )
+                  }
+                : undefined
+            }
+            onVideoCall={
+              selectedRoom.type === 'direct' && selectedRoom.participants?.[0]
+                ? () => {
+                    callContext.startCall(
+                      selectedRoom.participants![0],
+                      selectedRoom.$id,
+                      'video'
+                    )
+                  }
+                : undefined
+            }
             onMoreOptions={() => console.log('More options')}
           />
 
