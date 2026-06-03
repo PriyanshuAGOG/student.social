@@ -25,6 +25,43 @@ function isNotFound(error: any): boolean {
   return error?.code === 404 || message.includes('not found') || message.includes('could not be found')
 }
 
+function getUnknownAttribute(error: any): string | null {
+  const message = String(error?.message || '')
+  return message.match(/Unknown attribute:\s*"([^"]+)"/)?.[1] || null
+}
+
+function isCollectionUnavailable(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase()
+  return isNotFound(error) || message.includes('collection') || message.includes('attribute')
+}
+
+async function writePresenceDocument(
+  databases: any,
+  existingId: string | null,
+  payload: Record<string, unknown>,
+  createOnlyPayload: Record<string, unknown> = {},
+) {
+  const data = { ...payload, ...createOnlyPayload }
+  const removed = new Set<string>()
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      return existingId
+        ? await databases.updateDocument(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, existingId, payload)
+        : await databases.createDocument(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, 'unique()', data)
+    } catch (error: any) {
+      const unknownAttribute = getUnknownAttribute(error)
+      if (!unknownAttribute || removed.has(unknownAttribute)) throw error
+
+      removed.add(unknownAttribute)
+      delete payload[unknownAttribute]
+      delete data[unknownAttribute]
+    }
+  }
+
+  throw new Error('Unable to write chat presence after schema compatibility retries')
+}
+
 function internalError(message: string, error: any) {
   return NextResponse.json(
     {
@@ -73,11 +110,24 @@ export async function POST(req: NextRequest) {
     await getRoomForMember(databases, roomId, auth.userId)
 
     const now = new Date().toISOString()
-    const existing = await databases.listDocuments(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, [
-      Query.equal('roomId', roomId),
-      Query.equal('userId', auth.userId),
-      Query.limit(1),
-    ])
+    let existing: any = { documents: [] }
+    try {
+      existing = await databases.listDocuments(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, [
+        Query.equal('roomId', roomId),
+        Query.equal('userId', auth.userId),
+        Query.limit(1),
+      ])
+    } catch (error: any) {
+      if (isCollectionUnavailable(error)) {
+        console.warn('[chat/presence POST] Presence storage unavailable; returning degraded success:', error?.message || error)
+        return NextResponse.json({
+          success: true,
+          degraded: true,
+          presence: { roomId, userId: auth.userId, isOnline, isTyping, lastSeenAt: new Date().toISOString() },
+        })
+      }
+      throw error
+    }
 
     const basePayload = {
       roomId,
@@ -89,12 +139,12 @@ export async function POST(req: NextRequest) {
       updatedAt: now,
     }
 
-    const presence = existing.documents.length > 0
-      ? await databases.updateDocument(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, existing.documents[0].$id, basePayload)
-      : await databases.createDocument(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, 'unique()', {
-          ...basePayload,
-          createdAt: now,
-        })
+    const presence = await writePresenceDocument(
+      databases,
+      existing.documents.length > 0 ? existing.documents[0].$id : null,
+      { ...basePayload },
+      { createdAt: now },
+    )
 
     return NextResponse.json({ success: true, presence })
   } catch (error: any) {
@@ -119,10 +169,19 @@ export async function GET(req: NextRequest) {
     const { databases } = await createAdminClient()
     await getRoomForMember(databases, roomId, auth.userId)
 
-    const presence = await databases.listDocuments(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, [
-      Query.equal('roomId', roomId),
-      Query.limit(50),
-    ])
+    let presence: any = { documents: [] }
+    try {
+      presence = await databases.listDocuments(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, [
+        Query.equal('roomId', roomId),
+        Query.limit(50),
+      ])
+    } catch (error: any) {
+      if (isCollectionUnavailable(error)) {
+        console.warn('[chat/presence GET] Presence storage unavailable; returning empty presence:', error?.message || error)
+        return NextResponse.json({ success: true, degraded: true, presence: [] })
+      }
+      throw error
+    }
 
     return NextResponse.json({
       success: true,
