@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { ID } from 'node-appwrite'
+import { databases, DATABASE_ID } from '@/lib/appwrite'
 import { generateLiveKitToken, generateRoomName } from '@/lib/livekit-service'
 import { requireUser, enforceSameOrigin, enforceRateLimit, ApiError } from '@/lib/api-security'
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db'
-const CALLS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALLS_COLLECTION_ID || 'calls'
-const CHAT_ROOMS_COLLECTION_ID = process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms'
-const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'
+const CALLS_COLLECTION = 'calls'
+const CHAT_ROOMS_COLLECTION = 'chat_rooms'
+const PROFILES_COLLECTION = 'profiles'
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,12 +35,10 @@ export async function POST(req: NextRequest) {
       throw new ApiError(400, 'INVALID_REQUEST', 'Invalid call type. Must be "audio" or "video"')
     }
 
-    const { databases } = createAdminClient()
-
     // Verify chat exists and user is member
     let chatRoom: any
     try {
-      chatRoom = await databases.getDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, chatId)
+      chatRoom = await databases.getDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION, chatId)
     } catch (error: any) {
       throw new ApiError(404, 'NOT_FOUND', 'Chat room not found')
     }
@@ -49,7 +46,7 @@ export async function POST(req: NextRequest) {
     // Verify receiver exists
     let receiverProfile: any
     try {
-      receiverProfile = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, receiverId)
+      receiverProfile = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION, receiverId)
     } catch {
       throw new ApiError(404, 'NOT_FOUND', 'Receiver not found')
     }
@@ -57,7 +54,7 @@ export async function POST(req: NextRequest) {
     // Get caller profile for display info
     let callerProfile: any
     try {
-      callerProfile = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, callerId)
+      callerProfile = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION, callerId)
     } catch {
       // Caller profile optional, continue with basic info
       callerProfile = { name: 'User' }
@@ -79,7 +76,7 @@ export async function POST(req: NextRequest) {
     })
 
     // Create call record in database
-    const callRecord = await databases.createDocument(DATABASE_ID, CALLS_COLLECTION_ID, 'unique()', {
+    const callRecord = await databases.createDocument(DATABASE_ID, CALLS_COLLECTION, ID.unique(), {
       roomName,
       chatId,
       callerId,
