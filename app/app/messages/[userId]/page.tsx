@@ -1,71 +1,90 @@
-"use client"
+'use client'
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react"
-import { useParams, useRouter } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { ArrowLeft, Clock3, Loader2, MessageSquare, Phone, Search, Send, User, Video } from "lucide-react"
-import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
-import { MessageActionsMenu, type ChatMessageActionTarget } from "@/components/chat/message-actions-menu"
-import { useAuth } from "@/lib/auth-context"
-import { callService, chatService, profileService } from "@/lib/appwrite"
-import { attachReplyTargets, formatChatTimestamp, normalizeChatMessage } from "@/lib/chat-domain"
-import { useToast } from "@/hooks/use-toast"
-import { useChatPresence } from "@/hooks/use-chat-presence"
+import React, { useState, useEffect, useRef } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/auth-context'
+import { useToast } from '@/hooks/use-toast'
+import { chatService, profileService, callService } from '@/lib/appwrite'
+import { normalizeMessage, type StandardizedMessage } from '@/lib/message-normalizer'
+import { ChatHeader } from '@/components/chat/premium/ChatHeader'
+import { MessageGroup } from '@/components/chat/premium/MessageGroup'
+import { ChatComposer } from '@/components/chat/premium/ChatComposer'
+import { TypingIndicator } from '@/components/chat/premium/TypingIndicator'
+import { useChatPresence } from '@/hooks/use-chat-presence'
 
-interface Message {
-  $id: string
-  content: string
-  authorId: string
-  authorName?: string
-  authorAvatar?: string
-  timestamp: string
-  type?: string
-  replyTo?: string | null
-  replyToMessage?: Message | null
-  isEdited?: boolean
-  fileUrl?: string | null
-  fileName?: string | null
-  clientMessageId?: string
-  readBy?: string[]
-  metadata?: Record<string, any>
-  deletedAt?: string | null
-  deliveryState?: string
-}
-
-export default function DirectMessagePage() {
+export default function PremiumDirectMessagePage() {
   const params = useParams()
   const router = useRouter()
-  const { toast } = useToast()
   const { user } = useAuth()
+  const { toast } = useToast()
   const targetUserId = params.userId as string
 
+  // State
   const [targetProfile, setTargetProfile] = useState<any>(null)
-  const [roomId, setRoomId] = useState<string>("")
-  const [messages, setMessages] = useState<Message[]>([])
-  const [inputValue, setInputValue] = useState("")
+  const [roomId, setRoomId] = useState<string>('')
+  const [messages, setMessages] = useState<StandardizedMessage[]>([])
+  const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
+  const [replyingTo, setReplyingTo] = useState<StandardizedMessage | null>(null)
   const [isStartingCall, setIsStartingCall] = useState(false)
   const [showCallHistory, setShowCallHistory] = useState(false)
-  const [replyingTo, setReplyingTo] = useState<Message | null>(null)
-  const [selfProfile, setSelfProfile] = useState<any>(null)
-  const [messageSearchQuery, setMessageSearchQuery] = useState("")
-  const endRef = useRef<HTMLDivElement>(null)
+
+  const messagesEndRef = useRef<HTMLDivElement>(null)
   const { presenceEntries, isSomeoneTyping, setTyping } = useChatPresence(roomId, user?.$id)
 
-  const scrollToBottom = () => endRef.current?.scrollIntoView({ behavior: "smooth" })
+  const typingUsers = presenceEntries
+    .filter((entry) => entry.userId !== user?.$id && entry.status === 'typing')
+    .map((entry) => entry.userName)
 
+  // Initialize
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    if (!user?.$id) {
+      router.push('/login')
+      return
+    }
 
-  
+    const init = async () => {
+      setIsLoading(true)
+      try {
+        const [profile] = await Promise.all([
+          profileService.getProfile(targetUserId),
+        ])
+        setTargetProfile(profile)
 
+        const room = await chatService.getOrCreateDirectRoom(user.$id, targetUserId)
+        setRoomId(room.$id)
+        await loadMessages(room.$id)
+      } catch (error: any) {
+        toast({
+          title: 'Failed to open conversation',
+          description: error.message,
+          variant: 'destructive',
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    init()
+  }, [user?.$id, targetUserId, router, toast])
+
+  // Subscribe to messages
+  useEffect(() => {
+    if (!roomId) return
+
+    const unsubscribe = chatService.subscribeToMessages(roomId, (newMsg: any) => {
+      const normalized = normalizeMessage(newMsg, user?.$id)
+      setMessages((prev) => {
+        const exists = prev.some((m) => m.$id === normalized.$id)
+        return exists ? prev : [...prev, normalized]
+      })
+    })
+
+    return () => unsubscribe?.()
+  }, [roomId, user?.$id])
+
+  // Handle typing status
   useEffect(() => {
     const timeout = setTimeout(() => {
       setTyping(Boolean(inputValue.trim()))
@@ -74,488 +93,201 @@ export default function DirectMessagePage() {
     return () => clearTimeout(timeout)
   }, [inputValue, setTyping])
 
+  // Auto-scroll
   useEffect(() => {
-    let cancelled = false
-    const init = async () => {
-      if (!user?.$id) {
-        router.push("/login")
-        return
-      }
-      if (!targetUserId) return
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
-      setIsLoading(true)
-      try {
-        const [profile, self] = await Promise.all([
-          targetUserId ? profileService.getProfile(targetUserId) : Promise.resolve(null),
-          profileService.getProfile(user.$id),
-        ])
-        if (!cancelled) {
-          setTargetProfile(profile)
-          setSelfProfile(self)
-        }
-
-        const room = await chatService.getOrCreateDirectRoom(user.$id, targetUserId)
-        if (cancelled) return
-        setRoomId(room.$id)
-        await loadMessages(room.$id, true, { selfProfile: self, targetProfile: profile })
-      } catch (err: any) {
-        if (!cancelled) {
-          toast({ title: "Direct message unavailable", description: err?.message || "Try again later.", variant: "destructive" })
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
-    }
-
-    init()
-    return () => {
-      cancelled = true
-    }
-  }, [targetUserId, user?.$id, router, toast])
-
-  useEffect(() => {
-    if (!roomId) return
-    const unsubscribe = chatService.subscribeToMessages(roomId, (incoming: Message) => {
-      const incomingRoomId = (incoming as any)?.roomId
-      if (!incoming?.$id || incomingRoomId !== roomId) return
-      setMessages((prev) => {
-        const next = prev.filter((message) => message.$id !== incoming.$id && message.clientMessageId !== incoming.clientMessageId)
-        return attachReplyTargets([...next, incoming]) as unknown as Message[]
-      })
-    })
-    return () => unsubscribe?.()
-  }, [roomId])
-
-  const loadMessages = async (
-    rid: string,
-    firstLoad = false,
-    profiles?: { selfProfile?: any; targetProfile?: any }
-  ) => {
+  const loadMessages = async (rid: string) => {
     try {
-      const res = await chatService.getMessages(rid, 100, 0)
-      const docs = attachReplyTargets(res.documents || [])
-      const self = (profiles?.selfProfile ?? selfProfile) as any
-      const target = (profiles?.targetProfile ?? targetProfile) as any
-      const selfName = self?.name || user?.name
-      const selfAvatar = self?.avatar || "/placeholder.svg"
-      const enriched: Message[] = docs.map((msg: any): Message => {
-        const normalized = normalizeChatMessage(msg)
-        return {
-          ...normalized,
-          content: normalized.content || "",
-          timestamp: normalized.timestamp,
-          authorName: normalized.authorName || (normalized.authorId === user?.$id ? selfName : target?.name) || "User",
-          authorAvatar: normalized.authorAvatar || (normalized.authorId === user?.$id ? selfAvatar : target?.avatar) || "/placeholder.svg",
-        }
-      })
-      setMessages(enriched)
-    } catch (err) {
-      console.error("DM load failed", err)
-    }
-  }
-
-  const handleSend = async () => {
-    if (!inputValue.trim() || !roomId || !user?.$id) return
-    setIsSending(true)
-    try {
-      const senderProfile = selfProfile ?? (await profileService.getProfile(user.$id))
-      if (!selfProfile && senderProfile) setSelfProfile(senderProfile)
-      const senderName = senderProfile?.name || user.name || "You"
-      const senderAvatar = senderProfile?.avatar || "/placeholder.svg"
-
-      const msg = await chatService.sendMessage(roomId, user.$id, inputValue.trim(), {
-        senderName,
-        senderAvatar,
-        replyTo: replyingTo?.$id || null,
-      })
-      const newMessage: Message = {
-        ...msg,
-        content: msg.content || inputValue.trim(),
-        authorId: user.$id,
-        authorName: senderName,
-        authorAvatar: senderAvatar,
-        timestamp: msg.timestamp || msg.$createdAt || new Date().toISOString(),
-        replyTo: replyingTo?.$id || null,
-        replyToMessage: replyingTo,
-      }
-      setMessages((prev: Message[]) => [...prev, newMessage])
-      setInputValue("")
-      setReplyingTo(null)
-      setTyping(false)
-      scrollToBottom()
-    } catch (err: any) {
-      toast({ title: "Failed to send", description: err?.message || "Try again", variant: "destructive" })
-    } finally {
-      setIsSending(false)
-    }
-  }
-
-  const handleRetry = async (message: any) => {
-    if (!roomId || !user?.$id || !message?.clientMessageId) return
-
-    setIsSending(true)
-    try {
-      const senderProfile = selfProfile ?? (await profileService.getProfile(user.$id))
-      if (!selfProfile && senderProfile) setSelfProfile(senderProfile)
-      const senderName = senderProfile?.name || user.name || "You"
-      const senderAvatar = senderProfile?.avatar || "/placeholder.svg"
-      const msg = await chatService.sendMessage(roomId, user.$id, message.content, {
-        senderName,
-        senderAvatar,
-        replyTo: message.replyTo || null,
-      })
-
-      setMessages((prev: Message[]) => [
-        ...prev,
-        {
-          ...msg,
-          content: msg.content || message.content,
-          authorId: user.$id,
-          authorName: senderName,
-          authorAvatar: senderAvatar,
-          timestamp: msg.timestamp || msg.$createdAt || new Date().toISOString(),
-          replyTo: message.replyTo || null,
-          replyToMessage: message.replyToMessage || null,
-        },
-      ])
-      scrollToBottom()
+      const res = await chatService.getMessages(rid, 100)
+      const normalized = (res.documents || [])
+        .map((msg: any) => normalizeMessage(msg, user?.$id))
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      setMessages(normalized)
     } catch (error: any) {
-      toast({ title: "Retry failed", description: error?.message || "Try again", variant: "destructive" })
+      toast({
+        title: 'Failed to load messages',
+        description: error.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || !roomId || !user?.$id) return
+
+    setIsSending(true)
+    try {
+      const response = await chatService.sendMessage(
+        roomId,
+        user.$id,
+        inputValue.trim(),
+        'text',
+        { replyTo: replyingTo?.$id }
+      )
+
+      const normalized = normalizeMessage(response, user.$id)
+      setMessages((prev) => [...prev, normalized])
+      setInputValue('')
+      setReplyingTo(null)
+    } catch (error: any) {
+      toast({
+        title: 'Failed to send message',
+        description: error.message,
+        variant: 'destructive',
+      })
     } finally {
       setIsSending(false)
     }
   }
 
-  const startCall = async (mediaType: 'voice' | 'video') => {
-    if (!roomId || !user?.$id || isStartingCall) return
+  const handleDeleteMessage = async (messageId: string) => {
+    try {
+      await chatService.deleteMessage(messageId)
+      setMessages((prev) => prev.filter((m) => m.$id !== messageId))
+    } catch (error: any) {
+      toast({
+        title: 'Failed to delete message',
+        description: error.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleReact = async (messageId: string, emoji: string) => {
+    try {
+      // Optimistically update reactions
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.$id === messageId) {
+            const reactions = m.metadata?.reactions || {}
+            return {
+              ...m,
+              metadata: {
+                ...m.metadata,
+                reactions: {
+                  ...reactions,
+                  [emoji]: [...(reactions[emoji] || []), user?.$id || ''].filter(Boolean),
+                },
+              },
+            }
+          }
+          return m
+        })
+      )
+      
+      // Try to sync with server if method exists
+      if (typeof (chatService as any).addReaction === 'function') {
+        await (chatService as any).addReaction(messageId, emoji)
+      }
+    } catch (error: any) {
+      console.error('Failed to add reaction:', error)
+    }
+  }
+
+  const handleStartCall = async () => {
+    if (!roomId || !user?.$id || !targetProfile?.$id) return
 
     setIsStartingCall(true)
     try {
-      const session = await callService.startRoomCall(roomId, mediaType)
-      const joinUrl = session?.joinUrl || session?.url
-      if (joinUrl && typeof window !== 'undefined') {
-        window.open(joinUrl, '_blank', 'noopener,noreferrer')
-      }
+      // Use startRoomCall if initiateCall doesn't exist
+      const callMethod = typeof (callService as any).initiateCall === 'function' 
+        ? (callService as any).initiateCall 
+        : (callService as any).startRoomCall
+      
+      await callMethod(roomId, 'voice')
+    } catch (error: any) {
       toast({
-        title: mediaType === 'voice' ? 'Voice call started' : 'Video call started',
-        description: session?.participantMessage || `Call session created for ${targetProfile?.name || 'this conversation'}`,
+        title: 'Failed to start call',
+        description: error.message,
+        variant: 'destructive',
       })
-    } catch (err: any) {
-      toast({ title: 'Failed to start call', description: err?.message || 'Try again', variant: 'destructive' })
     } finally {
       setIsStartingCall(false)
     }
   }
 
-  const handleKeyPress = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
+  const handleStartVideoCall = async () => {
+    if (!roomId || !user?.$id || !targetProfile?.$id) return
 
-  const peerPresence = presenceEntries.find((entry) => entry.userId && entry.userId !== user?.$id)
-  const visibleMessages = messages.filter((msg) => {
-    if (!messageSearchQuery.trim()) return true
-    const haystack = `${msg.content} ${msg.authorName || ""}`.toLowerCase()
-    return haystack.includes(messageSearchQuery.trim().toLowerCase())
-  })
-
-  const isImageMessage = (message: Message) => {
-    const url = message.fileUrl || message.content
-    return Boolean(url && /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(url))
-  }
-
-  const updateLocalMessage = (messageId: string, updater: (message: Message) => Message) => {
-    setMessages((prev) => prev.map((message) => (message.$id === messageId ? updater(message) : message)))
-  }
-
-  const handleCopyMessage = async (message: ChatMessageActionTarget) => {
+    setIsStartingCall(true)
     try {
-      await navigator.clipboard.writeText(message.content)
-      toast({ title: "Copied", description: "Message copied to clipboard." })
+      // Use startRoomCall if initiateCall doesn't exist
+      const callMethod = typeof (callService as any).initiateCall === 'function' 
+        ? (callService as any).initiateCall 
+        : (callService as any).startRoomCall
+      
+      await callMethod(roomId, 'video')
     } catch (error: any) {
-      toast({ title: "Copy failed", description: error?.message || "Try again", variant: "destructive" })
-    }
-  }
-
-  const handleEditMessage = async (message: ChatMessageActionTarget) => {
-    const nextContent = window.prompt("Edit message", message.content)
-    if (nextContent === null) return
-    const trimmed = nextContent.trim()
-    if (!trimmed) return
-
-    try {
-      const updated = await chatService.updateMessage(message.$id, "edit", { content: trimmed })
-      updateLocalMessage(message.$id, (current) => ({
-        ...current,
-        ...updated,
-        content: updated.content || trimmed,
-        isEdited: true,
-      }))
-    } catch (error: any) {
-      toast({ title: "Edit failed", description: error?.message || "Try again", variant: "destructive" })
-    }
-  }
-
-  const handleDeleteMessage = async (message: ChatMessageActionTarget) => {
-    if (!window.confirm("Delete this message?")) return
-
-    try {
-      const updated = await chatService.deleteMessage(message.$id)
-      updateLocalMessage(message.$id, (current) => ({
-        ...current,
-        ...updated,
-        content: "[deleted]",
-        deletedAt: new Date().toISOString(),
-        deliveryState: "deleted",
-      }))
-    } catch (error: any) {
-      toast({ title: "Delete failed", description: error?.message || "Try again", variant: "destructive" })
-    }
-  }
-
-  const handleTogglePin = async (message: ChatMessageActionTarget) => {
-    try {
-      const updated = await chatService.updateMessage(message.$id, "pin")
-      updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
-    } catch (error: any) {
-      toast({ title: "Pin failed", description: error?.message || "Try again", variant: "destructive" })
-    }
-  }
-
-  const handleToggleStar = async (message: ChatMessageActionTarget) => {
-    try {
-      const updated = await chatService.updateMessage(message.$id, "star")
-      updateLocalMessage(message.$id, (current) => ({ ...current, ...updated }))
-    } catch (error: any) {
-      toast({ title: "Star failed", description: error?.message || "Try again", variant: "destructive" })
-    }
-  }
-
-  const handleReportMessage = async (message: ChatMessageActionTarget) => {
-    try {
-      await chatService.reportMessage(message.$id, user?.$id || "", "policy_violation", `Reported from DM with ${targetProfile?.name || "member"}`)
-      toast({ title: "Reported", description: "The message has been sent for review." })
-    } catch (error: any) {
-      toast({ title: "Report failed", description: error?.message || "Try again", variant: "destructive" })
-    }
-  }
-
-  const handleRequestCallback = async (message: ChatMessageActionTarget) => {
-    if (!roomId || !user?.$id) return
-
-    try {
-      const response = await fetch("/api/calls/callback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ fromUserId: user.$id, toUserId: message.authorId, roomId, reason: "Requested from DM" }),
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || `Failed to create callback (${response.status})`)
-      }
-
-      const joinUrl = payload.joinUrl || payload.session?.joinUrl
-      if (joinUrl && typeof window !== "undefined") {
-        const opened = window.open(joinUrl, "_blank", "noopener,noreferrer")
-        if (!opened) router.push(joinUrl)
-      }
-
       toast({
-        title: "Callback ready",
-        description: joinUrl ? "Opened the call UI in a new tab." : "The recipient was notified.",
+        title: 'Failed to start video call',
+        description: error.message,
+        variant: 'destructive',
       })
-    } catch (error: any) {
-      toast({ title: "Callback failed", description: error?.message || "Try again", variant: "destructive" })
+    } finally {
+      setIsStartingCall(false)
     }
-  }
-
-  if (!user?.$id) {
-    return null
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="border-b px-4 py-3 flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
-        <Avatar className="h-10 w-10">
-          <AvatarImage src={targetProfile?.avatar || "/placeholder.svg"} />
-          <AvatarFallback><User className="w-4 h-4" /></AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm truncate">{targetProfile?.name || "Direct Message"}</p>
-          <p className="text-xs text-muted-foreground truncate">
-            {isSomeoneTyping ? "Typing..." : peerPresence?.isOnline ? "Online" : "Private conversation"}
-          </p>
-        </div>
-        <Button variant="ghost" size="icon" onClick={() => setShowCallHistory(true)} disabled={isLoading} title="Call history">
-          <Clock3 className="w-4 h-4" />
-        </Button>
-        <Button variant="ghost" size="icon" onClick={() => startCall('voice')} disabled={isStartingCall || isLoading} title="Voice call">
-          <Phone className="w-4 h-4" />
-        </Button>
-        <Button variant="ghost" size="icon" onClick={() => startCall('video')} disabled={isStartingCall || isLoading} title="Video call">
-          <Video className="w-4 h-4" />
-        </Button>
-      </div>
+    <div className="h-screen flex flex-col bg-black text-white overflow-hidden">
+      {/* Header */}
+      <ChatHeader
+        title={targetProfile?.name || targetProfile?.username || 'User'}
+        subtitle={targetProfile?.bio || ''}
+        avatar={targetProfile?.avatar}
+        showBackButton={true}
+        onBack={() => router.back()}
+        onCall={handleStartCall}
+        onVideoCall={handleStartVideoCall}
+        onMoreOptions={() => console.log('More options')}
+      />
 
-      <div className="px-4 pt-3 max-w-4xl mx-auto">
-      </div>
-
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        <Card className="h-[74vh] flex flex-col border-border/60 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <MessageSquare className="w-4 h-4" />
-              Direct Messages
-            </CardTitle>
-            <div className="relative mt-3">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={messageSearchQuery}
-                onChange={(e) => setMessageSearchQuery(e.target.value)}
-                placeholder="Search this conversation"
-                className="pl-10"
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-2">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-slate-400 text-sm">Loading conversation...</div>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-slate-400">
+            <svg className="w-16 h-16 mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
               />
-            </div>
-          </CardHeader>
-          <CardContent className="flex-1 flex flex-col overflow-hidden p-0">
-            {isLoading ? (
-              <div className="flex-1 flex items-center justify-center">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <>
-                <ScrollArea className="flex-1">
-                  <div className="p-4 space-y-3">
-                    {messages.length === 0 && (
-                      <div className="text-center text-sm text-muted-foreground py-6">
-                        Start the conversation with {targetProfile?.name || "this member"}.
-                      </div>
-                    )}
-                    {messages.length > 0 && visibleMessages.length === 0 && (
-                      <div className="text-center text-sm text-muted-foreground py-6">
-                        No messages match your search.
-                      </div>
-                    )}
-                    {visibleMessages.map((msg) => {
-                      const isMe = msg.authorId === user.$id
-                      const messageMetadata = msg.metadata || {}
-                      const isPinned = Array.isArray(messageMetadata.pinnedBy) && messageMetadata.pinnedBy.includes(user.$id)
-                      const isStarred = Array.isArray(messageMetadata.starredBy) && messageMetadata.starredBy.includes(user.$id)
-                      return (
-                        <div key={msg.$id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                          <div className={`max-w-[78%] rounded-2xl px-4 py-3 shadow-sm ${isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted rounded-bl-md"}`}>
-                            {!isMe && <p className="text-xs font-medium mb-1 opacity-70">{msg.authorName}</p>}
-                            {msg.deletedAt ? (
-                              <div className="rounded-lg border border-dashed px-3 py-2 text-xs opacity-70">
-                                This message was deleted.
-                              </div>
-                            ) : msg.fileUrl && isImageMessage(msg) ? (
-                              <a href={msg.fileUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border mb-2">
-                                <img src={msg.fileUrl} alt={msg.fileName || "Attachment"} className="max-h-64 w-full object-cover" />
-                              </a>
-                            ) : msg.fileUrl ? (
-                              <a href={msg.fileUrl} target="_blank" rel="noreferrer" className="mb-2 block rounded-lg border px-3 py-2 text-sm underline">
-                                {msg.fileName || "Attachment"}
-                              </a>
-                            ) : null}
-                            {msg.replyToMessage && (
-                              <div className="mb-2 rounded-lg border border-black/5 bg-black/5 px-2 py-1 text-xs opacity-80">
-                                <p className="font-medium">{msg.replyToMessage.authorName || "Someone"}</p>
-                                <p className="truncate">{msg.replyToMessage.content}</p>
-                              </div>
-                            )}
-                            {!msg.deletedAt && <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}
-                            <p className="text-[10px] opacity-60 mt-1">{formatChatTimestamp(msg.timestamp)}</p>
-                            {isMe && (
-                              <div className="mt-1 flex items-center gap-2 text-[10px] opacity-60">
-                                <span>
-                                  {msg.deliveryState === "failed"
-                                    ? "Failed to send"
-                                    : msg.deliveryState === "sending" || msg.deliveryState === "queued"
-                                      ? "Sending..."
-                                      : (msg.readBy || []).length > 1
-                                        ? "Read"
-                                        : "Sent"}
-                                </span>
-                                {msg.deliveryState === "failed" && (
-                                  <button className="underline" onClick={() => handleRetry(msg)}>
-                                    Retry
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                            <div className="mt-2 flex items-center justify-between gap-2">
-                              <button
-                                className="text-[11px] font-medium opacity-70 hover:opacity-100"
-                                onClick={() => setReplyingTo(msg)}
-                              >
-                                Reply
-                              </button>
-                              <MessageActionsMenu
-                                message={msg}
-                                isOwnMessage={isMe}
-                                isPinned={isPinned}
-                                isStarred={isStarred}
-                                onCopy={handleCopyMessage}
-                                onEdit={handleEditMessage}
-                                onDelete={handleDeleteMessage}
-                                onTogglePin={handleTogglePin}
-                                onToggleStar={handleToggleStar}
-                                onReport={handleReportMessage}
-                                onRequestCallback={handleRequestCallback}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    <div ref={endRef} />
-                  </div>
-                </ScrollArea>
-                <div className="border-t p-3">
-                  {replyingTo && (
-                    <div className="mb-2 rounded-lg border bg-muted/50 px-3 py-2 text-xs flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium">Replying to {replyingTo.authorName || "message"}</p>
-                        <p className="truncate text-muted-foreground">{replyingTo.content}</p>
-                      </div>
-                      <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setReplyingTo(null)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder={`Message ${targetProfile?.name || "member"}`}
-                      value={inputValue}
-                      onChange={(e) => setInputValue(e.target.value)}
-                      onKeyDown={handleKeyPress}
-                      onBlur={() => setTyping(false)}
-                      disabled={isSending}
-                      className="h-11"
-                    />
-                    <Button onClick={handleSend} disabled={!inputValue.trim() || isSending} className="h-11 px-4">
-                      {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                    </Button>
-                  </div>
-                </div>
-              </>
+            </svg>
+            <p className="text-sm font-medium">Start a conversation</p>
+          </div>
+        ) : (
+          <>
+            <MessageGroup
+              messages={messages}
+              currentUserId={user?.$id || ''}
+              onReply={setReplyingTo}
+              onDelete={handleDeleteMessage}
+              onReact={handleReact}
+            />
+            {isSomeoneTyping && (
+              <TypingIndicator names={typingUsers} isTyping={true} />
             )}
-          </CardContent>
-        </Card>
+            <div ref={messagesEndRef} />
+          </>
+        )}
       </div>
 
-      <CallHistoryDialog
-        roomId={roomId}
-        roomName={targetProfile?.name || "Direct Message"}
-        open={showCallHistory}
-        onOpenChange={setShowCallHistory}
+      {/* Composer */}
+      <ChatComposer
+        value={inputValue}
+        onChange={setInputValue}
+        onSend={handleSendMessage}
+        isLoading={isSending}
+        replyingTo={replyingTo}
+        onCancelReply={() => setReplyingTo(null)}
+        placeholder="Type a message..."
       />
     </div>
   )
