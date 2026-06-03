@@ -35,6 +35,40 @@ function isNotFound(error: any): boolean {
   return error?.code === 404 || message.includes('not found') || message.includes('could not be found')
 }
 
+function getUnknownAttribute(error: any): string | null {
+  const message = String(error?.message || '')
+  return message.match(/Unknown attribute:\s*"([^"]+)"/)?.[1] || null
+}
+
+function isSchemaCompatibilityError(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase()
+  return Boolean(getUnknownAttribute(error)) || message.includes('attribute') || message.includes('index')
+}
+
+async function createDocumentWithSchemaRetry(
+  databases: any,
+  collectionId: string,
+  payload: Record<string, unknown>,
+  maxAttempts = 12,
+) {
+  const data = { ...payload }
+  const removed = new Set<string>()
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await databases.createDocument(DATABASE_ID, collectionId, 'unique()', data)
+    } catch (error: any) {
+      const unknownAttribute = getUnknownAttribute(error)
+      if (!unknownAttribute || removed.has(unknownAttribute)) throw error
+
+      removed.add(unknownAttribute)
+      delete data[unknownAttribute]
+    }
+  }
+
+  throw new Error(`Unable to create ${collectionId} after schema compatibility retries`)
+}
+
 function internalError(message: string, error: any) {
   return NextResponse.json(
     {
@@ -81,6 +115,10 @@ export async function POST(request: NextRequest) {
       }
 
       const roomMembers = parseMembers(room)
+      if (!['direct', 'dm'].includes(room.type) && room.type !== 'pod') {
+        throw new ApiError(400, 'INVALID_ROOM_TYPE', 'Unsupported chat room type')
+      }
+
       if (!roomMembers.includes(senderId)) {
         throw new ApiError(403, 'FORBIDDEN', 'You do not have access to this conversation')
       }
@@ -105,39 +143,39 @@ export async function POST(request: NextRequest) {
 
       if (!room) {
         const now = new Date().toISOString()
-        room = await databases.createDocument(
-          DATABASE_ID,
-          CHAT_ROOMS_COLLECTION_ID,
-          'unique()',
-          {
-            type: 'direct',
-            members: [senderId, recipientId],
-            createdAt: now,
-            isActive: true,
-            lastMessageTime: now,
-          }
-        )
+        room = await createDocumentWithSchemaRetry(databases, CHAT_ROOMS_COLLECTION_ID, {
+          type: 'direct',
+          members: [senderId, recipientId],
+          createdAt: now,
+          isActive: true,
+          lastMessageTime: now,
+        })
       }
     }
 
     if (clientMessageId) {
-      const existingMessages = await databases.listDocuments(
-        DATABASE_ID,
-        MESSAGES_COLLECTION_ID,
-        [
-          Query.equal('roomId', room.$id),
-          Query.equal('clientMessageId', String(clientMessageId)),
-          Query.limit(1),
-        ]
-      )
+      try {
+        const existingMessages = await databases.listDocuments(
+          DATABASE_ID,
+          MESSAGES_COLLECTION_ID,
+          [
+            Query.equal('roomId', room.$id),
+            Query.equal('clientMessageId', String(clientMessageId)),
+            Query.limit(1),
+          ]
+        )
 
-      if (existingMessages.documents.length > 0) {
-        return NextResponse.json({
-          success: true,
-          message: existingMessages.documents[0],
-          roomId: room.$id,
-          deduplicated: true,
-        })
+        if (existingMessages.documents.length > 0) {
+          return NextResponse.json({
+            success: true,
+            message: existingMessages.documents[0],
+            roomId: room.$id,
+            deduplicated: true,
+          })
+        }
+      } catch (dedupeError: any) {
+        if (!isSchemaCompatibilityError(dedupeError)) throw dedupeError
+        console.warn('[messages/send] clientMessageId dedupe unavailable; continuing without dedupe:', dedupeError?.message || dedupeError)
       }
     }
 
@@ -153,28 +191,23 @@ export async function POST(request: NextRequest) {
 
     let message
     try {
-      message = await databases.createDocument(
-        DATABASE_ID,
-        MESSAGES_COLLECTION_ID,
-        'unique()',
-        {
-          roomId: room.$id,
-          senderId,
-          authorId: senderId,
-          ...(clientMessageId ? { clientMessageId: String(clientMessageId) } : {}),
-          senderName,
-          senderAvatar,
-          content: String(content).trim(),
-          type,
-          contentType: type,
-          deliveryState: 'sent',
-          readBy: [senderId],
-          ...(metadata.replyTo ? { replyTo: String(metadata.replyTo) } : {}),
-          ...(metadata.fileUrl || metadata.attachmentUrl ? { fileUrl: String(metadata.fileUrl || metadata.attachmentUrl) } : {}),
-          metadata: JSON.stringify(metadata || {}).slice(0, 5000),
-          timestamp: new Date().toISOString(),
-        }
-      )
+      message = await createDocumentWithSchemaRetry(databases, MESSAGES_COLLECTION_ID, {
+        roomId: room.$id,
+        senderId,
+        authorId: senderId,
+        ...(clientMessageId ? { clientMessageId: String(clientMessageId) } : {}),
+        senderName,
+        senderAvatar,
+        content: String(content).trim(),
+        type,
+        contentType: type,
+        deliveryState: 'sent',
+        readBy: [senderId],
+        ...(metadata.replyTo ? { replyTo: String(metadata.replyTo) } : {}),
+        ...(metadata.fileUrl || metadata.attachmentUrl ? { fileUrl: String(metadata.fileUrl || metadata.attachmentUrl) } : {}),
+        metadata: JSON.stringify(metadata || {}).slice(0, 5000),
+        timestamp: new Date().toISOString(),
+      })
     } catch (error: any) {
       console.error('[messages/send] Failed to insert message:', error)
       return internalError('Failed to send message', error)
