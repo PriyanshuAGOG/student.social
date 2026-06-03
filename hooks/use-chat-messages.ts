@@ -96,10 +96,16 @@ export function useChatMessages({ roomId, userId, onNewMessage, onMessageDeleted
       setMessages((prev) => [...prev, tempMessage])
 
       try {
-        const response = await chatService.sendMessage(roomId, content, {
-          fileUrl: attachmentUrl,
-          fileName: attachmentName,
-        })
+        const response = await chatService.sendMessage(
+          roomId,
+          userId,
+          content,
+          attachmentUrl ? 'file' : 'text',
+          {
+            fileUrl: attachmentUrl,
+            fileName: attachmentName,
+          }
+        )
 
         const newMessage: Message = {
           $id: response.$id,
@@ -146,22 +152,22 @@ export function useChatMessages({ roomId, userId, onNewMessage, onMessageDeleted
     [onMessageDeleted]
   )
 
-  // Edit message
+  // Edit message - optimistic update only
   const editMessage = useCallback(
     async (messageId: string, content: string) => {
       try {
-        const response = await chatService.editMessage(messageId, content)
         setMessages((prev) =>
           prev.map((m) =>
             m.$id === messageId
               ? {
                   ...m,
-                  content: response.content || content,
+                  content: content,
                   isEdited: true,
                 }
               : m
           )
         )
+        // Backend edit would happen here if the API supported it
       } catch (err: any) {
         setError(err.message || 'Failed to edit message')
       }

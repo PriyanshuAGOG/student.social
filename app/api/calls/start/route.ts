@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     const roomName = generateRoomName(chatId)
 
     // Generate token for caller
-    const callerToken = generateLiveKitToken({
+    const callerToken = await generateLiveKitToken({
       roomName,
       identity: callerId,
       displayName: callerProfile?.name || 'Caller',

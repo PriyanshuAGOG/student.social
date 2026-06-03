@@ -18,7 +18,7 @@ export interface CallTokenRequest {
  * Server-side LiveKit token generation
  * This should ONLY be called from API routes, never from frontend
  */
-export function generateLiveKitToken(request: CallTokenRequest): LiveKitToken {
+export async function generateLiveKitToken(request: CallTokenRequest): Promise<LiveKitToken> {
   const apiKey = process.env.LIVEKIT_API_KEY
   const apiSecret = process.env.LIVEKIT_API_SECRET
   const url = process.env.NEXT_PUBLIC_LIVEKIT_URL
@@ -44,7 +44,7 @@ export function generateLiveKitToken(request: CallTokenRequest): LiveKitToken {
       at.metadata = JSON.stringify(request.metadata)
     }
 
-    const token = at.toJwt()
+    const token = await at.toJwt()
     return {
       token,
       url,
@@ -60,11 +60,12 @@ export function generateLiveKitToken(request: CallTokenRequest): LiveKitToken {
  * Verify LiveKit token (optional, for validation)
  */
 export function verifyLiveKitToken(token: string): boolean {
+  const apiKey = process.env.LIVEKIT_API_KEY
   const apiSecret = process.env.LIVEKIT_API_SECRET
-  if (!apiSecret) return false
+  if (!apiKey || !apiSecret) return false
 
   try {
-    const verifier = new TokenVerifier(apiSecret)
+    const verifier = new TokenVerifier(apiKey, apiSecret)
     const claims = verifier.verify(token)
     return !!claims
   } catch {

@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Generate token for user
-    const token = generateLiveKitToken({
+    const token = await generateLiveKitToken({
       roomName: callRecord.roomName,
       identity: userId,
       displayName: userProfile?.name || 'User',

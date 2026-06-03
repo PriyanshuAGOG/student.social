@@ -130,7 +130,7 @@ export function useCall(): CallContextType {
       } catch (err: any) {
         const errorMsg = err.message || 'Failed to start call'
         setError(errorMsg)
-        setCallState('failed')
+        setCallState('ended')
         throw err
       }
     },
@@ -169,7 +169,7 @@ export function useCall(): CallContextType {
       } catch (err: any) {
         const errorMsg = err.message || 'Failed to accept call'
         setError(errorMsg)
-        setCallState('failed')
+        setCallState('ended')
         throw err
       }
     },
