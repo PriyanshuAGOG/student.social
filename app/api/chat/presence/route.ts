@@ -20,6 +20,40 @@ function parseMembers(room: any): string[] {
   return []
 }
 
+function isNotFound(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase()
+  return error?.code === 404 || message.includes('not found') || message.includes('could not be found')
+}
+
+function internalError(message: string, error: any) {
+  return NextResponse.json(
+    {
+      success: false,
+      error: process.env.NODE_ENV === 'development' ? `${message}: ${error?.message || 'Unknown error'}` : message,
+    },
+    { status: 500 },
+  )
+}
+
+async function getRoomForMember(databases: any, roomId: string, userId: string) {
+  let room
+  try {
+    room = await databases.getDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, roomId)
+  } catch (error: any) {
+    if (isNotFound(error)) {
+      throw new ApiError(404, 'ROOM_NOT_FOUND', 'Room not found')
+    }
+    throw error
+  }
+
+  const members = parseMembers(room)
+  if (!members.includes(userId)) {
+    throw new ApiError(403, 'FORBIDDEN', 'You are not a member of this conversation')
+  }
+
+  return room
+}
+
 export async function POST(req: NextRequest) {
   try {
     enforceSameOrigin(req)
@@ -36,12 +70,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { databases } = await createAdminClient()
-    const room = await databases.getDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, roomId)
-    const members = parseMembers(room)
-
-    if (!members.includes(auth.userId)) {
-      throw new ApiError(403, 'FORBIDDEN', 'You are not a member of this conversation')
-    }
+    await getRoomForMember(databases, roomId, auth.userId)
 
     const now = new Date().toISOString()
     const existing = await databases.listDocuments(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, [
@@ -50,23 +79,22 @@ export async function POST(req: NextRequest) {
       Query.limit(1),
     ])
 
-    const payload = {
+    const basePayload = {
       roomId,
       userId: auth.userId,
       isOnline,
       isTyping,
       lastSeenAt: now,
-      typingAt: isTyping ? now : null,
+      typingAt: isTyping ? now : '',
       updatedAt: now,
-      createdAt: now,
     }
 
-    let presence
-    if (existing.documents.length > 0) {
-      presence = await databases.updateDocument(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, existing.documents[0].$id, payload)
-    } else {
-      presence = await databases.createDocument(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, 'unique()', payload)
-    }
+    const presence = existing.documents.length > 0
+      ? await databases.updateDocument(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, existing.documents[0].$id, basePayload)
+      : await databases.createDocument(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, 'unique()', {
+          ...basePayload,
+          createdAt: now,
+        })
 
     return NextResponse.json({ success: true, presence })
   } catch (error: any) {
@@ -74,8 +102,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
     }
 
-    console.error('[API] Failed to update chat presence:', error)
-    return NextResponse.json({ success: false, error: 'Failed to update chat presence' }, { status: 500 })
+    console.error('[chat/presence POST] Failed to update chat presence:', error)
+    return internalError('Failed to update chat presence', error)
   }
 }
 
@@ -89,6 +117,8 @@ export async function GET(req: NextRequest) {
     }
 
     const { databases } = await createAdminClient()
+    await getRoomForMember(databases, roomId, auth.userId)
+
     const presence = await databases.listDocuments(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, [
       Query.equal('roomId', roomId),
       Query.limit(50),
@@ -103,7 +133,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
     }
 
-    console.error('[API] Failed to fetch chat presence:', error)
-    return NextResponse.json({ success: false, error: 'Failed to fetch chat presence' }, { status: 500 })
+    console.error('[chat/presence GET] Failed to fetch chat presence:', error)
+    return internalError('Failed to fetch chat presence', error)
   }
 }

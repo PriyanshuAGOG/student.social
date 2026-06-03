@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { ApiError, enforceSameOrigin, requireUser } from '@/lib/api-security'
 
@@ -42,6 +41,25 @@ function uniqueStrings(values: unknown): string[] {
   return Array.from(new Set(values.filter((entry) => typeof entry === 'string' && entry.trim()).map((entry) => String(entry))))
 }
 
+function isValidUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+function isNotFound(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase()
+  return error?.code === 404 || message.includes('not found') || message.includes('could not be found')
+}
+
+function internalError(message: string, error: any) {
+  return NextResponse.json(
+    {
+      success: false,
+      error: process.env.NODE_ENV === 'development' ? `${message}: ${error?.message || 'Unknown error'}` : message,
+    },
+    { status: 500 },
+  )
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ messageId: string }> }) {
   try {
     enforceSameOrigin(req)
@@ -55,9 +73,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ me
       throw new ApiError(400, 'INVALID_INPUT', 'messageId and action are required')
     }
 
+    if (!isValidUuid(messageId)) {
+      throw new ApiError(400, 'INVALID_INPUT', 'messageId must be a valid UUID')
+    }
+
     const { databases } = await createAdminClient()
-    const message = await databases.getDocument(DATABASE_ID, MESSAGES_COLLECTION_ID, messageId)
-    const room = await databases.getDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, message.roomId)
+    let message
+    try {
+      message = await databases.getDocument(DATABASE_ID, MESSAGES_COLLECTION_ID, messageId)
+    } catch (error: any) {
+      if (isNotFound(error)) {
+        throw new ApiError(404, 'MESSAGE_NOT_FOUND', 'Message not found')
+      }
+      throw error
+    }
+
+    let room
+    try {
+      room = await databases.getDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, message.roomId)
+    } catch (error: any) {
+      if (isNotFound(error)) {
+        throw new ApiError(404, 'ROOM_NOT_FOUND', 'Room not found')
+      }
+      throw error
+    }
     const members = parseMembers(room)
 
     if (!members.includes(auth.userId)) {
@@ -132,8 +171,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ me
       return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
     }
 
-    console.error('[API] Failed to mutate message:', error)
-    return NextResponse.json({ success: false, error: 'Failed to mutate message' }, { status: 500 })
+    console.error('[messages/[messageId] PATCH] Failed to mutate message:', error)
+    return internalError('Failed to mutate message', error)
   }
 }
 

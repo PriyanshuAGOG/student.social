@@ -31,6 +31,40 @@ function normalizeMediaType(input: unknown): 'voice' | 'video' {
   return input === 'voice' ? 'voice' : 'video'
 }
 
+function isNotFound(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase()
+  return error?.code === 404 || message.includes('not found') || message.includes('could not be found')
+}
+
+function internalError(message: string, error: any) {
+  return NextResponse.json(
+    {
+      success: false,
+      error: process.env.NODE_ENV === 'development' ? `${message}: ${error?.message || 'Unknown error'}` : message,
+    },
+    { status: 500 },
+  )
+}
+
+async function getRoomForMember(databases: any, roomId: string, userId: string) {
+  let room
+  try {
+    room = await databases.getDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, roomId)
+  } catch (error: any) {
+    if (isNotFound(error)) {
+      throw new ApiError(404, 'ROOM_NOT_FOUND', 'Room not found')
+    }
+    throw error
+  }
+
+  const members = parseMembers(room)
+  if (!members.includes(userId)) {
+    throw new ApiError(403, 'FORBIDDEN', 'You are not a member of this conversation')
+  }
+
+  return { room, members }
+}
+
 export async function POST(req: NextRequest) {
   try {
     enforceSameOrigin(req)
@@ -46,17 +80,11 @@ export async function POST(req: NextRequest) {
     }
 
     const { databases } = await createAdminClient()
-    const room = await databases.getDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, roomId)
-    const members = parseMembers(room)
+    const { members } = await getRoomForMember(databases, roomId, auth.userId)
 
-    if (!members.includes(auth.userId)) {
-      throw new ApiError(403, 'FORBIDDEN', 'You are not a member of this conversation')
-    }
-
-    const participantIds = members.filter((memberId) => memberId && memberId !== auth.userId)
-    if (participantIds.length === 0) {
-      throw new ApiError(400, 'INVALID_INPUT', 'No participants available for this call')
-    }
+    const invitedParticipantIds = members.filter((memberId) => memberId && memberId !== auth.userId)
+    const participantIds = invitedParticipantIds
+    const isSoloFallback = invitedParticipantIds.length === 0
 
     const startedAt = new Date().toISOString()
     const providerSessionId = `student-social-${roomId}-${Date.now()}`
@@ -136,15 +164,17 @@ export async function POST(req: NextRequest) {
       success: true,
       session,
       joinUrl,
-      participants: participantIds,
+      participants: isSoloFallback ? [auth.userId] : participantIds,
+      invitedParticipants: participantIds,
+      participantMessage: isSoloFallback ? 'You are alone in this room, so the call was started solo.' : undefined,
     }, { status: 201 })
   } catch (error: any) {
     if (error instanceof ApiError) {
       return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
     }
 
-    console.error('[API] Failed to create call session:', error)
-    return NextResponse.json({ success: false, error: 'Failed to create call session' }, { status: 500 })
+    console.error('[calls/sessions POST] Failed to create call session:', error)
+    return internalError('Failed to create call session', error)
   }
 }
 
@@ -154,15 +184,20 @@ export async function GET(req: NextRequest) {
     const roomId = req.nextUrl.searchParams.get('roomId')?.trim()
     const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '20', 10) || 20, 100)
 
-    const { databases } = await createAdminClient()
-    const query = roomId
-      ? [Query.equal('roomId', roomId), Query.orderDesc('startedAt'), Query.limit(limit)]
-      : [Query.orderDesc('startedAt'), Query.limit(limit)]
+    if (!roomId) {
+      throw new ApiError(400, 'INVALID_INPUT', 'roomId is required')
+    }
 
-    const sessions = await databases.listDocuments(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, query)
+    const { databases } = await createAdminClient()
+    await getRoomForMember(databases, roomId, auth.userId)
+
+    const sessions = await databases.listDocuments(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, [
+      Query.equal('roomId', roomId),
+      Query.orderDesc('startedAt'),
+      Query.limit(limit),
+    ])
 
     const visibleSessions = (sessions.documents || []).filter((session: any) => {
-      if (roomId && session.roomId !== roomId) return false
       const participants = Array.isArray(session.participantIds) ? session.participantIds : []
       return session.callerId === auth.userId || participants.includes(auth.userId)
     })
@@ -173,7 +208,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
     }
 
-    console.error('[API] Failed to fetch call sessions:', error)
-    return NextResponse.json({ success: false, error: 'Failed to load call sessions' }, { status: 500 })
+    console.error('[calls/sessions GET] Failed to fetch call sessions:', error)
+    return internalError('Failed to load call sessions', error)
   }
 }

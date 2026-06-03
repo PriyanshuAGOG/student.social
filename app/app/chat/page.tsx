@@ -266,12 +266,11 @@ const prevSummaryStatusRef = useRef<string | null>(null)
   }, [selectedRoom])
 
   useEffect(() => {
-    if (!inputValue.trim()) {
-      setTyping(false)
-      return
-    }
+    const timeout = setTimeout(() => {
+      setTyping(Boolean(inputValue.trim()))
+    }, 750)
 
-    setTyping(true)
+    return () => clearTimeout(timeout)
   }, [inputValue, setTyping])
 
   const handleSendMessage = async () => {
@@ -584,7 +583,7 @@ const prevSummaryStatusRef = useRef<string | null>(null)
 
       toast({
         title: mediaType === "voice" ? "Voice call started" : "Video call started",
-        description: `Call session created for ${selectedRoom.name}`,
+        description: session?.participantMessage || `Call session created for ${selectedRoom.name}`,
       })
     } catch (error: any) {
       console.error(`Failed to start ${mediaType} call:`, error)

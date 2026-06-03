@@ -110,12 +110,11 @@ export default function DirectMessagePage() {
   
 
   useEffect(() => {
-    if (!inputValue.trim()) {
-      setTyping(false)
-      return
-    }
+    const timeout = setTimeout(() => {
+      setTyping(Boolean(inputValue.trim()))
+    }, 750)
 
-    setTyping(true)
+    return () => clearTimeout(timeout)
   }, [inputValue, setTyping])
 
   useEffect(() => {
@@ -278,7 +277,7 @@ export default function DirectMessagePage() {
       }
       toast({
         title: mediaType === 'voice' ? 'Voice call started' : 'Video call started',
-        description: `Call session created for ${targetProfile?.name || 'this conversation'}`,
+        description: session?.participantMessage || `Call session created for ${targetProfile?.name || 'this conversation'}`,
       })
     } catch (err: any) {
       toast({ title: 'Failed to start call', description: err?.message || 'Try again', variant: 'destructive' })
