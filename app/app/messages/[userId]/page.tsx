@@ -34,8 +34,8 @@ export default function PremiumDirectMessagePage() {
   const { presenceEntries, isSomeoneTyping, setTyping } = useChatPresence(roomId, user?.$id)
 
   const typingUsers = presenceEntries
-    .filter((entry) => entry.userId !== user?.$id && entry.status === 'typing')
-    .map((entry) => entry.userName)
+    .filter((entry) => entry.userId !== user?.$id && entry.isTyping)
+    .map((entry) => entry.userId || 'Someone')
 
   // Initialize
   useEffect(() => {
@@ -103,7 +103,7 @@ export default function PremiumDirectMessagePage() {
       const res = await chatService.getMessages(rid, 100)
       const normalized = (res.documents || [])
         .map((msg: any) => normalizeMessage(msg, user?.$id))
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+        .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
       setMessages(normalized)
     } catch (error: any) {
       toast({
@@ -267,7 +267,7 @@ export default function PremiumDirectMessagePage() {
             <MessageGroup
               messages={messages}
               currentUserId={user?.$id || ''}
-              onReply={setReplyingTo}
+              onReply={(message: any) => setReplyingTo(message)}
               onDelete={handleDeleteMessage}
               onReact={handleReact}
             />

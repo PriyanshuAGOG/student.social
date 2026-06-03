@@ -271,7 +271,7 @@ export default function PremiumChatPage() {
         isExpanded={leftRailExpanded}
         onToggle={() => setLeftRailExpanded(!leftRailExpanded)}
         items={leftRailItems}
-        userAvatar={user?.avatar}
+        userAvatar={user?.email?.[0]?.toUpperCase() || 'U'}
       />
 
       {/* Conversation List - Desktop visible, Mobile hidden when chat selected */}
@@ -350,7 +350,7 @@ export default function PremiumChatPage() {
                 <MessageGroup
                   messages={messages}
                   currentUserId={user?.$id || ''}
-                  onReply={setReplyingTo}
+                  onReply={(message: any) => setReplyingTo(message)}
                   onDelete={handleDeleteMessage}
                   onReact={handleReact}
                 />

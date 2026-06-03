@@ -144,7 +144,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           onToggleMute={callHook.toggleMute}
           onToggleCamera={callHook.toggleCamera}
           onEndCall={() => handleEndCall(callHook.activeCall!.id)}
-          isConnecting={callHook.callState === 'connecting'}
+          isConnecting={!(['idle', 'active', 'ended'] as const).includes(callHook.callState as any)}
         />
       )}
     </CallContext.Provider>
