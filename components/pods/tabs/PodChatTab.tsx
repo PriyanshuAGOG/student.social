@@ -18,14 +18,10 @@ import { chatService, profileService } from "@/lib/appwrite"
 import { attachReplyTargets, formatChatTimestamp, normalizeChatMessage } from "@/lib/chat-domain"
 import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
 import { MessageActionsMenu, type ChatMessageActionTarget } from "@/components/chat/message-actions-menu"
-import { SummaryTaskStatus } from "@/components/chat/summary-task-status"
-import { SummaryViewer } from "@/components/chat/summary-viewer"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
-import { ToastAction } from "@/components/ui/toast"
 import { useChatPresence } from "@/hooks/use-chat-presence"
 import { createOutboxMessage, mergeChatMessages, useChatOutbox } from "@/hooks/use-chat-outbox"
-import { useAiSummaryTasks } from "@/hooks/use-ai-summary-tasks"
 
 interface Message {
   $id: string
@@ -58,7 +54,6 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
   const [chatRoomId, setChatRoomId] = useState("")
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(true)
-  const [isSyncing, setIsSyncing] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const [showCallHistory, setShowCallHistory] = useState(false)
@@ -68,44 +63,6 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
   const { toast } = useToast()
   const { isSomeoneTyping, otherTypingCount, setTyping } = useChatPresence(chatRoomId, user?.$id)
   const { outboxMessages, queueMessage, markMessageSending, markMessageFailed, removeMessage } = useChatOutbox(chatRoomId)
-  const { latestTask: latestSummaryTask, isLoading: isLoadingSummaryTasks, error: summaryTaskError } = useAiSummaryTasks(chatRoomId)
-  const [previewTaskId, setPreviewTaskId] = useState<string | null>(null)
-  const prevSummaryStatusRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    const task = latestSummaryTask
-    if (!task) return
-    const prev = prevSummaryStatusRef.current
-    if (prev && prev !== task.status) {
-      if (task.status === 'processing') {
-        toast({ title: 'Summary processing', description: `AI is summarizing recent messages...` })
-      } else if (task.status === 'done') {
-        toast({ title: 'Summary ready', description: 'AI summary is available.' })
-      } else if (task.status === 'failed') {
-        toast({ title: 'Summary failed', description: task.lastError || 'Processing failed', variant: 'destructive' })
-      }
-    }
-    prevSummaryStatusRef.current = task.status || null
-    // update optimistic placeholder
-    setMessages((prev) =>
-      prev.map((m) => {
-        try {
-          const aiTaskId = m?.metadata?.aiTaskId || (typeof m.$id === 'string' && m.$id.startsWith('ai_task_') ? String(m.$id).replace(/^ai_task_/, '') : null)
-          if (!aiTaskId || aiTaskId !== task.$id) return m
-          if (task.status === 'done') {
-            return { ...m, content: 'AI summary ready — preview available.', metadata: { ...(m.metadata || {}), aiTaskStatus: task.status, summary: task.summary } }
-          }
-          if (task.status === 'failed') {
-            return { ...m, content: `AI summary failed: ${task.lastError || 'processing error'}`, metadata: { ...(m.metadata || {}), aiTaskStatus: task.status, lastError: task.lastError } }
-          }
-        } catch (e) {
-          return m
-        }
-        return m
-      }),
-    )
-    if (task.status === 'done') setPreviewTaskId(task.$id || null)
-  }, [latestSummaryTask, toast])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -148,7 +105,6 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
 
     const ensureRoomAndLoadMessages = async (showSpinner = false) => {
       if (showSpinner) setIsLoading(true)
-      else setIsSyncing(true)
       try {
         const room = await chatService.getOrCreatePodRoom(
           podId,
@@ -181,18 +137,33 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
       } finally {
         if (!cancelled) {
           setIsLoading(false)
-          setIsSyncing(false)
         }
       }
     }
     
     ensureRoomAndLoadMessages(true)
     
-    // Poll for new messages every 3 seconds without flicker
-    const interval = setInterval(() => ensureRoomAndLoadMessages(false), 3000)
+    let unsubscribe: (() => void) | undefined
+    const startRealtime = async () => {
+      const room = await chatService.getOrCreatePodRoom(podId, podName, members.map((member) => member.id))
+      if (cancelled) return
+      unsubscribe = chatService.subscribeToMessages(room.$id, (incoming: Message) => {
+        const incomingRoomId = (incoming as any)?.roomId
+        if (!incoming?.$id || incomingRoomId !== room.$id) return
+        const member = members.find((entry) => entry.id === incoming.authorId)
+        const normalized = normalizeChatMessage(incoming)
+        const enriched = {
+          ...normalized,
+          authorName: normalized.authorName || member?.name || "Unknown",
+          authorAvatar: normalized.authorAvatar || member?.avatar || "/placeholder.svg",
+        } as Message
+        setMessages((prev) => attachReplyTargets([...prev.filter((message) => message.$id !== enriched.$id && message.clientMessageId !== enriched.clientMessageId), enriched]) as unknown as Message[])
+      })
+    }
+    void startRealtime()
     return () => {
       cancelled = true
-      clearInterval(interval)
+      unsubscribe?.()
     }
   }, [members, podId, podName])
 
@@ -394,52 +365,6 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
     }
   }
 
-  const handleRequestSummary = async (message: ChatMessageActionTarget) => {
-    if (!chatRoomId || !user?.$id) return
-
-    try {
-      const response = await fetch("/api/ai/summaries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ roomId: chatRoomId, messageIds: [message.$id], requestedBy: user.$id }),
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || `Failed to queue summary (${response.status})`)
-      }
-
-      const task = payload.task
-        setPreviewTaskId(task?.$id || null)
-        // optimistic placeholder
-        setMessages((prev) => [
-          ...prev,
-          {
-            $id: `ai_task_${task.$id}`,
-            authorId: 'system',
-            authorName: 'AI',
-            authorAvatar: '',
-            content: `AI summary queued — preview available.`,
-            timestamp: new Date().toISOString(),
-            type: 'system',
-            metadata: { aiTaskId: task.$id },
-          },
-        ])
-
-        toast({
-          title: "Summary queued",
-          description: task?.$id ? `Task #${String(task.$id).slice(-6)} is ${task.status || "queued"}.` : "Processing in the background.",
-          action: task?.$id ? (
-            <ToastAction asChild altText="Open summary">
-                  <a href={`/ai/summaries/${encodeURIComponent(task.$id)}`} target="_blank" rel="noreferrer">Open</a>
-                </ToastAction>
-          ) : undefined,
-        })
-    } catch (error: any) {
-      toast({ title: "Summary request failed", description: error?.message || "Please try again.", variant: "destructive" })
-    }
-  }
-
   const handleRequestCallback = async (message: ChatMessageActionTarget) => {
     if (!chatRoomId || !user?.$id) return
 
@@ -501,9 +426,6 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                   )}
                 </div>
               </div>
-              {isSyncing && !isLoading && (
-                <Badge variant="outline" className="text-[10px]">Updating…</Badge>
-              )}
             </div>
             <Button variant="ghost" size="sm" onClick={() => setShowCallHistory(true)} disabled={!chatRoomId}>
               <Clock3 className="w-4 h-4" />
@@ -518,8 +440,6 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
               className="pl-10"
             />
           </div>
-          <SummaryTaskStatus task={latestSummaryTask} isLoading={isLoadingSummaryTasks} error={summaryTaskError} className="mt-3" />
-          <SummaryViewer taskId={previewTaskId} autoOpen />
         </CardHeader>
 
         {/* Messages */}
@@ -636,7 +556,6 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                             onTogglePin={handleTogglePin}
                             onToggleStar={handleToggleStar}
                             onReport={handleReportMessage}
-                            onRequestSummary={handleRequestSummary}
                             onRequestCallback={handleRequestCallback}
                           />
                         </div>

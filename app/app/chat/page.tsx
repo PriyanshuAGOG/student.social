@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, Search, Phone, Video, MoreVertical, Users, Hash, Plus, Smile, Paperclip, ImageIcon, Calendar, Settings, MessageSquare, X, Menu, ArrowLeft, AtSign, Mic, Loader2, Reply, CornerUpLeft, WifiOff, RefreshCw } from 'lucide-react'
+import { Send, Search, Phone, Video, MoreVertical, Users, Hash, Plus, Smile, Paperclip, ImageIcon, Calendar, Settings, MessageSquare, X, ArrowLeft, Mic, Reply, CornerUpLeft } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,17 +20,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
-import { ToastAction } from "@/components/ui/toast"
-import { SummaryViewer } from "@/components/chat/summary-viewer"
 import { useRouter, useSearchParams } from "next/navigation"
-import { chatService, profileService, callService } from "@/lib/appwrite"
+import { chatService, callService } from "@/lib/appwrite"
 import { attachReplyTargets, normalizeChatRooms, formatChatTimestamp, type ChatRoomType } from "@/lib/chat-domain"
-import { SummaryTaskStatus } from "@/components/chat/summary-task-status"
 import { CallHistoryDialog } from "@/components/chat/call-history-dialog"
 import { MessageActionsMenu, type ChatMessageActionTarget } from "@/components/chat/message-actions-menu"
 import { useChatPresence } from "@/hooks/use-chat-presence"
 import { createOutboxMessage, mergeChatMessages, useChatOutbox } from "@/hooks/use-chat-outbox"
-import { useAiSummaryTasks } from "@/hooks/use-ai-summary-tasks"
 import { useAuth } from "@/lib/auth-context"
 import { announceToScreenReader } from "@/lib/accessibility-utils"
 export default function ChatPage() {
@@ -43,7 +39,7 @@ const [isListening, setIsListening] = useState(false)
 const [isStartingCall, setIsStartingCall] = useState(false)
 const [showCallHistory, setShowCallHistory] = useState(false)
 const [replyingTo, setReplyingTo] = useState<Message | null>(null)
-const [connectionStatus, setConnectionStatus] = useState<'connected' | 'reconnecting' | 'error'>('connected')
+const [realtimeReady, setRealtimeReady] = useState(false)
 const [messageSearchQuery, setMessageSearchQuery] = useState("")
 const messagesEndRef = useRef<HTMLDivElement>(null)
 const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -93,56 +89,6 @@ const [inputValue, setInputValue] = useState("")
 
 const { presenceEntries, isSomeoneTyping, setTyping } = useChatPresence(selectedRoom?.$id || "", user?.$id)
 const { outboxMessages, queueMessage, markMessageSending, markMessageFailed, removeMessage } = useChatOutbox(selectedRoom?.$id || "")
-const { latestTask: latestSummaryTask, isLoading: isLoadingSummaryTasks, error: summaryTaskError } = useAiSummaryTasks(selectedRoom?.$id || "")
-const prevSummaryStatusRef = useRef<string | null>(null)
-  const [previewTaskId, setPreviewTaskId] = useState<string | null>(null)
-
-  useEffect(() => {
-    const task = latestSummaryTask
-    if (!task) return
-    const prev = prevSummaryStatusRef.current
-    if (prev && prev !== task.status) {
-      if (task.status === 'processing') {
-        toast({ title: 'Summary processing', description: `AI is summarizing recent messages...` })
-      } else if (task.status === 'done') {
-        toast({ title: 'Summary ready', description: 'AI summary is available.' })
-      } else if (task.status === 'failed') {
-        toast({ title: 'Summary failed', description: task.lastError || 'Processing failed', variant: 'destructive' })
-      }
-    }
-    prevSummaryStatusRef.current = task.status || null
-    // Update optimistic placeholder message when task status changes
-    setMessages((prev) =>
-      prev.map((m) => {
-        try {
-          const aiTaskId = m?.metadata?.aiTaskId || (typeof m.$id === 'string' && m.$id.startsWith('ai_task_') ? String(m.$id).replace(/^ai_task_/, '') : null)
-          if (!aiTaskId || aiTaskId !== task.$id) return m
-          if (task.status === 'done') {
-            // attach summary metadata and update content
-            return {
-              ...m,
-              content: 'AI summary ready — preview available.',
-              metadata: { ...(m.metadata || {}), aiTaskStatus: task.status, summary: task.summary },
-            }
-          }
-          if (task.status === 'failed') {
-            return {
-              ...m,
-              content: `AI summary failed: ${task.lastError || 'processing error'}`,
-              metadata: { ...(m.metadata || {}), aiTaskStatus: task.status, lastError: task.lastError },
-            }
-          }
-        } catch (e) {
-          return m
-        }
-        return m
-      }),
-    )
-    if (task.status === 'done') {
-      setPreviewTaskId(task.$id || null)
-    }
-  }, [latestSummaryTask])
-
   useEffect(() => {
     const routeRoomId = searchParams.get("room")
     if (!routeRoomId || selectedRoom) return
@@ -159,50 +105,53 @@ const prevSummaryStatusRef = useRef<string | null>(null)
   }
 
   // Voice input handler
-  const startVoiceInput = () => {
-    if (typeof window === 'undefined') return
-    
-    if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
-      const recognition = new SpeechRecognition()
+  const startVoiceInput = async () => {
+    if (typeof window === 'undefined' || isListening) return
 
+    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
+    if (!SpeechRecognition) {
+      toast({
+        title: "Voice input not supported",
+        description: "Use the attachment button to send a recorded audio file instead.",
+      })
+      return
+    }
+
+    try {
+      const permissionApi = (navigator as any).permissions
+      const microphonePermission = permissionApi?.query
+        ? await permissionApi.query({ name: 'microphone' as PermissionName }).catch(() => null)
+        : null
+
+      if (microphonePermission?.state === 'denied') {
+        toast({
+          title: "Microphone blocked",
+          description: "Allow microphone access in your browser settings, then tap the mic again.",
+        })
+        return
+      }
+
+      const recognition = new SpeechRecognition()
       recognition.continuous = false
       recognition.interimResults = false
       recognition.lang = "en-US"
-
-      recognition.onstart = () => {
-        setIsListening(true)
-      }
-
+      recognition.onstart = () => setIsListening(true)
       recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript
-        setInputValue(prev => prev + (prev ? ' ' : '') + transcript)
-        setIsListening(false)
+        const transcript = event.results?.[0]?.[0]?.transcript || ""
+        if (transcript) setInputValue((prev) => prev + (prev ? ' ' : '') + transcript)
       }
-
       recognition.onerror = (event: any) => {
-        setIsListening(false)
-        console.error('Speech recognition error:', event.error)
-        toast({
-          title: "Voice input error",
-          description: event.error === 'not-allowed' 
-            ? "Microphone access denied. Please allow microphone access in your browser settings."
-            : "Could not recognize speech. Please try again.",
-          variant: "destructive",
-        })
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          toast({ title: "Microphone blocked", description: "Allow microphone access to dictate a message." })
+        } else {
+          toast({ title: "Voice input stopped", description: "Try again or attach an audio file." })
+        }
       }
-
-      recognition.onend = () => {
-        setIsListening(false)
-      }
-
+      recognition.onend = () => setIsListening(false)
       recognition.start()
-    } else {
-      toast({
-        title: "Voice input not supported",
-        description: "Your browser doesn't support voice input. Try using Chrome or Edge.",
-        variant: "destructive",
-      })
+    } catch (error: any) {
+      setIsListening(false)
+      toast({ title: "Voice input unavailable", description: error?.message || "Try again or attach an audio file." })
     }
   }
 
@@ -244,25 +193,45 @@ const prevSummaryStatusRef = useRef<string | null>(null)
   }, [user?.$id, searchParams])
 
   useEffect(() => {
-    const loadMessages = async (fromPoll = false) => {
+    let cancelled = false
+    setRealtimeReady(false)
+
+    const loadMessages = async () => {
       if (!selectedRoom) return
       try {
-        if (fromPoll) {
-          setConnectionStatus("reconnecting")
-        }
         const res = await chatService.getMessages(selectedRoom.$id, 50, 0)
-        const messagesWithReplies = attachReplyTargets(res.documents || []) as unknown as Message[]
-        setMessages(messagesWithReplies)
-        setConnectionStatus("connected")
+        if (cancelled) return
+        setMessages(attachReplyTargets(res.documents || []) as unknown as Message[])
       } catch (error) {
         console.error(error)
-        setConnectionStatus("error")
       }
     }
+
     loadMessages()
 
-    const interval = setInterval(() => loadMessages(true), 3000)
-    return () => clearInterval(interval)
+    if (!selectedRoom) return () => { cancelled = true }
+
+    const unsubscribe = chatService.subscribeToMessages(selectedRoom.$id, (incoming: Message) => {
+      const incomingRoomId = (incoming as any)?.roomId
+      if (cancelled || !incoming?.$id || !incomingRoomId || incomingRoomId !== selectedRoom.$id) return
+      setRealtimeReady(true)
+      setMessages((prev) => {
+        const withoutDuplicate = prev.filter((message) => message.$id !== incoming.$id && message.clientMessageId !== incoming.clientMessageId)
+        return attachReplyTargets([...withoutDuplicate, incoming]) as unknown as Message[]
+      })
+      setRooms((prev) =>
+        prev.map((room) =>
+          room.$id === selectedRoom.$id
+            ? { ...room, lastMessage: incoming.content || room.lastMessage, lastMessageTime: incoming.timestamp || (incoming as any).$createdAt || room.lastMessageTime }
+            : room,
+        ),
+      )
+    })
+
+    return () => {
+      cancelled = true
+      unsubscribe?.()
+    }
   }, [selectedRoom])
 
   useEffect(() => {
@@ -320,48 +289,9 @@ const prevSummaryStatusRef = useRef<string | null>(null)
             : room,
         ),
       )
-      const shouldAskAI = original.includes("@ai")
       scrollToBottom()
       announceToScreenReader(`Sent message in ${selectedRoom.name}`)
 
-      if (shouldAskAI) {
-        const aiPayload = {
-          messages: [
-            { role: "system", content: "You are the pod AI helper. Answer concisely with next steps." },
-            { role: "user", content: original.replace("@ai", "").trim() || original },
-          ],
-        }
-        try {
-          const resp = await fetch("/api/ai/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(aiPayload),
-          })
-          if (resp.ok) {
-            const data = await resp.json()
-            const aiMsg = await chatService.sendMessage(
-              selectedRoom.$id,
-              "ai",
-              data.message || "Here's a quick answer.",
-              "text",
-              { senderName: "AI Assistant" }
-            ) as unknown as Message
-            aiMsg.authorName = "AI Assistant"
-            aiMsg.authorId = "ai"
-            setMessages((prev) => [...prev, aiMsg])
-            setRooms((prev) =>
-              prev.map((room) =>
-                room.$id === selectedRoom.$id
-                  ? { ...room, lastMessage: aiMsg.content, lastMessageTime: new Date().toISOString() }
-                  : room,
-              ),
-            )
-            scrollToBottom()
-          }
-        } catch (err) {
-          console.warn("AI chat reply failed", err)
-        }
-      }
     } catch (error: any) {
       console.error(error)
       markMessageFailed(clientMessageId, error?.message || "Try again")
@@ -464,52 +394,6 @@ const prevSummaryStatusRef = useRef<string | null>(null)
     }
   }
 
-  const handleRequestSummary = async (message: ChatMessageActionTarget) => {
-    if (!selectedRoom || !user?.$id) return
-
-    try {
-      const response = await fetch("/api/ai/summaries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ roomId: selectedRoom.$id, messageIds: [message.$id], requestedBy: user.$id }),
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || `Failed to queue summary (${response.status})`)
-      }
-
-      const task = payload.task
-      setPreviewTaskId(task?.$id || null)
-      // optimistic inline placeholder message
-      setMessages((prev) => [
-        ...prev,
-        {
-          $id: `ai_task_${task.$id}`,
-          authorId: 'system',
-          authorName: 'AI',
-          authorAvatar: '',
-          content: `AI summary queued — preview available.`,
-          timestamp: new Date().toISOString(),
-          type: 'system',
-          metadata: { aiTaskId: task.$id },
-        },
-      ])
-
-      toast({
-        title: "Summary queued",
-        description: task?.$id ? `Task #${String(task.$id).slice(-6)} is ${task.status || "queued"}.` : "Processing in the background.",
-        action: task?.$id ? (
-          <ToastAction asChild altText="Open summary">
-            <a href={`/ai/summaries/${encodeURIComponent(task.$id)}`} target="_blank" rel="noreferrer">Open</a>
-          </ToastAction>
-        ) : undefined,
-      })
-    } catch (error: any) {
-      toast({ title: "Summary request failed", description: error?.message || "Please try again.", variant: "destructive" })
-    }
-  }
-
   const handleRequestCallback = async (message: ChatMessageActionTarget) => {
     if (!selectedRoom || !user?.$id) return
 
@@ -602,6 +486,24 @@ const prevSummaryStatusRef = useRef<string | null>(null)
     setShowMobileChatList(false)
   }
 
+  const openRoomMembers = () => {
+    if (!selectedRoom) return
+    if (selectedRoom.type === "pod" && selectedRoom.podId) {
+      router.push(`/app/pods/${encodeURIComponent(selectedRoom.podId)}`)
+      return
+    }
+    toast({ title: "Members", description: `${selectedRoom.participants?.length || 2} people are in this conversation.` })
+  }
+
+  const scheduleMeeting = () => {
+    if (!selectedRoom) return
+    router.push(`/app/calendar?room=${encodeURIComponent(selectedRoom.$id)}`)
+  }
+
+  const openChatSettings = () => {
+    router.push('/app/settings')
+  }
+
   const filteredRooms = rooms.filter((room) => (room.name || room.$id).toLowerCase().includes(searchQuery.toLowerCase()))
   const selectedRoomPresence = presenceEntries.find((entry) => entry.userId && entry.userId !== user?.$id)
   const visibleMessages = mergeChatMessages(messages, outboxMessages).filter((message) => {
@@ -610,28 +512,13 @@ const prevSummaryStatusRef = useRef<string | null>(null)
     return haystack.includes(messageSearchQuery.trim().toLowerCase())
   })
 
-  const insertAIMention = () => {
-    const currentValue = inputValue
-    const cursorPosition = textareaRef.current?.selectionStart || 0
-    const newValue = currentValue.slice(0, cursorPosition) + "@ai " + currentValue.slice(cursorPosition)
-    setInputValue(newValue)
-    
-    // Focus and set cursor position after @ai
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus()
-        textareaRef.current.setSelectionRange(cursorPosition + 4, cursorPosition + 4)
-      }
-    }, 0)
-  }
-
   return (
-    <div className="bg-background flex flex-col md:flex-row min-h-screen md:h-[calc(100dvh-64px)] overflow-hidden">
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_30%),linear-gradient(135deg,#030303_0%,#101010_45%,#f7f7f7_160%)] text-white md:h-[calc(100dvh-64px)] md:flex-row">
       {/* Desktop Sidebar */}
-      <div className="hidden md:flex w-80 border-r bg-card flex-col shrink-0">
-        <div className="p-4 border-b">
+      <div className="hidden w-[360px] shrink-0 flex-col border-r border-white/10 bg-black/55 shadow-2xl backdrop-blur-2xl md:flex">
+        <div className="border-b border-white/10 p-5">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-semibold">Messages</h1>
+            <div><p className="text-xs uppercase tracking-[0.35em] text-white/45">Student Social</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">Messages</h1></div>
             <Button variant="ghost" size="sm">
               <Plus className="h-4 w-4" />
             </Button>
@@ -642,13 +529,13 @@ const prevSummaryStatusRef = useRef<string | null>(null)
               placeholder="Search conversations..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="h-11 rounded-2xl border-white/10 bg-white/10 pl-10 text-white placeholder:text-white/45 focus-visible:ring-white/30"
             />
           </div>
         </div>
 
         <Tabs defaultValue="all" className="flex-1 flex flex-col">
-          <TabsList className="grid w-full grid-cols-3 mx-4 mt-2">
+          <TabsList className="mx-4 mt-4 grid w-auto grid-cols-3 rounded-2xl bg-white/10 p-1 text-white/70">
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="pods">Pods</TabsTrigger>
             <TabsTrigger value="direct">Direct</TabsTrigger>
@@ -681,8 +568,8 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                   filteredRooms.map((room) => (
                   <Card
                     key={room.$id}
-                    className={`cursor-pointer transition-colors hover:bg-muted/50 ${
-                      selectedRoom?.$id === room.$id ? "bg-muted" : ""
+                    className={`cursor-pointer rounded-3xl border border-white/10 bg-white/[0.04] text-white shadow-sm transition-all hover:bg-white/10 ${
+                      selectedRoom?.$id === room.$id ? "bg-white text-black shadow-white/20" : ""
                     }`}
                     onClick={() => handleRoomSelect(room)}
                   >
@@ -732,8 +619,8 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                   .map((room) => (
                     <Card
                       key={room.$id}
-                      className={`cursor-pointer transition-colors hover:bg-muted/50 ${
-                        selectedRoom?.$id === room.$id ? "bg-muted" : ""
+                      className={`cursor-pointer rounded-3xl border border-white/10 bg-white/[0.04] text-white shadow-sm transition-all hover:bg-white/10 ${
+                        selectedRoom?.$id === room.$id ? "bg-white text-black shadow-white/20" : ""
                       }`}
                       onClick={() => handleRoomSelect(room)}
                     >
@@ -772,8 +659,8 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                   .map((room) => (
                     <Card
                       key={room.$id}
-                      className={`cursor-pointer transition-colors hover:bg-muted/50 ${
-                        selectedRoom?.$id === room.$id ? "bg-muted" : ""
+                      className={`cursor-pointer rounded-3xl border border-white/10 bg-white/[0.04] text-white shadow-sm transition-all hover:bg-white/10 ${
+                        selectedRoom?.$id === room.$id ? "bg-white text-black shadow-white/20" : ""
                       }`}
                       onClick={() => handleRoomSelect(room)}
                     >
@@ -811,11 +698,11 @@ const prevSummaryStatusRef = useRef<string | null>(null)
 
       {/* Mobile Chat List */}
       <div
-        className={`md:hidden ${showMobileChatList ? "flex" : "hidden"} w-full min-h-screen bg-background flex-col transition-all overflow-hidden`}
+        className={`md:hidden ${showMobileChatList ? "flex" : "hidden"} min-h-screen w-full flex-col overflow-hidden bg-black text-white transition-all`}
       >
-        <div className="p-4 border-b flex-shrink-0">
+        <div className="flex-shrink-0 border-b border-white/10 p-5">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-semibold">Messages</h1>
+            <div><p className="text-xs uppercase tracking-[0.35em] text-white/45">Student Social</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">Messages</h1></div>
             <Button variant="ghost" size="sm" onClick={() => router.back()}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
@@ -826,13 +713,13 @@ const prevSummaryStatusRef = useRef<string | null>(null)
               placeholder="Search conversations..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="h-11 rounded-2xl border-white/10 bg-white/10 pl-10 text-white placeholder:text-white/45 focus-visible:ring-white/30"
             />
           </div>
         </div>
 
         <Tabs defaultValue="all" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="grid w-full grid-cols-3 mx-4 mt-2 flex-shrink-0" style={{ width: 'calc(100% - 2rem)' }}>
+          <TabsList className="mx-4 mt-4 grid flex-shrink-0 grid-cols-3 rounded-2xl bg-white/10 p-1 text-white/70" style={{ width: 'calc(100% - 2rem)' }}>
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="pods">Pods</TabsTrigger>
             <TabsTrigger value="direct">Direct</TabsTrigger>
@@ -844,7 +731,7 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                 {filteredRooms.map((room) => (
                   <Card
                     key={room.$id}
-                    className="cursor-pointer transition-colors hover:bg-muted/50"
+                    className="cursor-pointer rounded-3xl border border-white/10 bg-white/[0.04] text-white shadow-sm transition-all hover:bg-white/10"
                     onClick={() => handleRoomSelect(room)}
                   >
                     <CardContent className="p-3">
@@ -892,7 +779,7 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                   .map((room) => (
                     <Card
                       key={room.$id}
-                      className="cursor-pointer transition-colors hover:bg-muted/50"
+                      className="cursor-pointer rounded-3xl border border-white/10 bg-white/[0.04] text-white shadow-sm transition-all hover:bg-white/10"
                       onClick={() => handleRoomSelect(room)}
                     >
                       <CardContent className="p-3">
@@ -928,7 +815,7 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                   .map((room) => (
                     <Card
                       key={room.$id}
-                      className="cursor-pointer transition-colors hover:bg-muted/50"
+                      className="cursor-pointer rounded-3xl border border-white/10 bg-white/[0.04] text-white shadow-sm transition-all hover:bg-white/10"
                       onClick={() => handleRoomSelect(room)}
                     >
                       <CardContent className="p-3">
@@ -962,11 +849,11 @@ const prevSummaryStatusRef = useRef<string | null>(null)
       </div>
 
       {/* Main Chat Area */}
-      <div className={`flex-1 flex flex-col ${showMobileChatList ? "hidden md:flex" : "flex"}`}>
+      <div className={`min-w-0 flex-1 flex-col bg-white text-black shadow-[0_40px_120px_rgba(0,0,0,0.35)] md:m-3 md:overflow-hidden md:rounded-[2.25rem] ${showMobileChatList ? "hidden md:flex" : "flex"}`}>
         {selectedRoom ? (
           <>
             {/* Mobile Header */}
-            <div className="md:hidden sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border p-4">
+            <div className="sticky top-0 z-40 border-b border-black/10 bg-white/95 p-4 backdrop-blur-2xl md:hidden">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Button variant="ghost" size="sm" onClick={() => setShowMobileChatList(true)}>
@@ -1002,29 +889,29 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => startCall("video")} disabled={isStartingCall}>
+                  <Button variant="ghost" size="sm" className="rounded-full hover:bg-black/5" onClick={() => startCall("video")} disabled={isStartingCall}>
                     <Video className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => startCall("voice")} disabled={isStartingCall}>
+                  <Button variant="ghost" size="sm" className="rounded-full hover:bg-black/5" onClick={() => startCall("voice")} disabled={isStartingCall}>
                     <Phone className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
             </div>
-            <div className="p-3 md:p-4 border-b bg-card/80 backdrop-blur-sm">
+            <div className="border-b border-black/10 bg-white/85 p-3 backdrop-blur-2xl md:p-4">
               <div className="relative max-w-4xl mx-auto">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={messageSearchQuery}
                   onChange={(e) => setMessageSearchQuery(e.target.value)}
                   placeholder="Search messages in this conversation"
-                  className="pl-10"
+                  className="h-11 rounded-2xl border-black/10 bg-black/[0.035] pl-10 text-black placeholder:text-black/35 focus-visible:ring-black/20"
                 />
               </div>
             </div>
 
             {/* Desktop Chat Header */}
-            <div className="hidden md:block border-b bg-card p-4">
+            <div className="hidden border-b border-black/10 bg-white/95 px-6 py-4 backdrop-blur-2xl md:block">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="relative">
@@ -1039,7 +926,7 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                     )}
                   </div>
                   <div>
-                    <h2 className="font-semibold">{selectedRoom.name}</h2>
+                    <h2 className="font-semibold tracking-tight">{selectedRoom.name}</h2>
                     <p className="text-sm text-muted-foreground">
                       {selectedRoom.type === "pod" ? (
                         <span className="flex items-center gap-1">
@@ -1057,10 +944,10 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => startCall("video")} disabled={isStartingCall}>
+                  <Button variant="ghost" size="sm" className="rounded-full hover:bg-black/5" onClick={() => startCall("video")} disabled={isStartingCall}>
                     <Video className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => startCall("voice")} disabled={isStartingCall}>
+                  <Button variant="ghost" size="sm" className="rounded-full hover:bg-black/5" onClick={() => startCall("voice")} disabled={isStartingCall}>
                     <Phone className="h-4 w-4" />
                   </Button>
                   <DropdownMenu>
@@ -1070,20 +957,20 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onSelect={openRoomMembers}>
                         <Users className="h-4 w-4 mr-2" />
                         View Members
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onSelect={scheduleMeeting}>
                         <Calendar className="h-4 w-4 mr-2" />
                         Schedule Meeting
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setShowCallHistory(true)}>
+                      <DropdownMenuItem onSelect={() => setShowCallHistory(true)}>
                         <Phone className="h-4 w-4 mr-2" />
                         Call History
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onSelect={openChatSettings}>
                         <Settings className="h-4 w-4 mr-2" />
                         Chat Settings
                       </DropdownMenuItem>
@@ -1093,44 +980,10 @@ const prevSummaryStatusRef = useRef<string | null>(null)
               </div>
             </div>
 
-            {/* Connection Status Banner */}
-            {connectionStatus !== 'connected' && (
-              <div className={`px-4 py-2 text-sm flex items-center justify-center gap-2 ${
-                connectionStatus === 'reconnecting' 
-                  ? 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200'
-                  : 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-200'
-              }`}>
-                {connectionStatus === 'reconnecting' ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>Refreshing message state...</span>
-                  </>
-                ) : (
-                  <>
-                    <WifiOff className="h-4 w-4" />
-                    <span>Connection lost. Messages may be delayed.</span>
-                    <Button 
-                      variant="link" 
-                      size="sm" 
-                      className="h-auto p-0 text-current underline"
-                      onClick={() => window.location.reload()}
-                    >
-                      Retry
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
-
-            <div className="px-4 pt-3">
-              <SummaryTaskStatus task={latestSummaryTask} isLoading={isLoadingSummaryTasks} error={summaryTaskError} />
-              <SummaryViewer taskId={previewTaskId} autoOpen />
-            </div>
-
             {/* Messages */}
-            <div className="flex-1 overflow-hidden relative">
+            <div className="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_top,#f6f6f6,transparent_34%),linear-gradient(#fff,#f7f7f7)]">
               <ScrollArea className="h-full">
-                <div className="p-4 pb-4 space-y-4 max-w-4xl mx-auto">
+                <div className="mx-auto max-w-4xl space-y-4 p-4 pb-8 md:p-6">
                   {messages.length > 0 && visibleMessages.length === 0 ? (
                     <div className="py-10 text-center text-sm text-muted-foreground">
                       No messages match your search.
@@ -1140,10 +993,10 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                     const isCurrent = message.authorId === user?.$id
                     const isAI = message.authorId === "ai"
                     const bubbleClass = isCurrent
-                      ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md"
+                      ? "rounded-[1.4rem] rounded-br-md bg-black text-white shadow-xl shadow-black/15"
                       : isAI
-                        ? "bg-blue-100 dark:bg-blue-900/20 text-blue-900 dark:text-blue-100 rounded-2xl rounded-bl-md border border-blue-200 dark:border-blue-800"
-                        : "bg-muted rounded-2xl rounded-bl-md"
+                        ? "rounded-[1.4rem] rounded-bl-md border border-black/10 bg-white text-black shadow-sm"
+                        : "rounded-[1.4rem] rounded-bl-md border border-black/10 bg-white text-black shadow-sm"
 
                     return (
                     <div
@@ -1274,7 +1127,6 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                                 onTogglePin={handleTogglePin}
                                 onToggleStar={handleToggleStar}
                                 onReport={handleReportMessage}
-                                onRequestSummary={handleRequestSummary}
                                 onRequestCallback={handleRequestCallback}
                               />
                             </div>
@@ -1301,7 +1153,7 @@ const prevSummaryStatusRef = useRef<string | null>(null)
             </div>
 
             {/* Message Input */}
-            <div className="sticky bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm supports-[backdrop-filter]:bg-card/80 p-3 md:p-4 pb-[calc(env(safe-area-inset-bottom,0px)+68px)] md:pb-4">
+            <div className="sticky bottom-0 left-0 right-0 z-50 border-t border-black/10 bg-white/90 p-3 shadow-[0_-20px_60px_rgba(0,0,0,0.08)] backdrop-blur-2xl pb-[calc(env(safe-area-inset-bottom,0px)+68px)] md:p-4 md:pb-4">
               <div className="max-w-4xl mx-auto">
                 {/* Reply Preview */}
                 {replyingTo && (
@@ -1332,7 +1184,7 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                       onKeyPress={handleKeyPress}
                       onBlur={() => setTyping(false)}
                       placeholder={replyingTo ? `Reply to ${replyingTo.authorName || 'message'}...` : `Message ${selectedRoom.name}...`}
-                      className="min-h-[44px] max-h-24 md:max-h-32 resize-none pr-12 md:pr-32 text-base"
+                      className="min-h-[52px] max-h-28 resize-none rounded-[1.35rem] border-black/10 bg-black/[0.035] pr-28 text-base shadow-inner placeholder:text-black/35 focus-visible:ring-black/20 md:max-h-36 md:pr-36"
                       disabled={isLoading}
                     />
                     <div className="absolute right-2 bottom-2 flex gap-0.5 md:gap-1">
@@ -1345,16 +1197,6 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                         title="Voice input"
                       >
                         <Mic className={`h-4 w-4 ${isListening ? "text-red-500 animate-pulse" : ""}`} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 md:h-8 md:w-8 p-0"
-                        onClick={insertAIMention}
-                        disabled={isLoading}
-                        title="Mention AI Assistant"
-                      >
-                        <AtSign className="h-4 w-4 text-blue-600" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -1374,14 +1216,14 @@ const prevSummaryStatusRef = useRef<string | null>(null)
                       </Button>
                     </div>
                   </div>
-                  <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isLoading} className="h-11 w-11 md:w-auto md:px-4 flex-shrink-0">
+                  <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isLoading} className="h-12 w-12 flex-shrink-0 rounded-2xl bg-black text-white shadow-xl shadow-black/20 hover:bg-black/80 md:w-auto md:px-5">
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
 
                 <div className="hidden md:flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                  <p>Press Enter to send. Use Shift+Enter for a new line. Type @ai to ask the assistant.</p>
-                  <p>{selectedRoom.type === "pod" ? "Pod chat" : "Direct message"} • Secure delivery path active</p>
+                  <p>Press Enter to send. Use Shift+Enter for a new line.</p>
+                  <p>{selectedRoom.type === "pod" ? "Pod chat" : "Direct message"} • {realtimeReady ? "Live realtime" : "Realtime ready"}</p>
                 </div>
               </div>
             </div>
@@ -1391,7 +1233,7 @@ const prevSummaryStatusRef = useRef<string | null>(null)
               type="file"
               className="hidden"
               onChange={handleFileUpload}
-              accept="image/*,application/pdf,.doc,.docx,.txt"
+              accept="image/*,audio/*,application/pdf,.doc,.docx,.txt"
             />
 
             {selectedRoom && (
