@@ -205,6 +205,8 @@ export async function POST(request: NextRequest) {
         readBy: [senderId],
         ...(metadata.replyTo ? { replyTo: String(metadata.replyTo) } : {}),
         ...(metadata.fileUrl || metadata.attachmentUrl ? { fileUrl: String(metadata.fileUrl || metadata.attachmentUrl) } : {}),
+        ...(metadata.fileName ? { fileName: String(metadata.fileName).slice(0, 180) } : {}),
+        ...(metadata.fileSize ? { fileSize: Number(metadata.fileSize) } : {}),
         metadata: JSON.stringify(metadata || {}).slice(0, 5000),
         timestamp: new Date().toISOString(),
       })

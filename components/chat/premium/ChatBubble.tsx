@@ -1,24 +1,29 @@
-'use client'
+"use client";
 
-import React, { useState } from 'react'
-import { format } from 'date-fns'
+import React, { useMemo, useState } from "react";
+import { format } from "date-fns";
+import { Edit3, MoreHorizontal, Reply, Smile, Trash2 } from "lucide-react";
+
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "🔥", "👏", "🎉"];
 
 interface ChatBubbleProps {
-  content: string
-  isOwn: boolean
-  timestamp: string
-  authorName?: string
-  authorAvatar?: string
-  fileUrl?: string | null
-  fileName?: string | null
-  replyToMessage?: any
-  isEdited?: boolean
-  deliveryState?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed'
-  onReply?: () => void
-  onDelete?: () => void
-  onEdit?: () => void
-  onReact?: (emoji: string) => void
-  reactions?: Record<string, string[]>
+  content: string;
+  isOwn: boolean;
+  timestamp: string;
+  authorName?: string;
+  authorAvatar?: string;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  replyToMessage?: any;
+  isEdited?: boolean;
+  deliveryState?: "sending" | "sent" | "delivered" | "read" | "failed";
+  onReply?: () => void;
+  onDelete?: () => void;
+  onEdit?: () => void;
+  onReact?: (emoji: string) => void;
+  reactions?: Record<string, string[]>;
+  highlightQuery?: string;
+  currentUserId?: string;
 }
 
 export function ChatBubble({
@@ -37,237 +42,239 @@ export function ChatBubble({
   onEdit,
   onReact,
   reactions,
+  highlightQuery = "",
+  currentUserId = "",
 }: ChatBubbleProps) {
-  const [showActions, setShowActions] = useState(false)
+  const [showActions, setShowActions] = useState(false);
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
 
-  const timeFormatted = format(new Date(timestamp), 'HH:mm')
-  const isImage = fileUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(fileUrl)
+  const date = new Date(timestamp);
+  const timeFormatted = Number.isNaN(date.getTime())
+    ? ""
+    : format(date, "HH:mm");
+  const isImage =
+    fileUrl && /\.(jpg|jpeg|png|gif|webp|avif|bmp|svg)(\?|$)/i.test(fileUrl);
+  const normalizedReactions = useMemo(() => {
+    return Object.entries(reactions || {})
+      .map(([emoji, users]) => ({
+        emoji,
+        users: Array.from(new Set((users || []).filter(Boolean))),
+      }))
+      .filter((entry) => entry.users.length > 0);
+  }, [reactions]);
+
+  const renderHighlightedText = (text: string) => {
+    const query = highlightQuery.trim();
+    if (!query) return text;
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const parts = text.split(new RegExp(`(${escaped})`, "ig"));
+    return parts.map((part, index) =>
+      part.toLowerCase() === query.toLowerCase() ? (
+        <mark
+          key={`${part}-${index}`}
+          className="rounded bg-yellow-300 px-0.5 text-black"
+        >
+          {part}
+        </mark>
+      ) : (
+        <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>
+      ),
+    );
+  };
 
   return (
     <div
-      className={`group flex gap-3 py-2 transition-opacity duration-200 ${isOwn ? 'justify-end' : 'justify-start'}`}
+      className={`group flex gap-3 py-2 transition-opacity duration-200 ${isOwn ? "justify-end" : "justify-start"}`}
       onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => setShowActions(false)}
+      onMouseLeave={() => {
+        setShowActions(false);
+        setShowReactionPicker(false);
+      }}
     >
-      {/* Avatar for received messages */}
-      {!isOwn && authorAvatar && (
-        <div className="w-8 h-8 rounded-full flex-shrink-0 bg-gradient-to-br from-slate-400 to-slate-600 flex items-center justify-center text-xs font-semibold text-white overflow-hidden">
-          {authorAvatar.startsWith('http') ? (
-            <img src={authorAvatar} alt={authorName} className="w-full h-full object-cover" />
+      {!isOwn && (
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary via-cyan-500 to-violet-500 text-xs font-semibold text-primary-foreground shadow-sm">
+          {authorAvatar?.startsWith("http") ? (
+            <img
+              src={authorAvatar}
+              alt={authorName || "User"}
+              className="h-full w-full object-cover"
+            />
           ) : (
-            <span>{authorName?.[0] || '?'}</span>
+            <span>{authorName?.[0] || "?"}</span>
           )}
         </div>
       )}
 
-      <div className={`flex flex-col gap-1 max-w-[65%] ${isOwn ? 'items-end' : 'items-start'}`}>
-        {/* Reply target */}
+      <div
+        className={`flex max-w-[72%] flex-col gap-1 ${isOwn ? "items-end" : "items-start"}`}
+      >
         {replyToMessage && (
-          <div className="px-3 py-2 rounded-lg text-xs text-slate-400 border border-slate-700/50 bg-slate-900/30">
-            <div className="font-medium text-slate-200 mb-1">{replyToMessage.authorName}</div>
-            <div className="truncate text-slate-300">{replyToMessage.content?.substring(0, 50)}</div>
+          <div className="max-w-full rounded-xl border border-border bg-muted/70 px-3 py-2 text-xs text-muted-foreground">
+            <div className="mb-1 font-medium text-foreground">
+              {replyToMessage.authorName}
+            </div>
+            <div className="truncate">
+              {replyToMessage.content?.substring(0, 70)}
+            </div>
           </div>
         )}
 
-        {/* Main message bubble */}
         <div
-          className={`relative rounded-2xl px-4 py-3 transition-all duration-150 group ${
+          className={`relative rounded-3xl px-4 py-3 shadow-sm transition-all duration-150 ${
             isOwn
-              ? 'bg-white/8 backdrop-blur-sm border border-white/10 text-white'
-              : 'bg-white/5 backdrop-blur-sm border border-white/5 text-white'
-          } ${showActions ? 'shadow-lg' : ''}`}
+              ? "rounded-br-lg bg-primary text-primary-foreground"
+              : "rounded-bl-lg border border-border bg-card text-card-foreground"
+          } ${showActions ? "shadow-lg" : ""}`}
         >
-          {/* File attachment */}
           {fileUrl && !isImage && (
-            <div className="mb-2 flex items-center gap-2 text-sm text-slate-300">
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              <a
-                href={fileUrl}
-                download={fileName}
-                className="underline hover:text-slate-100 truncate"
-              >
-                {fileName || 'Download'}
-              </a>
-            </div>
+            <a
+              href={fileUrl}
+              target="_blank"
+              rel="noreferrer"
+              download={fileName}
+              className={`mb-2 flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm underline-offset-2 hover:underline ${isOwn ? "border-primary-foreground/20 bg-primary-foreground/10" : "border-border bg-muted/70"}`}
+            >
+              <span aria-hidden>📎</span>
+              <span className="truncate">
+                {fileName || "Download attachment"}
+              </span>
+            </a>
           )}
 
-          {/* Image attachment */}
           {isImage && (
-            <img
-              src={fileUrl}
-              alt="Attachment"
-              className="rounded-lg max-h-64 max-w-full mb-2 object-cover"
-            />
+            <a
+              href={fileUrl || "#"}
+              target="_blank"
+              rel="noreferrer"
+              className="mb-2 block overflow-hidden rounded-2xl"
+            >
+              <img
+                src={fileUrl || ""}
+                alt={fileName || "Attachment"}
+                className="max-h-72 max-w-full object-cover"
+              />
+            </a>
           )}
 
-          {/* Text content */}
-          <p className="text-sm leading-relaxed text-slate-50 break-words">{content}</p>
-
-          {/* Edit indicator */}
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+            {renderHighlightedText(content)}
+          </p>
           {isEdited && (
-            <span className="text-xs text-slate-400 mt-1 block">(edited)</span>
+            <span
+              className={`mt-1 block text-xs ${isOwn ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+            >
+              (edited)
+            </span>
           )}
         </div>
 
-        {/* Reactions */}
-        {reactions && Object.keys(reactions).length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1">
-            {Object.entries(reactions).map(([emoji, users]) => (
-              <button
-                type="button"
-                key={emoji}
-                className="px-2 py-1 rounded-full text-xs bg-white/10 border border-white/20 hover:bg-white/20 transition-colors"
-                onClick={() => onReact?.(emoji)}
-              >
-                {emoji} {users.length}
-              </button>
-            ))}
+        {normalizedReactions.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {normalizedReactions.map(({ emoji, users }) => {
+              const active = currentUserId
+                ? users.includes(currentUserId)
+                : false;
+              return (
+                <button
+                  type="button"
+                  key={emoji}
+                  className={`rounded-full border px-2 py-1 text-xs shadow-sm transition hover:scale-105 ${active ? "border-primary/60 bg-primary/15 text-primary" : "border-border bg-card text-foreground hover:bg-muted"}`}
+                  onClick={() => onReact?.(emoji)}
+                  aria-pressed={active}
+                  aria-label={`${active ? "Remove" : "Add"} ${emoji} reaction`}
+                >
+                  {emoji} {users.length}
+                </button>
+              );
+            })}
           </div>
         )}
 
-        {/* Timestamp and delivery state */}
-        <div className="flex items-center gap-2 text-xs text-slate-400 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
           <span>{timeFormatted}</span>
           {isOwn && (
-            <>
-              {deliveryState === 'sending' && (
-                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-              )}
-              {deliveryState === 'sent' && (
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              )}
-              {deliveryState === 'read' && (
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                    clipRule="evenodd"
-                  />
-                  <path
-                    fillRule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                    clipRule="evenodd"
-                    opacity="0.5"
-                  />
-                </svg>
-              )}
-              {deliveryState === 'failed' && (
-                <svg className="w-3 h-3 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              )}
-            </>
+            <span>
+              {deliveryState === "read"
+                ? "✓✓"
+                : deliveryState === "failed"
+                  ? "failed"
+                  : deliveryState === "sending"
+                    ? "sending…"
+                    : "✓"}
+            </span>
           )}
         </div>
       </div>
 
-      {/* Action buttons (hover reveal) */}
       {showActions && (
-        <div className="flex items-center gap-1 self-center rounded-xl border border-white/10 bg-slate-950/80 p-1 text-slate-200 opacity-100 shadow-lg backdrop-blur transition-opacity duration-150">
+        <div className="relative flex items-center gap-1 self-center rounded-2xl border border-border bg-popover p-1 text-popover-foreground shadow-xl">
           <button
             type="button"
             onClick={onReply}
-            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+            className="rounded-xl p-1.5 transition hover:bg-muted"
             title="Reply"
+            aria-label="Reply"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 10h10a8 8 0 018 8v2M3 10l6-6m0 0l-6-6"
-              />
-            </svg>
+            <Reply className="h-4 w-4" />
           </button>
           {onReact && (
             <button
               type="button"
-              onClick={() => onReact('👍')}
-              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              onClick={() => setShowReactionPicker((prev) => !prev)}
+              className="rounded-xl p-1.5 transition hover:bg-muted"
               title="React"
+              aria-label="React to message"
+              aria-expanded={showReactionPicker}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m0 0l-2-1m2 1v2.5M14 4l-2 1m0 0l-2-1m2 1v2.5"
-                />
-              </svg>
+              <Smile className="h-4 w-4" />
             </button>
           )}
           {onEdit && isOwn && (
             <button
               type="button"
               onClick={onEdit}
-              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              className="rounded-xl p-1.5 transition hover:bg-muted"
               title="Edit"
+              aria-label="Edit message"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                />
-              </svg>
+              <Edit3 className="h-4 w-4" />
             </button>
           )}
           {onDelete && isOwn && (
             <button
               type="button"
               onClick={onDelete}
-              className="p-1.5 rounded-lg hover:bg-red-500/20 transition-colors"
+              className="rounded-xl p-1.5 text-destructive transition hover:bg-destructive/10"
               title="Delete"
+              aria-label="Delete message"
             >
-              <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                />
-              </svg>
+              <Trash2 className="h-4 w-4" />
             </button>
+          )}
+          {!onEdit && !onDelete && (
+            <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+          )}
+
+          {showReactionPicker && (
+            <div className="absolute bottom-full right-0 mb-2 flex gap-1 rounded-2xl border border-border bg-popover p-2 shadow-2xl">
+              {QUICK_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => {
+                    onReact?.(emoji);
+                    setShowReactionPicker(false);
+                  }}
+                  className="rounded-xl p-2 text-lg transition hover:bg-muted"
+                  aria-label={`React ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
           )}
         </div>
       )}
     </div>
-  )
+  );
 }

@@ -2307,6 +2307,20 @@ export const chatService = {
     return response.message || response.data || response
   },
 
+
+  async toggleReaction(messageId: string, emoji: string) {
+    if (!messageId || !emoji) {
+      throw new Error('Message ID and emoji are required')
+    }
+
+    const response = await apiJson(`/api/messages/${encodeURIComponent(messageId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action: 'react', emoji }),
+    })
+
+    return response.message || response.data || response
+  },
+
   async deleteMessage(messageId: string) {
     if (!messageId) {
       throw new Error('Message ID is required')
@@ -2387,7 +2401,7 @@ export const chatService = {
       .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.MESSAGES}.documents`, pushIfRelevant)
       .then((nextSubscription) => {
         if (closed) {
-          void nextSubscription.close?.()
+          Promise.resolve(nextSubscription.close?.()).catch(() => undefined)
           return
         }
         subscription = nextSubscription
@@ -2398,7 +2412,7 @@ export const chatService = {
 
     return () => {
       closed = true
-      void subscription?.close?.()
+      Promise.resolve(subscription?.close?.()).catch(() => undefined)
     }
   },
 
@@ -2422,7 +2436,7 @@ export const chatService = {
       .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_ROOMS}.documents`, pushIfRelevant)
       .then((nextSubscription) => {
         if (closed) {
-          void nextSubscription.close?.()
+          Promise.resolve(nextSubscription.close?.()).catch(() => undefined)
           return
         }
         subscription = nextSubscription
@@ -2433,7 +2447,7 @@ export const chatService = {
 
     return () => {
       closed = true
-      void subscription?.close?.()
+      Promise.resolve(subscription?.close?.()).catch(() => undefined)
     }
   },
 
@@ -2641,7 +2655,7 @@ export const presenceService = {
       .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_PRESENCE}.documents`, pushIfRelevant)
       .then((nextSubscription) => {
         if (closed) {
-          void nextSubscription.close?.()
+          Promise.resolve(nextSubscription.close?.()).catch(() => undefined)
           return
         }
         subscription = nextSubscription
@@ -2652,7 +2666,7 @@ export const presenceService = {
 
     return () => {
       closed = true
-      void subscription?.close?.()
+      Promise.resolve(subscription?.close?.()).catch(() => undefined)
     }
   },
 }

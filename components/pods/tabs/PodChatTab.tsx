@@ -10,6 +10,7 @@ import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -68,12 +69,6 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
 
-  const visibleMessages = messages.filter((message) => {
-    if (!messageSearchQuery.trim()) return true
-    const haystack = `${message.content} ${message.authorName || ""}`.toLowerCase()
-    return haystack.includes(messageSearchQuery.trim().toLowerCase())
-  })
-
   const mergedMessages = mergeChatMessages(messages, outboxMessages)
   const visibleMergedMessages = mergedMessages.filter((message) => {
     if (!messageSearchQuery.trim()) return true
@@ -82,6 +77,17 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
   })
 
   const isImageMessage = (message: Message) => Boolean(message.fileUrl && /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(message.fileUrl))
+
+  const renderHighlightedMessage = (content: string) => {
+    const query = messageSearchQuery.trim()
+    if (!query) return content
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return content.split(new RegExp(`(${escaped})`, 'ig')).map((part, index) =>
+      part.toLowerCase() === query.toLowerCase()
+        ? <mark key={`${part}-${index}`} className="rounded bg-yellow-200 px-0.5 text-black">{part}</mark>
+        : <span key={`${part}-${index}`}>{part}</span>,
+    )
+  }
 
   const updateLocalMessage = (messageId: string, updater: (message: Message) => Message) => {
     setMessages((prev) => prev.map((message) => (message.$id === messageId ? updater(message) : message)))
@@ -436,10 +442,16 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
             <Input
               value={messageSearchQuery}
               onChange={(e) => setMessageSearchQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") setMessageSearchQuery("") }}
               placeholder="Search this pod chat"
-              className="pl-10"
+              aria-label="Search this pod chat"
+              className="pl-10 pr-8"
             />
+            {messageSearchQuery && (
+              <button type="button" aria-label="Clear pod chat search" onClick={() => setMessageSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1 text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring">×</button>
+            )}
           </div>
+          {messageSearchQuery && <p className="mt-1 text-xs text-muted-foreground">{visibleMergedMessages.length} matching message{visibleMergedMessages.length === 1 ? "" : "s"}</p>}
         </CardHeader>
 
         {/* Messages */}
@@ -515,7 +527,7 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
                               {message.fileName || "Attachment"}
                             </a>
                           ) : null}
-                          {!message.deletedAt && <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>}
+                          {!message.deletedAt && <p className="text-sm whitespace-pre-wrap break-words">{renderHighlightedMessage(message.content)}</p>}
                           <p className="text-[10px] opacity-60 mt-1">{formatChatTimestamp(message.timestamp)}</p>
                           {isCurrent && (
                             <div className="mt-1 flex items-center gap-2 text-[10px] opacity-60">
@@ -589,16 +601,21 @@ export function PodChatTab({ podId, podName, members }: PodChatTabProps) {
             </div>
           )}
           <div className="flex gap-2">
-            <Input
-              placeholder="Type a message..."
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyPress}
-              onBlur={() => setTyping(false)}
-              disabled={isSending || !user}
-              className="flex-1"
-            />
-            <Button onClick={handleSend} disabled={!inputValue.trim() || isSending || !user} size="icon">
+            <div className="flex-1 space-y-1">
+              <Textarea
+                aria-label="Pod chat message"
+                placeholder="Type a message..."
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyPress}
+                onBlur={() => setTyping(false)}
+                disabled={isSending || !user}
+                rows={1}
+                className="min-h-10 resize-none"
+              />
+              <p className="text-[11px] text-muted-foreground">Press Enter to send, Shift+Enter for a new line.</p>
+            </div>
+            <Button aria-label="Send pod chat message" onClick={handleSend} disabled={!inputValue.trim() || isSending || !user} size="icon">
               {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
           </div>

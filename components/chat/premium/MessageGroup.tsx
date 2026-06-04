@@ -30,6 +30,7 @@ interface MessageGroupProps {
   onEdit?: (message: Message) => void
   onReact?: (messageId: string, emoji: string) => void
   showDateDivider?: boolean
+  highlightQuery?: string
 }
 
 export function MessageGroup({
@@ -40,6 +41,7 @@ export function MessageGroup({
   onEdit,
   onReact,
   showDateDivider = true,
+  highlightQuery = '',
 }: MessageGroupProps) {
   if (messages.length === 0) return null
 
@@ -81,10 +83,12 @@ export function MessageGroup({
             isEdited={message.isEdited}
             deliveryState={message.deliveryState}
             reactions={message.metadata?.reactions}
+            currentUserId={currentUserId}
             onReply={() => onReply?.(message)}
             onDelete={() => onDelete?.(message.$id)}
             onEdit={() => onEdit?.(message)}
             onReact={(emoji) => onReact?.(message.$id, emoji)}
+            highlightQuery={highlightQuery}
           />
         )
       })}

@@ -98,6 +98,12 @@ export function normalizeMessage(raw: any, currentUserId?: string): Standardized
     }
   }
 
+  if (metadata && typeof metadata === 'object') {
+    fileUrl = fileUrl || (metadata as any).fileUrl || (metadata as any).attachmentUrl || null
+    fileName = fileName || (metadata as any).fileName || null
+    fileSize = fileSize || (metadata as any).fileSize || null
+  }
+
   // Handle emoji field (convert to reactions metadata)
   if (raw.emoji) {
     const emojiReactions: Record<string, string[]> = {}
@@ -144,7 +150,7 @@ export function normalizeMessage(raw: any, currentUserId?: string): Standardized
     type: messageType,
     fileUrl: fileUrl ? String(fileUrl) : null,
     fileName: fileName ? String(fileName) : null,
-    fileSize: typeof fileSize === 'number' ? fileSize : null,
+    fileSize: typeof fileSize === 'number' ? fileSize : Number(fileSize) || null,
     replyTo: raw.replyTo || raw.reply_to || null,
     replyToMessage: raw.replyToMessage,
     isEdited: Boolean(raw.isEdited || raw.is_edited || editedAt),

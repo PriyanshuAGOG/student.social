@@ -1,61 +1,65 @@
-'use client'
+"use client";
 
-import React, { useMemo, useState } from 'react'
-import { ConversationItem } from './ConversationItem'
+import React, { useMemo, useState } from "react";
+import { ConversationItem } from "./ConversationItem";
 
 interface Conversation {
-  $id: string
-  name: string
-  avatar?: string
-  lastMessage?: string
-  timestamp?: string
-  unreadCount?: number
-  isOnline?: boolean
-  type?: 'direct' | 'group' | 'pod'
+  $id: string;
+  name: string;
+  avatar?: string;
+  lastMessage?: string;
+  timestamp?: string;
+  unreadCount?: number;
+  isOnline?: boolean;
+  type?: "direct" | "group" | "pod";
+  participants?: string[];
 }
 
 interface ConversationListProps {
-  conversations: Conversation[]
-  selectedId?: string
-  onSelect: (conversation: Conversation) => void
-  searchQuery?: string
-  onSearchChange?: (query: string) => void
-  isLoading?: boolean
-  showSearchBox?: boolean
+  conversations: Conversation[];
+  selectedId?: string;
+  onSelect: (conversation: Conversation) => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
+  isLoading?: boolean;
+  showSearchBox?: boolean;
 }
 
 export function ConversationList({
   conversations,
   selectedId,
   onSelect,
-  searchQuery = '',
+  searchQuery = "",
   onSearchChange,
   isLoading = false,
   showSearchBox = true,
 }: ConversationListProps) {
-  const [localQuery, setLocalQuery] = useState(searchQuery)
+  const [localQuery, setLocalQuery] = useState(searchQuery);
 
   const filteredConversations = useMemo(() => {
-    if (!localQuery.trim()) return conversations
+    if (!localQuery.trim()) return conversations;
 
-    const query = localQuery.toLowerCase()
+    const query = localQuery.toLowerCase();
     return conversations.filter(
       (conv) =>
         conv.name.toLowerCase().includes(query) ||
-        conv.lastMessage?.toLowerCase().includes(query)
-    )
-  }, [conversations, localQuery])
+        conv.lastMessage?.toLowerCase().includes(query) ||
+        conv.participants?.some((participant) =>
+          participant.toLowerCase().includes(query),
+        ),
+    );
+  }, [conversations, localQuery]);
 
   const handleSearchChange = (newQuery: string) => {
-    setLocalQuery(newQuery)
-    onSearchChange?.(newQuery)
-  }
+    setLocalQuery(newQuery);
+    onSearchChange?.(newQuery);
+  };
 
   return (
-    <div className="h-full flex flex-col bg-black border-r border-white/5 w-[340px]">
+    <div className="h-full w-[340px] flex flex-col border-r border-border/70 bg-card/95 shadow-sm backdrop-blur-xl">
       {/* Header */}
-      <div className="px-4 py-4 border-b border-white/5">
-        <h2 className="text-lg font-semibold text-white mb-3">Messages</h2>
+      <div className="border-b border-border/70 px-4 py-4">
+        <h2 className="mb-3 text-lg font-semibold text-foreground">Messages</h2>
 
         {/* Search box */}
         {showSearchBox && (
@@ -65,16 +69,32 @@ export function ConversationList({
               placeholder="Search conversations..."
               value={localQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/20 focus:bg-white/10 transition-colors"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 pr-10 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
-            <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
+            {localQuery ? (
+              <button
+                type="button"
+                aria-label="Clear conversation search"
+                onClick={() => handleSearchChange("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                ×
+              </button>
+            ) : (
+              <svg
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            )}
           </div>
         )}
       </div>
@@ -82,12 +102,17 @@ export function ConversationList({
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="flex items-center justify-center h-full text-slate-400">
+          <div className="flex items-center justify-center h-full text-muted-foreground">
             <div className="text-sm">Loading conversations...</div>
           </div>
         ) : filteredConversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400 p-4">
-            <svg className="w-12 h-12 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4">
+            <svg
+              className="w-12 h-12 mb-3 opacity-50"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -96,7 +121,7 @@ export function ConversationList({
               />
             </svg>
             <p className="text-sm font-medium">
-              {localQuery ? 'No conversations found' : 'No conversations yet'}
+              {localQuery ? "No conversations found" : "No conversations yet"}
             </p>
           </div>
         ) : (
@@ -120,5 +145,5 @@ export function ConversationList({
         )}
       </div>
     </div>
-  )
+  );
 }

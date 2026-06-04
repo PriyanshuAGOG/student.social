@@ -291,3 +291,16 @@ export function buildPeerSparkSettingsPatch<T extends Exclude<keyof PeerSparkSet
     },
   }
 }
+export function getBrowserTimeZone(): string {
+  if (typeof Intl === 'undefined') return 'UTC'
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+}
+
+export function resolvePeerSparkTimeZone(value?: string | null): { stored: string; effective: string; isAuto: boolean } {
+  const browserTimeZone = getBrowserTimeZone()
+  const normalized = (value || 'auto').trim()
+  if (!normalized || normalized === 'auto' || /^UTC[+-]/.test(normalized)) {
+    return { stored: 'auto', effective: browserTimeZone, isAuto: true }
+  }
+  return { stored: normalized, effective: normalized, isAuto: false }
+}

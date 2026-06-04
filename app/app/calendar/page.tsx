@@ -31,6 +31,7 @@ import { toast } from "@/hooks/use-toast"
 import { jitsiService, calendarService } from "@/lib/appwrite"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { PEERSPARK_SETTINGS_PREF_KEY, normalizePeerSparkSettings, resolvePeerSparkTimeZone } from "@/lib/settings"
 
 interface CalendarEvent {
   id: string
@@ -116,6 +117,8 @@ function CalendarContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user } = useAuth()
+  const userSettings = normalizePeerSparkSettings((user?.prefs as Record<string, any> | undefined)?.[PEERSPARK_SETTINGS_PREF_KEY])
+  const resolvedTimeZone = resolvePeerSparkTimeZone(userSettings.language.timezone)
 
   // Check if we're on mobile
   useEffect(() => {
@@ -493,7 +496,7 @@ function CalendarContent() {
               <DialogContent className="max-w-sm sm:max-w-md mx-4 max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Create New Event</DialogTitle>
-                  <DialogDescription>Add a new event to your calendar.</DialogDescription>
+                  <DialogDescription>Add a new event to your calendar. Times use {resolvedTimeZone.isAuto ? "browser timezone" : "selected timezone"}: {resolvedTimeZone.effective}.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div>
@@ -617,6 +620,9 @@ function CalendarContent() {
               <Button variant="outline" size="sm" onClick={() => navigateMonth("next")}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
+              <Button variant="outline" size="sm" onClick={() => { const today = new Date(); setCurrentDate(today); setSelectedDate(today) }}>
+                Today
+              </Button>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -637,7 +643,7 @@ function CalendarContent() {
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle>Create New Event</DialogTitle>
-                  <DialogDescription>Add a new event to your calendar.</DialogDescription>
+                  <DialogDescription>Add a new event to your calendar. Times use {resolvedTimeZone.isAuto ? "browser timezone" : "selected timezone"}: {resolvedTimeZone.effective}.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div>

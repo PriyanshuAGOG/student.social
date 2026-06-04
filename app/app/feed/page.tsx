@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -92,6 +92,8 @@ interface StudyingNowUser {
 export default function FeedPage() {
   const [posts, setPosts] = useState<Post[]>(INITIAL_POSTS)
   const [searchQuery, setSearchQuery] = useState("")
+  const [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
+  const searchContainerRef = useRef<HTMLDivElement>(null)
   const [activeTab, setActiveTab] = useState("all")
   const { toast } = useToast()
   const router = useRouter()
@@ -103,6 +105,31 @@ export default function FeedPage() {
   const [celebrationPod, setCelebrationPod] = useState<string>("public")
   const [isCelebrating, setIsCelebrating] = useState(false)
   const [pods, setPods] = useState<any[]>([])
+
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!searchContainerRef.current?.contains(event.target as Node)) {
+        setShowSearchSuggestions(false)
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown)
+    document.addEventListener("touchstart", handlePointerDown)
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown)
+      document.removeEventListener("touchstart", handlePointerDown)
+    }
+  }, [])
+
+  const handleSearchInputChange = (value: string) => {
+    setSearchQuery(value)
+    setShowSearchSuggestions(Boolean(value.trim()))
+  }
+
+  const applySearchSuggestion = (suggestion: string) => {
+    setSearchQuery(suggestion.replace(/^#/, ""))
+    setShowSearchSuggestions(false)
+  }
 
   const formatUsername = (name?: string) =>
     name && name.trim().length > 0
@@ -454,7 +481,7 @@ export default function FeedPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Mobile Header */}
-      <MobileHeader searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+      <MobileHeader searchQuery={searchQuery} onSearchChange={handleSearchInputChange} />
 
       {/* Desktop Header */}
       <div className="hidden md:block p-4 md:p-8 pt-6">
@@ -467,12 +494,17 @@ export default function FeedPage() {
           {/* Desktop Search and Filters */}
           <div className="mb-6 space-y-4">
             <div className="flex items-center space-x-4">
-              <div className="flex-1 relative">
+              <div className="flex-1 relative" ref={searchContainerRef}>
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <Input
                   placeholder="Search posts, people, or topics..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => handleSearchInputChange(e.target.value)}
+                  onFocus={() => setShowSearchSuggestions(Boolean(searchQuery.trim()))}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setShowSearchSuggestions(false)
+                    if (event.key === "Enter") setShowSearchSuggestions(false)
+                  }}
                   className="pl-10"
                   aria-label="Search posts with fuzzy matching"
                 />
@@ -529,9 +561,25 @@ export default function FeedPage() {
           {/* Main Feed */}
           <div className="lg:col-span-3 space-y-4 md:space-y-6">
             {isLoading ? (
-              <Card>
-                <CardContent className="p-6">Loading feed...</CardContent>
-              </Card>
+              <div className="space-y-4" aria-label="Loading feed posts">
+                {[0, 1, 2].map((item) => (
+                  <Card key={item} className="animate-pulse border-0 shadow-sm md:border">
+                    <CardContent className="p-6">
+                      <div className="mb-4 flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-muted" />
+                        <div className="space-y-2">
+                          <div className="h-3 w-32 rounded bg-muted" />
+                          <div className="h-3 w-20 rounded bg-muted" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="h-3 w-full rounded bg-muted" />
+                        <div className="h-3 w-5/6 rounded bg-muted" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             ) : filteredPosts.length === 0 ? (
               <Card>
                 <CardContent className="p-8 text-center">
