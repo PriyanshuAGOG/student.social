@@ -23,10 +23,10 @@ function parseMembers(room: any): string[] {
   return []
 }
 
-function buildJoinUrl(sessionId: string): string {
+function buildJoinUrl(sessionId: string, mediaType: 'voice' | 'video' = 'video'): string {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || ''
   const appBaseUrl = baseUrl.startsWith('http') ? baseUrl : baseUrl ? `https://${baseUrl}` : ''
-  return `${appBaseUrl}/app/chat?call=${encodeURIComponent(sessionId)}`
+  return `${appBaseUrl}/app/chat?call=${encodeURIComponent(sessionId)}&callType=${encodeURIComponent(mediaType)}`
 }
 
 function normalizeMediaType(input: unknown): 'voice' | 'video' {
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
 
     const startedAt = new Date().toISOString()
     const providerSessionId = `student-social-${roomId}-${Date.now()}`
-    const joinUrl = buildJoinUrl(providerSessionId)
+    const joinUrl = buildJoinUrl(providerSessionId, mediaType)
 
     let callerName = 'Someone'
     try {

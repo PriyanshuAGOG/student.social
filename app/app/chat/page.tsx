@@ -208,6 +208,8 @@ export default function PremiumChatPage() {
   };
 
   const handleDeleteMessage = async (messageId: string) => {
+    const confirmed = window.confirm("Delete this message for everyone?");
+    if (!confirmed) return;
     try {
       await chatService.deleteMessage(messageId);
       setMessages((prev) => prev.filter((m) => m.$id !== messageId));
@@ -541,6 +543,7 @@ export default function PremiumChatPage() {
           }}
           isLoading={isLoadingRooms}
           showSearchBox={true}
+          onNewChat={openNewChat}
         />
       )}
 
@@ -678,6 +681,12 @@ export default function PremiumChatPage() {
             )}
           </div>
 
+          {uploadStatus && (
+            <div className="border-t border-border bg-card px-6 py-2 text-xs text-muted-foreground">
+              {uploadStatus}
+            </div>
+          )}
+
           {/* Composer */}
           <ChatComposer
             value={inputValue}
@@ -692,6 +701,132 @@ export default function PremiumChatPage() {
             onCancelReply={() => setReplyingTo(null)}
             placeholder="Type a message..."
           />
+        </div>
+      )}
+
+      {activeCallStage && (
+        <LiveKitCallStage
+          sessionId={activeCallStage.sessionId}
+          mediaType={activeCallStage.mediaType}
+          roomTitle={activeCallStage.title}
+          onClose={() => {
+            setActiveCallStage(null);
+            const params = new URLSearchParams(searchParams.toString());
+            params.delete("call");
+            params.delete("callType");
+            const nextQuery = params.toString();
+            router.replace(nextQuery ? `/app/chat?${nextQuery}` : "/app/chat", { scroll: false });
+          }}
+        />
+      )}
+
+      {isNewChatOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Start a new chat"
+        >
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">
+                  Start a new chat
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Create a DM or group chat outside pods.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNewChatOpen(false)}
+                className="rounded-full p-2 hover:bg-muted"
+                aria-label="Close new chat dialog"
+              >
+                ×
+              </button>
+            </div>
+            <div className="mb-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setNewChatMode("direct");
+                  setSelectedProfileIds([]);
+                }}
+                className={`rounded-full border px-3 py-1 text-sm ${newChatMode === "direct" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
+              >
+                DM
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setNewChatMode("group");
+                  setSelectedProfileIds([]);
+                }}
+                className={`rounded-full border px-3 py-1 text-sm ${newChatMode === "group" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
+              >
+                Group
+              </button>
+            </div>
+            {newChatMode === "group" && (
+              <input
+                value={groupName}
+                onChange={(event) => setGroupName(event.target.value)}
+                placeholder="Group name"
+                className="mb-4 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+            )}
+            <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl border border-border bg-background p-2">
+              {availableProfiles.length === 0 ? (
+                <p className="p-4 text-center text-sm text-muted-foreground">
+                  No people found.
+                </p>
+              ) : (
+                availableProfiles.map((profile) => {
+                  const selected = selectedProfileIds.includes(profile.$id);
+                  return (
+                    <button
+                      key={profile.$id}
+                      type="button"
+                      onClick={() => toggleSelectedProfile(profile.$id)}
+                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition ${selected ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
+                      aria-pressed={selected}
+                    >
+                      <span>
+                        <span className="block font-medium">
+                          {profile.name ||
+                            profile.username ||
+                            profile.email ||
+                            "PeerSpark user"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {profile.email || profile.username || profile.$id}
+                        </span>
+                      </span>
+                      <span>{selected ? "✓" : "+"}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsNewChatOpen(false)}
+                className="rounded-xl border border-border bg-background px-4 py-2 text-sm hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={createNewChat}
+                disabled={isCreatingChat || selectedProfileIds.length === 0}
+                className="rounded-xl bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {isCreatingChat ? "Creating…" : "Create chat"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

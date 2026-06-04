@@ -27,6 +27,7 @@ interface ChatBubbleProps {
 }
 
 export function ChatBubble({
+  messageId,
   content,
   isOwn,
   timestamp,
@@ -34,6 +35,7 @@ export function ChatBubble({
   authorAvatar,
   fileUrl,
   fileName,
+  type,
   replyToMessage,
   isEdited,
   deliveryState,
@@ -41,6 +43,7 @@ export function ChatBubble({
   onDelete,
   onEdit,
   onReact,
+  onCopy,
   reactions,
   highlightQuery = "",
   currentUserId = "",

@@ -2187,6 +2187,20 @@ export const chatService = {
     return response.room || response.data || response
   },
 
+
+  async createGroupRoom(name: string, memberIds: string[]) {
+    if (!Array.isArray(memberIds) || memberIds.length === 0) {
+      throw new Error('Select at least one member')
+    }
+
+    const response = await apiJson('/api/messages/group-room', {
+      method: 'POST',
+      body: JSON.stringify({ name, memberIds }),
+    })
+
+    return response.room || response.data || response
+  },
+
   async getOrCreatePodRoom(podId: string, podName = "Pod Chat", members: string[] = []) {
     try {
       if (!podId) throw new Error("Pod ID is required")
@@ -2598,6 +2612,16 @@ export const callService = {
     })
 
     return response.session || response.data || response
+  },
+
+  async getSessionToken(sessionId: string) {
+    if (!sessionId) {
+      throw new Error('Session ID is required')
+    }
+
+    return apiJson(`/api/calls/sessions/${encodeURIComponent(sessionId)}/token`, {
+      method: 'POST',
+    })
   },
 
   async getRoomCallHistory(roomId: string, limit = 20) {

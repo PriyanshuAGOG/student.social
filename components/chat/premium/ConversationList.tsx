@@ -33,6 +33,7 @@ export function ConversationList({
   onSearchChange,
   isLoading = false,
   showSearchBox = true,
+  onNewChat,
 }: ConversationListProps) {
   const [localQuery, setLocalQuery] = useState(searchQuery);
 
