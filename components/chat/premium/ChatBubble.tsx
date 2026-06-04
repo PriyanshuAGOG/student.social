@@ -2,21 +2,11 @@
 
 import React, { useMemo, useState } from "react";
 import { format } from "date-fns";
-import {
-  Check,
-  Copy,
-  Edit3,
-  MoreHorizontal,
-  Reply,
-  Smile,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Edit3, MoreHorizontal, Reply, Smile, Trash2 } from "lucide-react";
 
-const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "🔥", "👏", "🎉"];
 
 interface ChatBubbleProps {
-  messageId: string;
   content: string;
   isOwn: boolean;
   timestamp: string;
@@ -24,19 +14,16 @@ interface ChatBubbleProps {
   authorAvatar?: string;
   fileUrl?: string | null;
   fileName?: string | null;
-  type?: string;
   replyToMessage?: any;
   isEdited?: boolean;
   deliveryState?: "sending" | "sent" | "delivered" | "read" | "failed";
   onReply?: () => void;
   onDelete?: () => void;
-  onEdit?: (content: string) => void;
+  onEdit?: () => void;
   onReact?: (emoji: string) => void;
-  onCopy?: () => void;
   reactions?: Record<string, string[]>;
   highlightQuery?: string;
   currentUserId?: string;
-  isSearchActive?: boolean;
 }
 
 export function ChatBubble({
@@ -60,12 +47,9 @@ export function ChatBubble({
   reactions,
   highlightQuery = "",
   currentUserId = "",
-  isSearchActive = false,
 }: ChatBubbleProps) {
   const [showActions, setShowActions] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(content);
 
   const date = new Date(timestamp);
   const timeFormatted = Number.isNaN(date.getTime())
@@ -73,9 +57,6 @@ export function ChatBubble({
     : format(date, "HH:mm");
   const isImage =
     fileUrl && /\.(jpg|jpeg|png|gif|webp|avif|bmp|svg)(\?|$)/i.test(fileUrl);
-  const isAudio =
-    type === "voice" ||
-    Boolean(fileUrl && /\.(webm|mp3|wav|m4a|ogg)(\?|$)/i.test(fileUrl));
   const normalizedReactions = useMemo(() => {
     return Object.entries(reactions || {})
       .map(([emoji, users]) => ({
@@ -104,30 +85,13 @@ export function ChatBubble({
     );
   };
 
-  const saveEdit = () => {
-    const next = draft.trim();
-    if (!next || next === content) {
-      setDraft(content);
-      setIsEditing(false);
-      return;
-    }
-    onEdit?.(next);
-    setIsEditing(false);
-  };
-
   return (
     <div
-      id={`message-${messageId}`}
-      data-message-id={messageId}
       className={`group flex gap-3 py-2 transition-opacity duration-200 ${isOwn ? "justify-end" : "justify-start"}`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => {
         setShowActions(false);
         setShowReactionPicker(false);
-      }}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        setShowActions(true);
       }}
     >
       {!isOwn && (
@@ -148,24 +112,14 @@ export function ChatBubble({
         className={`flex max-w-[72%] flex-col gap-1 ${isOwn ? "items-end" : "items-start"}`}
       >
         {replyToMessage && (
-          <button
-            type="button"
-            onClick={() =>
-              replyToMessage.$id &&
-              document
-                .getElementById(`message-${replyToMessage.$id}`)
-                ?.scrollIntoView({ behavior: "smooth", block: "center" })
-            }
-            className="max-w-full rounded-xl border-l-4 border-primary bg-muted/70 px-3 py-2 text-left text-xs text-muted-foreground transition hover:bg-muted"
-            aria-label="Jump to replied message"
-          >
+          <div className="max-w-full rounded-xl border border-border bg-muted/70 px-3 py-2 text-xs text-muted-foreground">
             <div className="mb-1 font-medium text-foreground">
               {replyToMessage.authorName}
             </div>
             <div className="truncate">
               {replyToMessage.content?.substring(0, 70)}
             </div>
-          </button>
+          </div>
         )}
 
         <div
@@ -173,9 +127,9 @@ export function ChatBubble({
             isOwn
               ? "rounded-br-lg bg-primary text-primary-foreground"
               : "rounded-bl-lg border border-border bg-card text-card-foreground"
-          } ${showActions ? "shadow-lg" : ""} ${isSearchActive ? "ring-2 ring-yellow-400 ring-offset-2 ring-offset-background" : ""}`}
+          } ${showActions ? "shadow-lg" : ""}`}
         >
-          {fileUrl && !isImage && !isAudio && (
+          {fileUrl && !isImage && (
             <a
               href={fileUrl}
               target="_blank"
@@ -188,17 +142,6 @@ export function ChatBubble({
                 {fileName || "Download attachment"}
               </span>
             </a>
-          )}
-
-          {isAudio && fileUrl && (
-            <div
-              className={`mb-2 rounded-2xl border p-2 ${isOwn ? "border-primary-foreground/20 bg-primary-foreground/10" : "border-border bg-muted/70"}`}
-            >
-              <p className="mb-1 text-xs font-medium">
-                {fileName || "Voice message"}
-              </p>
-              <audio controls src={fileUrl} className="h-9 w-64 max-w-full" />
-            </div>
           )}
 
           {isImage && (
@@ -216,40 +159,10 @@ export function ChatBubble({
             </a>
           )}
 
-          {isEditing ? (
-            <div className="space-y-2">
-              <textarea
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                className="min-h-24 w-72 max-w-full rounded-xl border border-border bg-background p-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-                aria-label="Edit message text"
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDraft(content);
-                    setIsEditing(false);
-                  }}
-                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted"
-                >
-                  <X className="h-3 w-3" /> Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={saveEdit}
-                  className="inline-flex items-center gap-1 rounded-lg bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90"
-                >
-                  <Check className="h-3 w-3" /> Save
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-              {renderHighlightedText(content)}
-            </p>
-          )}
-          {isEdited && !isEditing && (
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+            {renderHighlightedText(content)}
+          </p>
+          {isEdited && (
             <span
               className={`mt-1 block text-xs ${isOwn ? "text-primary-foreground/70" : "text-muted-foreground"}`}
             >
@@ -307,15 +220,6 @@ export function ChatBubble({
           >
             <Reply className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            onClick={onCopy}
-            className="rounded-xl p-1.5 transition hover:bg-muted"
-            title="Copy"
-            aria-label="Copy message"
-          >
-            <Copy className="h-4 w-4" />
-          </button>
           {onReact && (
             <button
               type="button"
@@ -331,10 +235,7 @@ export function ChatBubble({
           {onEdit && isOwn && (
             <button
               type="button"
-              onClick={() => {
-                setDraft(content);
-                setIsEditing(true);
-              }}
+              onClick={onEdit}
               className="rounded-xl p-1.5 transition hover:bg-muted"
               title="Edit"
               aria-label="Edit message"

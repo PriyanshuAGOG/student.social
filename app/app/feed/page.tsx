@@ -507,16 +507,15 @@ export default function FeedPage() {
                   }}
                   className="pl-10"
                   aria-label="Search posts with fuzzy matching"
-                  aria-expanded={showSearchSuggestions && searchSuggestions.length > 0}
                 />
-                {showSearchSuggestions && searchSuggestions.length > 0 && (
+                {searchSuggestions.length > 0 && (
                   <div className="absolute z-20 mt-2 w-full rounded-md border bg-background p-2 shadow-lg" role="listbox" aria-label="Post search suggestions">
                     {searchSuggestions.map((suggestion) => (
                       <button
                         key={suggestion}
                         type="button"
                         className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
-                        onClick={() => applySearchSuggestion(suggestion)}
+                        onClick={() => setSearchQuery(suggestion.replace(/^#/, ""))}
                       >
                         {suggestion.length > 80 ? `${suggestion.slice(0, 80)}…` : suggestion}
                       </button>
