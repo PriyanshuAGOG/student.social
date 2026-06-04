@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 
 export interface Call {
   id: string
@@ -38,6 +37,7 @@ export interface CallContextType {
   isCameraOff: boolean
   callDuration: number
   error: string | null
+  syncActiveCalls: (calls: Call[]) => void
 }
 
 // Default context value
@@ -57,6 +57,7 @@ export const defaultCallContext: CallContextType = {
   isCameraOff: false,
   callDuration: 0,
   error: null,
+  syncActiveCalls: () => {},
 }
 
 export function useCall(): CallContextType {
@@ -68,7 +69,7 @@ export function useCall(): CallContextType {
   const [callDuration, setCallDuration] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const router = useRouter()
+  const noAnswerTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Cleanup duration timer
   useEffect(() => {
@@ -119,11 +120,22 @@ export function useCall(): CallContextType {
           callType: type,
         } as Call)
 
-        // Set timeout for no answer (45 seconds)
-        const noAnswerTimeout = setTimeout(async () => {
-          if (activeCall?.status === 'ringing') {
-            await cancelCall(call.id)
-          }
+        if (noAnswerTimeoutRef.current) {
+          clearTimeout(noAnswerTimeoutRef.current)
+        }
+        noAnswerTimeoutRef.current = setTimeout(async () => {
+          setActiveCall((current) => {
+            if (current && current.id === call.id && current.status === 'ringing') {
+              void fetch('/api/calls/end', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ callId: call.id }),
+              }).catch(() => undefined)
+              setCallState('idle')
+            }
+            return current
+          })
         }, 45000)
 
         return call
@@ -134,7 +146,7 @@ export function useCall(): CallContextType {
         throw err
       }
     },
-    [activeCall]
+    []
   )
 
   const acceptCall = useCallback(
@@ -155,7 +167,7 @@ export function useCall(): CallContextType {
           throw new Error(data.error || 'Failed to accept call')
         }
 
-        const data = await response.json()
+        await response.json().catch(() => null)
 
         // Update incoming call to active
         if (incomingCall) {
@@ -221,6 +233,10 @@ export function useCall(): CallContextType {
           throw new Error(data.error || 'Failed to end call')
         }
 
+        if (noAnswerTimeoutRef.current) {
+          clearTimeout(noAnswerTimeoutRef.current)
+          noAnswerTimeoutRef.current = null
+        }
         setActiveCall(null)
         setIncomingCall(null)
         setCallState('idle')
@@ -242,6 +258,30 @@ export function useCall(): CallContextType {
     },
     [endCall]
   )
+
+
+  const syncActiveCalls = useCallback((calls: Call[]) => {
+    const normalizedCalls = (calls || []).map((call) => ({
+      ...call,
+      id: call.id || (call as any).$id,
+    }))
+
+    const ringingIncoming = normalizedCalls.find((call) => call.status === 'ringing') || null
+    const acceptedCall = normalizedCalls.find((call) => call.status === 'accepted') || null
+
+    if (ringingIncoming) {
+      setIncomingCall((current) => (current?.id === ringingIncoming.id ? current : ringingIncoming))
+      setCallState((current) => (current === 'active' ? current : 'incoming_ringing'))
+      return
+    }
+
+    setIncomingCall(null)
+
+    if (acceptedCall) {
+      setActiveCall((current) => (current?.id === acceptedCall.id ? current : acceptedCall))
+      setCallState('active')
+    }
+  }, [])
 
   const toggleMute = useCallback(() => {
     setIsMuted((prev) => !prev)
@@ -275,5 +315,6 @@ export function useCall(): CallContextType {
     isCameraOff,
     callDuration,
     error,
+    syncActiveCalls,
   }
 }

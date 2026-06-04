@@ -1,6 +1,8 @@
 'use client'
 
 import React from 'react'
+import { MoreVertical, Phone, Search, Settings, Video, VolumeX } from 'lucide-react'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 interface ChatHeaderProps {
   title: string
@@ -11,6 +13,8 @@ interface ChatHeaderProps {
   onCall?: () => void
   onVideoCall?: () => void
   onMoreOptions?: () => void
+  onSearchMessages?: () => void
+  onMuteConversation?: () => void
   onBack?: () => void
   showBackButton?: boolean
 }
@@ -24,6 +28,8 @@ export function ChatHeader({
   onCall,
   onVideoCall,
   onMoreOptions,
+  onSearchMessages,
+  onMuteConversation,
   onBack,
   showBackButton = false,
 }: ChatHeaderProps) {
@@ -75,52 +81,58 @@ export function ChatHeader({
       </div>
 
       {/* Action buttons */}
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center gap-2 flex-shrink-0 text-slate-200">
         {onVideoCall && (
           <button
+            type="button"
             onClick={onVideoCall}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-200 shadow-sm transition hover:border-cyan-400/50 hover:bg-cyan-400/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
             title="Video call"
+            aria-label="Start video call"
           >
-            <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-              />
-            </svg>
+            <Video className="h-5 w-5" />
           </button>
         )}
 
         {onCall && (
           <button
+            type="button"
             onClick={onCall}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-200 shadow-sm transition hover:border-emerald-400/50 hover:bg-emerald-400/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
             title="Voice call"
+            aria-label="Start voice call"
           >
-            <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-              />
-            </svg>
+            <Phone className="h-5 w-5" />
           </button>
         )}
 
-        {onMoreOptions && (
-          <button
-            onClick={onMoreOptions}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-            title="More options"
-          >
-            <svg className="w-5 h-5 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
-            </svg>
-          </button>
-        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-200 shadow-sm transition hover:border-white/25 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+              title="More options"
+              aria-label="Open conversation options"
+            >
+              <MoreVertical className="h-5 w-5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56 border-white/10 bg-slate-950/95 text-slate-100 shadow-2xl backdrop-blur-xl">
+            <DropdownMenuItem onSelect={onSearchMessages} className="cursor-pointer focus:bg-white/10 focus:text-white">
+              <Search className="mr-2 h-4 w-4" />
+              Search messages
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onMuteConversation} className="cursor-pointer focus:bg-white/10 focus:text-white">
+              <VolumeX className="mr-2 h-4 w-4" />
+              Mute conversation
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-white/10" />
+            <DropdownMenuItem onSelect={onMoreOptions} className="cursor-pointer focus:bg-white/10 focus:text-white">
+              <Settings className="mr-2 h-4 w-4" />
+              Conversation details
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   )

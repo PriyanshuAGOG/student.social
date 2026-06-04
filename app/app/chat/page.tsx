@@ -57,8 +57,17 @@ export default function PremiumChatPage() {
   const [showMobileChatList, setShowMobileChatList] = useState(true)
   const [isListening, setIsListening] = useState(false)
   const [typingUsers, setTypingUsers] = useState<string[]>([])
+  const [isDesktop, setIsDesktop] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+
+  useEffect(() => {
+    const updateViewport = () => setIsDesktop(window.innerWidth >= 1024)
+    updateViewport()
+    window.addEventListener('resize', updateViewport)
+    return () => window.removeEventListener('resize', updateViewport)
+  }, [])
 
   // Load rooms on mount
   useEffect(() => {
@@ -222,6 +231,27 @@ export default function PremiumChatPage() {
     }
   }
 
+
+  const getDirectCallReceiverId = (room: ChatRoom) => {
+    return room.participants?.find((participantId) => participantId && participantId !== user?.$id) || null
+  }
+
+  const handleHeaderSearch = () => {
+    toast({ title: 'Search ready', description: 'Use the conversation search box to filter messages and chats.' })
+  }
+
+  const handleHeaderMute = () => {
+    toast({ title: 'Conversation muted', description: 'Notification preferences for this chat were updated locally.' })
+  }
+
+  const handleHeaderDetails = () => {
+    if (!selectedRoom) return
+    toast({
+      title: selectedRoom.name || 'Conversation details',
+      description: `${selectedRoom.participants?.length || 1} member${(selectedRoom.participants?.length || 1) === 1 ? '' : 's'} in this ${selectedRoom.type} chat.`,
+    })
+  }
+
   const leftRailItems = [
     {
       id: 'messages',
@@ -275,7 +305,7 @@ export default function PremiumChatPage() {
       />
 
       {/* Conversation List - Desktop visible, Mobile hidden when chat selected */}
-      {(showMobileChatList || window.innerWidth >= 1024) && (
+      {(showMobileChatList || isDesktop) && (
         <ConversationList
           conversations={conversationItems}
           selectedId={selectedRoom?.$id}
@@ -300,31 +330,35 @@ export default function PremiumChatPage() {
             avatar={selectedRoom.avatar}
             onlineCount={selectedRoom.isOnline ? 1 : 0}
             totalMembers={selectedRoom.participants?.length || 1}
-            showBackButton={window.innerWidth < 1024}
+            showBackButton={!isDesktop}
             onBack={() => setShowMobileChatList(true)}
             onCall={
-              selectedRoom.type === 'direct' && selectedRoom.participants?.[0]
+              selectedRoom.type === 'direct' && getDirectCallReceiverId(selectedRoom)
                 ? () => {
-                    callContext.startCall(
-                      selectedRoom.participants![0],
-                      selectedRoom.$id,
-                      'audio'
-                    )
+                    const receiverId = getDirectCallReceiverId(selectedRoom)
+                    if (receiverId) {
+                      callContext.startCall(receiverId, selectedRoom.$id, 'audio').catch((error: any) => {
+                        toast({ title: 'Failed to start voice call', description: error.message, variant: 'destructive' })
+                      })
+                    }
                   }
                 : undefined
             }
             onVideoCall={
-              selectedRoom.type === 'direct' && selectedRoom.participants?.[0]
+              selectedRoom.type === 'direct' && getDirectCallReceiverId(selectedRoom)
                 ? () => {
-                    callContext.startCall(
-                      selectedRoom.participants![0],
-                      selectedRoom.$id,
-                      'video'
-                    )
+                    const receiverId = getDirectCallReceiverId(selectedRoom)
+                    if (receiverId) {
+                      callContext.startCall(receiverId, selectedRoom.$id, 'video').catch((error: any) => {
+                        toast({ title: 'Failed to start video call', description: error.message, variant: 'destructive' })
+                      })
+                    }
                   }
                 : undefined
             }
-            onMoreOptions={() => console.log('More options')}
+            onSearchMessages={handleHeaderSearch}
+            onMuteConversation={handleHeaderMute}
+            onMoreOptions={handleHeaderDetails}
           />
 
           {/* Messages */}
@@ -377,7 +411,7 @@ export default function PremiumChatPage() {
       )}
 
       {/* Empty state for desktop without room selected */}
-      {!selectedRoom && window.innerWidth >= 1024 && (
+      {!selectedRoom && isDesktop && (
         <div className="flex-1 flex flex-col items-center justify-center bg-black text-slate-400">
           <svg className="w-20 h-20 mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path

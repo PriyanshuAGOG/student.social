@@ -91,9 +91,6 @@ export default function RootLayout({
         <meta name="msapplication-TileColor" content="#000000" />
         <meta name="msapplication-config" content="/browserconfig.xml" />
         <link rel="mask-icon" href="/placeholder-icon.png" color="#000000" />
-        {/* Preconnect to Jitsi for faster video calls - script loads dynamically when needed */}
-        <link rel="preconnect" href="https://meet.jit.si" />
-        <link rel="dns-prefetch" href="https://meet.jit.si" />
       </head>
       <body>
         <AuthProvider>

@@ -24,7 +24,9 @@ function parseMembers(room: any): string[] {
 }
 
 function buildJoinUrl(sessionId: string): string {
-  return `https://meet.jit.si/student-social-${sessionId.replace(/[^a-zA-Z0-9_-]/g, '')}`
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || ''
+  const appBaseUrl = baseUrl.startsWith('http') ? baseUrl : baseUrl ? `https://${baseUrl}` : ''
+  return `${appBaseUrl}/app/chat?call=${encodeURIComponent(sessionId)}`
 }
 
 function normalizeMediaType(input: unknown): 'voice' | 'video' {
@@ -72,7 +74,7 @@ function buildEphemeralSession(roomId: string, callerId: string, mediaType: 'voi
     callerId,
     participantIds: [],
     mediaType,
-    provider: 'jitsi',
+    provider: 'livekit',
     providerSessionId,
     joinUrl,
     state: 'ringing',
@@ -153,7 +155,7 @@ export async function POST(req: NextRequest) {
         callerId: auth.userId,
         participantIds,
         mediaType,
-        provider: 'jitsi',
+        provider: 'livekit',
         providerSessionId,
         joinUrl,
         state: 'ringing',

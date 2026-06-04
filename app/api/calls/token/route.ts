@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { databases, DATABASE_ID } from '@/lib/appwrite'
+import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { generateLiveKitToken } from '@/lib/livekit-service'
 import { requireUser, enforceSameOrigin, enforceRateLimit, ApiError } from '@/lib/api-security'
 
-const CALLS_COLLECTION = 'calls'
-const PROFILES_COLLECTION = 'profiles'
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
+const CALLS_COLLECTION = process.env.NEXT_PUBLIC_CALLS_COLLECTION_ID || 'calls'
+const PROFILES_COLLECTION = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest) {
     }
 
     const userId = auth.userId
+    const { databases } = await createAdminClient()
 
     // Validate inputs
     if (!callId || typeof callId !== 'string') {
@@ -74,6 +76,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: error.message },
         { status: error.status }
+      )
+    }
+
+    if (String(error?.message || '').includes('LiveKit configuration missing')) {
+      return NextResponse.json(
+        { error: 'Calling is not configured. Set LiveKit environment variables before starting calls.' },
+        { status: 503 }
       )
     }
 

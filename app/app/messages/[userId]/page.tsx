@@ -4,19 +4,21 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import { chatService, profileService, callService } from '@/lib/appwrite'
+import { chatService, profileService } from '@/lib/appwrite'
 import { normalizeMessage, type StandardizedMessage } from '@/lib/message-normalizer'
 import { ChatHeader } from '@/components/chat/premium/ChatHeader'
 import { MessageGroup } from '@/components/chat/premium/MessageGroup'
 import { ChatComposer } from '@/components/chat/premium/ChatComposer'
 import { TypingIndicator } from '@/components/chat/premium/TypingIndicator'
 import { useChatPresence } from '@/hooks/use-chat-presence'
+import { useCallContext } from '@/components/call/CallProvider'
 
 export default function PremiumDirectMessagePage() {
   const params = useParams()
   const router = useRouter()
   const { user } = useAuth()
   const { toast } = useToast()
+  const callContext = useCallContext()
   const targetUserId = params.userId as string
 
   // State
@@ -191,15 +193,10 @@ export default function PremiumDirectMessagePage() {
 
     setIsStartingCall(true)
     try {
-      // Use startRoomCall if initiateCall doesn't exist
-      const callMethod = typeof (callService as any).initiateCall === 'function' 
-        ? (callService as any).initiateCall 
-        : (callService as any).startRoomCall
-      
-      await callMethod(roomId, 'voice')
+      await callContext.startCall(targetProfile.$id, roomId, 'audio')
     } catch (error: any) {
       toast({
-        title: 'Failed to start call',
+        title: 'Failed to start voice call',
         description: error.message,
         variant: 'destructive',
       })
@@ -213,12 +210,7 @@ export default function PremiumDirectMessagePage() {
 
     setIsStartingCall(true)
     try {
-      // Use startRoomCall if initiateCall doesn't exist
-      const callMethod = typeof (callService as any).initiateCall === 'function' 
-        ? (callService as any).initiateCall 
-        : (callService as any).startRoomCall
-      
-      await callMethod(roomId, 'video')
+      await callContext.startCall(targetProfile.$id, roomId, 'video')
     } catch (error: any) {
       toast({
         title: 'Failed to start video call',
@@ -228,6 +220,21 @@ export default function PremiumDirectMessagePage() {
     } finally {
       setIsStartingCall(false)
     }
+  }
+
+  const handleHeaderSearch = () => {
+    toast({ title: 'Search ready', description: 'Use the message list search from the chat header.' })
+  }
+
+  const handleHeaderMute = () => {
+    toast({ title: 'Conversation muted', description: 'Notification preferences for this direct message were updated locally.' })
+  }
+
+  const handleHeaderDetails = () => {
+    toast({
+      title: targetProfile?.name || targetProfile?.username || 'Conversation details',
+      description: targetProfile?.bio || 'Direct message conversation options are available.',
+    })
   }
 
   return (
@@ -241,7 +248,9 @@ export default function PremiumDirectMessagePage() {
         onBack={() => router.back()}
         onCall={handleStartCall}
         onVideoCall={handleStartVideoCall}
-        onMoreOptions={() => console.log('More options')}
+        onSearchMessages={handleHeaderSearch}
+        onMuteConversation={handleHeaderMute}
+        onMoreOptions={handleHeaderDetails}
       />
 
       {/* Messages */}

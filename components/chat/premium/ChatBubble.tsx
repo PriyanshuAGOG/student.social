@@ -45,7 +45,7 @@ export function ChatBubble({
 
   return (
     <div
-      className={`flex gap-3 py-2 transition-opacity duration-200 ${isOwn ? 'justify-end' : 'justify-start'}`}
+      className={`group flex gap-3 py-2 transition-opacity duration-200 ${isOwn ? 'justify-end' : 'justify-start'}`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
@@ -126,6 +126,7 @@ export function ChatBubble({
           <div className="flex flex-wrap gap-1 mt-1">
             {Object.entries(reactions).map(([emoji, users]) => (
               <button
+                type="button"
                 key={emoji}
                 className="px-2 py-1 rounded-full text-xs bg-white/10 border border-white/20 hover:bg-white/20 transition-colors"
                 onClick={() => onReact?.(emoji)}
@@ -198,8 +199,9 @@ export function ChatBubble({
 
       {/* Action buttons (hover reveal) */}
       {showActions && (
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        <div className="flex items-center gap-1 self-center rounded-xl border border-white/10 bg-slate-950/80 p-1 text-slate-200 opacity-100 shadow-lg backdrop-blur transition-opacity duration-150">
           <button
+            type="button"
             onClick={onReply}
             className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
             title="Reply"
@@ -215,6 +217,7 @@ export function ChatBubble({
           </button>
           {onReact && (
             <button
+              type="button"
               onClick={() => onReact('👍')}
               className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
               title="React"
@@ -231,6 +234,7 @@ export function ChatBubble({
           )}
           {onEdit && isOwn && (
             <button
+              type="button"
               onClick={onEdit}
               className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
               title="Edit"
@@ -247,6 +251,7 @@ export function ChatBubble({
           )}
           {onDelete && isOwn && (
             <button
+              type="button"
               onClick={onDelete}
               className="p-1.5 rounded-lg hover:bg-red-500/20 transition-colors"
               title="Delete"

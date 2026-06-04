@@ -1,51 +1,91 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
-import { databases, DATABASE_ID } from '@/lib/appwrite'
+import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { requireUser, enforceSameOrigin, enforceRateLimit, ApiError } from '@/lib/api-security'
 
-const CALLS_COLLECTION = 'calls'
+const DATABASE_ID =
+  process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID ||
+  process.env.APPWRITE_DATABASE_ID ||
+  process.env.NEXT_PUBLIC_DATABASE_ID ||
+  'peerspark-main-db'
+const CALLS_COLLECTION = process.env.NEXT_PUBLIC_CALLS_COLLECTION_ID || 'calls'
+const PROFILES_COLLECTION = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'
+
+function isMissingOrSchemaError(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase()
+  return (
+    error?.code === 401 ||
+    error?.code === 403 ||
+    error?.code === 404 ||
+    message.includes('not found') ||
+    message.includes('could not be found') ||
+    message.includes('collection') ||
+    message.includes('attribute') ||
+    message.includes('index')
+  )
+}
+
+function normalizeCall(call: any) {
+  return {
+    ...call,
+    id: call?.$id || call?.id,
+  }
+}
 
 export async function GET(req: NextRequest) {
   try {
     enforceSameOrigin(req)
-    enforceRateLimit(req, { max: 30, windowMs: 60000 })
+    enforceRateLimit(req, { key: 'calls:active', max: 60, windowMs: 60000 })
 
-    // Authenticate user
     const auth = requireUser(req)
-    if (!auth?.userId) {
-      throw new ApiError(401, 'UNAUTHORIZED', 'Authentication required')
+    const userId = auth.userId
+    const { databases } = await createAdminClient()
+
+    let activeCalls: any[] = []
+    try {
+      const [ringing, acceptedAsReceiver, acceptedAsCaller] = await Promise.all([
+        databases.listDocuments(DATABASE_ID, CALLS_COLLECTION, [
+          Query.equal('receiverId', userId),
+          Query.equal('status', 'ringing'),
+          Query.limit(25),
+        ]),
+        databases.listDocuments(DATABASE_ID, CALLS_COLLECTION, [
+          Query.equal('receiverId', userId),
+          Query.equal('status', 'accepted'),
+          Query.limit(25),
+        ]),
+        databases.listDocuments(DATABASE_ID, CALLS_COLLECTION, [
+          Query.equal('callerId', userId),
+          Query.equal('status', 'accepted'),
+          Query.limit(25),
+        ]),
+      ])
+
+      const byId = new Map<string, any>()
+      for (const doc of [
+        ...(ringing.documents || []),
+        ...(acceptedAsReceiver.documents || []),
+        ...(acceptedAsCaller.documents || []),
+      ]) {
+        byId.set(doc.$id || doc.id, normalizeCall(doc))
+      }
+      activeCalls = Array.from(byId.values())
+    } catch (callsError: any) {
+      if (!isMissingOrSchemaError(callsError)) throw callsError
+      console.warn('[Calls Active API] Calls collection unavailable; returning no active calls:', callsError?.message || callsError)
+      activeCalls = []
     }
 
-    const userId = auth.userId
-
-    // Get active or ringing calls involving this user as receiver
-    const incomingCalls = await databases.listDocuments(
-      DATABASE_ID,
-      CALLS_COLLECTION,
-      [
-        Query.equal('receiverId', userId),
-        Query.or([
-          Query.equal('status', 'ringing'),
-          Query.equal('status', 'accepted'),
-        ]),
-      ]
-    )
-
-    // Enrich with caller profile info
     const enrichedCalls = await Promise.all(
-      incomingCalls.documents.map(async (call: any) => {
+      activeCalls.map(async (call: any) => {
         try {
-          const callerProfile = await databases.getDocument(
-            DATABASE_ID,
-            'profiles',
-            call.callerId
-          )
+          const callerProfile = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION, call.callerId)
           return {
             ...call,
             caller: {
               id: callerProfile['$id'],
-              name: callerProfile.name || 'User',
-              avatar: callerProfile.profilePictureUrl || null,
+              name: callerProfile.name || callerProfile.username || 'User',
+              avatar: callerProfile.profilePictureUrl || callerProfile.avatar || null,
             },
           }
         } catch {
@@ -58,7 +98,7 @@ export async function GET(req: NextRequest) {
             },
           }
         }
-      })
+      }),
     )
 
     return NextResponse.json({
@@ -71,14 +111,14 @@ export async function GET(req: NextRequest) {
 
     if (error instanceof ApiError) {
       return NextResponse.json(
-        { error: error.message },
-        { status: error.status }
+        { success: false, error: error.message, code: error.code },
+        { status: error.status },
       )
     }
 
     return NextResponse.json(
-      { error: 'Failed to fetch active calls' },
-      { status: 500 }
+      { success: false, error: 'Failed to fetch active calls' },
+      { status: 500 },
     )
   }
 }

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ID } from 'node-appwrite'
-import { databases, DATABASE_ID } from '@/lib/appwrite'
+import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 import { requireUser, enforceSameOrigin, enforceRateLimit, ApiError } from '@/lib/api-security'
 
-const CALLS_COLLECTION = 'calls'
-const MESSAGES_COLLECTION = 'messages'
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
+const CALLS_COLLECTION = process.env.NEXT_PUBLIC_CALLS_COLLECTION_ID || 'calls'
+const MESSAGES_COLLECTION = process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID || 'messages'
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest) {
     }
 
     const userId = auth.userId
+    const { databases } = await createAdminClient()
 
     // Validate inputs
     if (!callId || typeof callId !== 'string') {

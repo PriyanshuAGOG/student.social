@@ -52,7 +52,7 @@ export function MessageActionsMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity">
+        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full border border-white/10 bg-white/5 opacity-100 transition hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/40">
           <MoreVertical className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
