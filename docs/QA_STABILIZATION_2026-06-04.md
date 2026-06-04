@@ -4,17 +4,6 @@ This stabilization pass targeted the highest-impact issues from the 2026-06-04 Q
 
 ## Implemented
 
-### Retest follow-up
-
-- Feed suggestions can now be dismissed with outside click, Escape, Enter, or by selecting a suggestion. Loading posts show skeleton cards.
-- Global chat and pod chat now expose clearable message search with highlighted matches; pod chat send has an explicit accessible send label and retains Enter-to-send / Shift+Enter behavior.
-- Settings keeps Auto-detect as the stored timezone option while showing the effective browser timezone; calendar event dialogs display the effective timezone and include a Today shortcut.
-- AI chat now has an offline study fallback when provider keys are unavailable instead of only returning a configuration failure.
-- Leaderboard period selection has a higher stacking context and focus ring to avoid overlap/clickability regressions.
-- Chat was reworked toward a WhatsApp/Telegram-style experience: theme-aware surfaces replace the black-only UI, DMs/groups/pods filters are functional, voice/video call buttons remain visible, room calls use the existing LiveKit-backed session service for group/pod rooms, and DMs still use the direct call provider.
-- Chat messages now support deduplicated toggle reactions, quick reaction palettes, edit/delete/reply actions, emoji insertion, file/image attachments, and browser voice-message recording with user-friendly microphone errors.
-
-
 - Feed search now uses fuzzy matching and live suggestions, and post cards render persisted image/file attachment metadata with legacy image fallback.
 - Post creation now supports a file picker, inline content/attachment validation, authenticated server-side attachment uploads, stored attachment metadata, and attachment previews/removal before publishing.
 - Pod creation now validates required fields inline with blur feedback, helper copy, and character limits.

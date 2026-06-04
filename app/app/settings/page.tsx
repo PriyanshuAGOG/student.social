@@ -47,8 +47,9 @@ export default function SettingsPage() {
         const profile = await profileService.getProfile(user.$id)
         const persisted = normalizePeerSparkSettings((user.prefs as Record<string, any> | undefined)?.[PEERSPARK_SETTINGS_PREF_KEY])
         const flatSettings = flattenPeerSparkSettings(persisted)
-        const resolvedTimeZone = resolvePeerSparkTimeZone(flatSettings["language.timezone"])
-        flatSettings["language.timezone"] = resolvedTimeZone.stored
+        if (flatSettings["language.timezone"] === "auto" && typeof Intl !== "undefined") {
+          flatSettings["language.timezone"] = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+        }
         setSettings({
           ...flatSettings,
           "profile.display-name": user.name || profile?.name || "",
@@ -95,8 +96,8 @@ export default function SettingsPage() {
 
   const handleSettingChange = async (sectionId: string, itemId: string, value: any) => {
     const settingKey = `${sectionId}.${itemId}`
-    if (sectionId === "language" && itemId === "timezone") {
-      value = resolvePeerSparkTimeZone(value).stored
+    if (sectionId === "language" && itemId === "timezone" && value === "auto") {
+      value = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
     }
     setSettings((prev) => ({ ...prev, [settingKey]: value }))
 
@@ -287,9 +288,6 @@ export default function SettingsPage() {
         <div className="space-y-2">
           <Label htmlFor={item.id}>{item.title}</Label>
           <p className="text-sm text-muted-foreground">{item.description}</p>
-          {sectionId === "language" && item.id === "timezone" && (
-            <p className="text-xs text-muted-foreground">Current browser timezone: {resolvePeerSparkTimeZone("auto").effective}</p>
-          )}
           {sectionId === "appearance" && (
             <div className="rounded-md border p-3 text-sm" style={{ fontSize: "var(--peerspark-font-size, 16px)" }}>
               Live preview: PeerSpark will apply appearance changes instantly.
