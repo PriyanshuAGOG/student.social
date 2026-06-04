@@ -44,6 +44,7 @@ export default function PodsPage() {
   const [myPods, setMyPods] = useState<any[]>([])
   const [allPods, setAllPods] = useState<any[]>([])
   const [matchScores, setMatchScores] = useState<Record<string, number>>({})
+  const [podFormTouched, setPodFormTouched] = useState<Record<string, boolean>>({})
   const [newPod, setNewPod] = useState({
     name: "",
     description: "",
@@ -193,9 +194,18 @@ export default function PodsPage() {
     }
   }
 
+  const getPodFieldError = (field: "name" | "description" | "category") => {
+    if (field === "name" && !newPod.name.trim()) return "Pod name is required."
+    if (field === "description" && newPod.description.trim().length < 20) return "Description must be at least 20 characters."
+    if (field === "category" && !newPod.category) return "Choose a category so learners can discover this pod."
+    return ""
+  }
+
   const handleCreatePod = async () => {
-    if (!newPod.name || !newPod.description || !newPod.category || !user?.$id) {
-      toast({ title: "Incomplete pod setup", description: "Name, description, and category are required.", variant: "destructive" })
+    const requiredErrors = [getPodFieldError("name"), getPodFieldError("description"), getPodFieldError("category")].filter(Boolean)
+    if (requiredErrors.length > 0 || !user?.$id) {
+      setPodFormTouched({ name: true, description: true, category: true })
+      toast({ title: "Incomplete pod setup", description: requiredErrors.join(" "), variant: "destructive" })
       return
     }
 
@@ -218,6 +228,7 @@ export default function PodsPage() {
       setMyPods((prev) => [pod, ...prev])
       setAllPods((prev) => [pod, ...prev])
       setIsCreateDialogOpen(false)
+      setPodFormTouched({})
       setNewPod({
         name: "",
         description: "",
@@ -466,17 +477,19 @@ export default function PodsPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="pod-name">Pod name</Label>
-              <Input id="pod-name" value={newPod.name} onChange={(event) => setNewPod((prev) => ({ ...prev, name: event.target.value }))} />
+              <Label htmlFor="pod-name">Pod name <span className="text-destructive">*</span></Label>
+              <Input id="pod-name" value={newPod.name} maxLength={80} aria-invalid={Boolean(podFormTouched.name && getPodFieldError("name"))} onBlur={() => setPodFormTouched((prev) => ({ ...prev, name: true }))} onChange={(event) => setNewPod((prev) => ({ ...prev, name: event.target.value }))} />
+              <div className="mt-1 flex justify-between text-xs text-muted-foreground"><span>{podFormTouched.name && getPodFieldError("name") ? <span className="text-destructive">{getPodFieldError("name")}</span> : "Use a clear, searchable name."}</span><span>{newPod.name.length}/80</span></div>
             </div>
             <div>
-              <Label htmlFor="pod-description">Description</Label>
-              <Textarea id="pod-description" rows={4} value={newPod.description} onChange={(event) => setNewPod((prev) => ({ ...prev, description: event.target.value }))} />
+              <Label htmlFor="pod-description">Description <span className="text-destructive">*</span></Label>
+              <Textarea id="pod-description" rows={4} maxLength={500} aria-invalid={Boolean(podFormTouched.description && getPodFieldError("description"))} value={newPod.description} onBlur={() => setPodFormTouched((prev) => ({ ...prev, description: true }))} onChange={(event) => setNewPod((prev) => ({ ...prev, description: event.target.value }))} />
+              <div className="mt-1 flex justify-between text-xs text-muted-foreground"><span>{podFormTouched.description && getPodFieldError("description") ? <span className="text-destructive">{getPodFieldError("description")}</span> : "Explain outcomes, cadence, and who should join."}</span><span>{newPod.description.length}/500</span></div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label>Category</Label>
-                <Select value={newPod.category} onValueChange={(value) => setNewPod((prev) => ({ ...prev, category: value }))}>
+                <Label>Category <span className="text-destructive">*</span></Label>
+                <Select value={newPod.category} onValueChange={(value) => { setPodFormTouched((prev) => ({ ...prev, category: true })); setNewPod((prev) => ({ ...prev, category: value })) }}>
                   <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Programming">Programming</SelectItem>
@@ -487,6 +500,7 @@ export default function PodsPage() {
                     <SelectItem value="Science">Science</SelectItem>
                   </SelectContent>
                 </Select>
+                {podFormTouched.category && getPodFieldError("category") && <p className="mt-1 text-xs text-destructive">{getPodFieldError("category")}</p>}
               </div>
               <div>
                 <Label>Difficulty</Label>
@@ -566,7 +580,7 @@ export default function PodsPage() {
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreatePod} disabled={isLoading}>
+            <Button onClick={handleCreatePod} disabled={isLoading || Boolean(getPodFieldError("name") || getPodFieldError("description") || getPodFieldError("category"))}>
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
               Create pod
             </Button>

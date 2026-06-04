@@ -336,6 +336,13 @@ export default function NotificationsPage() {
   })
 
   const unreadCount = notifications.filter((n) => !n.isRead).length
+  const tabCounts = {
+    all: notifications.length,
+    unread: unreadCount,
+    "action-required": notifications.filter((n) => n.actionRequired).length,
+    pods: notifications.filter((n) => ["pod-invite", "pod_invite", "session-reminder", "session_reminder", "pod-update", "pod_update", "pod_join"].includes(n.type)).length,
+    social: notifications.filter((n) => ["comment", "like", "resource-shared", "resource_shared"].includes(n.type)).length,
+  }
 
   // Loading state
   if (authLoading || isLoading) {
@@ -420,11 +427,11 @@ export default function NotificationsPage() {
         <div className="space-y-4">
           <div className="flex space-x-1 bg-secondary/50 rounded-lg p-1 max-w-fit">
             {[
-              { value: "all", label: "All" },
-              { value: "unread", label: `Unread${unreadCount > 0 ? ` (${unreadCount})` : ""}` },
-              { value: "action-required", label: "Action Required" },
-              { value: "pods", label: "Pods" },
-              { value: "social", label: "Social" },
+              { value: "all", label: "All", count: tabCounts.all },
+              { value: "unread", label: "Unread", count: tabCounts.unread },
+              { value: "action-required", label: "Action Required", count: tabCounts["action-required"] },
+              { value: "pods", label: "Pods", count: tabCounts.pods },
+              { value: "social", label: "Social", count: tabCounts.social },
             ].map((tab) => (
               <button
                 key={tab.value}
@@ -435,7 +442,10 @@ export default function NotificationsPage() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {tab.label}
+                <span>{tab.label}</span>
+                <Badge variant={tab.count > 0 ? "secondary" : "outline"} className="ml-2 h-5 min-w-5 justify-center px-1 text-[10px]">
+                  {tab.count}
+                </Badge>
               </button>
             ))}
           </div>
@@ -447,9 +457,12 @@ export default function NotificationsPage() {
                 <h3 className="text-lg font-semibold mb-2">No notifications</h3>
                 <p className="text-muted-foreground text-center">
                   {filter === "all"
-                    ? "You're all caught up! No new notifications."
+                    ? "You're all caught up! No new notifications. Invite podmates, schedule sessions, or adjust preferences below to control what you receive."
                     : `No ${filter.replace("-", " ")} notifications at the moment.`}
                 </p>
+                <Button variant="outline" className="mt-4" onClick={() => document.getElementById("notification-preferences")?.scrollIntoView({ behavior: "smooth" })}>
+                  Review preferences
+                </Button>
               </CardContent>
             </Card>
           ) : (
@@ -547,7 +560,7 @@ export default function NotificationsPage() {
 
           {/* Notification Settings */}
           <Card className="mt-6">
-            <CardHeader>
+            <CardHeader id="notification-preferences">
               <CardTitle>Notification Preferences</CardTitle>
               <CardDescription>Customize how you receive notifications</CardDescription>
             </CardHeader>

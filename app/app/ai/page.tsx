@@ -77,6 +77,7 @@ export default function AIAssistantPage() {
   const [isListening, setIsListening] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const attachmentInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
   const scrollToBottom = () => {
@@ -138,10 +139,10 @@ export default function AIAssistantPage() {
         description: error?.message || "Could not get a response. Please try again.",
         variant: "destructive",
       })
-      // Add error message to chat
+      // Add user-friendly error message to chat
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: "Sorry, I encountered an error. Please check your API configuration or try again.",
+        content: "I couldn't reach the AI service right now. Your question is saved in this chat; please try again in a moment or contact support if the issue persists.",
         sender: "ai",
         timestamp: new Date(),
       }
@@ -219,6 +220,21 @@ export default function AIAssistantPage() {
         }
       }
     }
+  }
+
+  const handleAttachmentSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "Attachment too large", description: "AI attachments must be 10 MB or smaller.", variant: "destructive" })
+      return
+    }
+    const attachmentPrompt = `Analyze this attachment: ${file.name} (${file.type || "unknown type"}, ${(file.size / 1024 / 1024).toFixed(2)} MB). Summarize key ideas, risks, and next study steps.`
+    setInputValue((prev) => prev ? `${prev}
+
+${attachmentPrompt}` : attachmentPrompt)
+    toast({ title: "Attachment queued", description: "Send the prompt to ask the AI to analyze the selected file metadata." })
+    event.target.value = ""
   }
 
   const startVoiceInput = () => {
@@ -451,6 +467,13 @@ export default function AIAssistantPage() {
                 className="min-h-[44px] max-h-24 md:max-h-32 resize-none pr-14 md:pr-20 text-base"
                 disabled={isLoading}
               />
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                className="sr-only"
+                accept="image/*,application/pdf,text/*,.js,.ts,.tsx,.py,.java,.cpp,.md"
+                onChange={handleAttachmentSelected}
+              />
               <div className="absolute right-2 bottom-2 flex gap-0.5 md:gap-1">
                 <Button
                   variant="ghost"
@@ -461,7 +484,7 @@ export default function AIAssistantPage() {
                 >
                   <Mic className={`h-4 w-4 ${isListening ? "text-red-500" : ""}`} />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-7 w-7 md:h-8 md:w-8 p-0 hidden sm:flex" disabled={isLoading}>
+                <Button variant="ghost" size="sm" className="h-7 w-7 md:h-8 md:w-8 p-0 hidden sm:flex" disabled={isLoading} onClick={() => attachmentInputRef.current?.click()} aria-label="Attach a file for AI analysis">
                   <Paperclip className="h-4 w-4" />
                 </Button>
               </div>

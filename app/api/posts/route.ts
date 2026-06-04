@@ -23,6 +23,33 @@ const SAVED_POSTS_COLLECTION_ID = (process.env.NEXT_PUBLIC_SAVED_POSTS_COLLECTIO
 const PROFILES_COLLECTION_ID = (process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles');
 const POST_IMAGES_BUCKET_ID = (process.env.NEXT_PUBLIC_POST_IMAGES_BUCKET_ID || 'post_images');
 
+type PostAttachment = {
+  fileId?: string
+  fileUrl: string
+  fileName: string
+  fileSize?: number
+  fileType?: string
+}
+
+function normalizeAttachment(raw: unknown): PostAttachment | null {
+  if (!raw || typeof raw !== 'object') return null
+  const attachment = raw as Record<string, unknown>
+  const fileUrl = typeof attachment.fileUrl === 'string' ? attachment.fileUrl.trim() : ''
+  const fileName = typeof attachment.fileName === 'string' ? attachment.fileName.trim() : ''
+  if (!fileUrl || !fileName) return null
+  return {
+    fileId: typeof attachment.fileId === 'string' ? attachment.fileId.slice(0, 255) : undefined,
+    fileUrl: fileUrl.slice(0, 500),
+    fileName: fileName.replace(/[\r\n]/g, ' ').slice(0, 180),
+    fileSize: typeof attachment.fileSize === 'number' ? Math.max(0, Math.min(50 * 1024 * 1024, Math.round(attachment.fileSize))) : undefined,
+    fileType: typeof attachment.fileType === 'string' ? attachment.fileType.slice(0, 120) : undefined,
+  }
+}
+
+function encodeAttachment(attachment: PostAttachment): string {
+  return JSON.stringify(attachment).slice(0, 1000)
+}
+
 /**
  * POST /api/posts - Create a new post
  */
@@ -116,7 +143,13 @@ export async function POST(request: NextRequest) {
       ? metadata.type.trim().slice(0, 50)
       : 'post';
 
-    const normalizedImageUrls = imageUrls.slice(0, 4);
+    const normalizedAttachments = Array.isArray(metadata.attachments)
+      ? metadata.attachments.map(normalizeAttachment).filter(Boolean).slice(0, 6) as PostAttachment[]
+      : [];
+    const attachmentImageUrls = normalizedAttachments
+      .filter((attachment) => (attachment.fileType || '').startsWith('image/'))
+      .map((attachment) => attachment.fileUrl);
+    const normalizedImageUrls = [...imageUrls, ...attachmentImageUrls].slice(0, 4);
     const normalizedImageUrl = normalizedImageUrls[0] || '';
 
     // Create post document
@@ -131,6 +164,7 @@ export async function POST(request: NextRequest) {
         content: normalizedContent,
         imageUrl: normalizedImageUrl,
         imageUrls: normalizedImageUrls,
+        attachments: normalizedAttachments.map(encodeAttachment),
         type: normalizedType,
         visibility: normalizedVisibility,
         podId: normalizedPodId,
@@ -153,9 +187,14 @@ export async function POST(request: NextRequest) {
   }, { operation: 'createPost' });
 
   if (error) {
+    const status = error.code === 'VALIDATION_ERROR'
+      ? 400
+      : typeof (error as any).status === 'number'
+        ? (error as any).status
+        : 500
     return NextResponse.json(
       { success: false, error: error.userMessage, details: error },
-      { status: error.code === 'VALIDATION_ERROR' ? 400 : 500 }
+      { status }
     );
   }
 
@@ -174,6 +213,7 @@ export async function GET(request: NextRequest) {
     const saved = searchParams.get('saved') === 'true';
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
+    const search = (searchParams.get('search') || '').trim().toLowerCase();
 
     const { databases } = await createAdminClient();
 
@@ -256,11 +296,21 @@ export async function GET(request: NextRequest) {
       throw err
     });
 
+    const documents = search
+      ? result.documents.filter((post: any) => {
+          const searchable = [post.title, post.content, post.authorName, post.authorUsername, ...(Array.isArray(post.tags) ? post.tags : [])]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase()
+          return searchable.includes(search) || search.split(/\s+/).every((term) => searchable.includes(term))
+        })
+      : result.documents;
+
     return {
       success: true,
-      documents: result.documents,
-      posts: result.documents,
-      total: result.total,
+      documents,
+      posts: documents,
+      total: search ? documents.length : result.total,
       limit,
       offset,
     };
