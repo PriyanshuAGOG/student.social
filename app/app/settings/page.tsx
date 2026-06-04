@@ -22,6 +22,7 @@ import {
   flattenPeerSparkSettings,
   normalizePeerSparkSettings,
   PEERSPARK_SETTINGS_PREF_KEY,
+  resolvePeerSparkTimeZone,
 } from "@/lib/settings"
 
 export default function SettingsPage() {
@@ -45,8 +46,11 @@ export default function SettingsPage() {
       try {
         const profile = await profileService.getProfile(user.$id)
         const persisted = normalizePeerSparkSettings((user.prefs as Record<string, any> | undefined)?.[PEERSPARK_SETTINGS_PREF_KEY])
+        const flatSettings = flattenPeerSparkSettings(persisted)
+        const resolvedTimeZone = resolvePeerSparkTimeZone(flatSettings["language.timezone"])
+        flatSettings["language.timezone"] = resolvedTimeZone.stored
         setSettings({
-          ...flattenPeerSparkSettings(persisted),
+          ...flatSettings,
           "profile.display-name": user.name || profile?.name || "",
           "profile.bio": profile?.bio || "",
         })
@@ -91,10 +95,18 @@ export default function SettingsPage() {
 
   const handleSettingChange = async (sectionId: string, itemId: string, value: any) => {
     const settingKey = `${sectionId}.${itemId}`
+    if (sectionId === "language" && itemId === "timezone") {
+      value = resolvePeerSparkTimeZone(value).stored
+    }
     setSettings((prev) => ({ ...prev, [settingKey]: value }))
 
     if (sectionId === "appearance" && itemId === "theme") {
       setTheme(value)
+    }
+    if (sectionId === "appearance" && itemId === "font-size") {
+      const fontScale = value === "small" ? "14px" : value === "large" ? "18px" : "16px"
+      document.documentElement.style.setProperty("--peerspark-font-size", fontScale)
+      document.documentElement.style.fontSize = fontScale
     }
 
     if (!user?.$id) {
@@ -144,6 +156,8 @@ export default function SettingsPage() {
         user: { id: user.$id, name: user.name, email: user.email },
         profile,
         settings,
+        includedData: ["account metadata", "profile", "settings/preferences"],
+        notIncludedYet: ["full post history", "chat transcripts", "pod resources", "billing records"],
         exportedAt: new Date().toISOString(),
       }
 
@@ -273,6 +287,14 @@ export default function SettingsPage() {
         <div className="space-y-2">
           <Label htmlFor={item.id}>{item.title}</Label>
           <p className="text-sm text-muted-foreground">{item.description}</p>
+          {sectionId === "language" && item.id === "timezone" && (
+            <p className="text-xs text-muted-foreground">Current browser timezone: {resolvePeerSparkTimeZone("auto").effective}</p>
+          )}
+          {sectionId === "appearance" && (
+            <div className="rounded-md border p-3 text-sm" style={{ fontSize: "var(--peerspark-font-size, 16px)" }}>
+              Live preview: PeerSpark will apply appearance changes instantly.
+            </div>
+          )}
           <Select
             value={String(currentValue)}
             onValueChange={(value) => handleSettingChange(sectionId, item.id, value)}

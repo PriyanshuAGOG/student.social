@@ -1,20 +1,20 @@
-'use client'
+"use client";
 
-import React, { useState } from 'react'
+import React from "react";
 
 interface LeftRailProps {
-  isExpanded?: boolean
-  onToggle?: () => void
+  isExpanded?: boolean;
+  onToggle?: () => void;
   items?: Array<{
-    id: string
-    label: string
-    icon: React.ReactNode
-    isActive?: boolean
-    onClick?: () => void
-  }>
-  userAvatar?: string
-  onProfile?: () => void
-  onSettings?: () => void
+    id: string;
+    label: string;
+    icon: React.ReactNode;
+    isActive?: boolean;
+    onClick?: () => void;
+  }>;
+  userAvatar?: string;
+  onProfile?: () => void;
+  onSettings?: () => void;
 }
 
 export function LeftRail({
@@ -26,19 +26,26 @@ export function LeftRail({
   onSettings,
 }: LeftRailProps) {
   return (
-    <div
-      className={`bg-black border-r border-white/5 backdrop-blur-xl flex flex-col transition-all duration-300 ${
-        isExpanded ? 'w-[220px]' : 'w-[72px]'
+    <aside
+      className={`flex flex-col border-r border-border/70 bg-card/95 shadow-sm backdrop-blur-xl transition-all duration-300 ${
+        isExpanded ? "w-[220px]" : "w-[72px]"
       }`}
+      aria-label="Chat navigation"
     >
-      {/* Logo / Toggle */}
-      <div className="h-16 flex items-center justify-center px-2 border-b border-white/5">
+      <div className="flex h-16 items-center justify-center border-b border-border/70 px-2">
         <button
+          type="button"
           onClick={onToggle}
-          className="p-2 hover:bg-white/10 rounded-lg transition-colors w-full flex items-center justify-center"
+          className="flex w-full items-center justify-center rounded-xl p-2 text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           title="Toggle sidebar"
+          aria-label="Toggle chat sidebar"
         >
-          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg
+            className="h-6 w-6"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -49,34 +56,42 @@ export function LeftRail({
         </button>
       </div>
 
-      {/* Navigation items */}
-      <nav className="flex-1 space-y-1 px-2 py-4 overflow-y-auto">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-4">
         {items.map((item) => (
           <button
             key={item.id}
+            type="button"
             onClick={item.onClick}
-            className={`w-full p-3 rounded-lg transition-colors flex items-center gap-3 ${
+            className={`flex w-full items-center gap-3 rounded-xl p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               item.isActive
-                ? 'bg-white/10 border border-white/20 text-white'
-                : 'hover:bg-white/5 text-slate-400 hover:text-white'
+                ? "border border-primary/30 bg-primary/10 text-primary shadow-sm"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
             title={item.label}
+            aria-pressed={item.isActive}
           >
-            <div className="flex-shrink-0 w-5 h-5">{item.icon}</div>
-            {isExpanded && <span className="text-sm font-medium truncate">{item.label}</span>}
+            <div className="h-5 w-5 flex-shrink-0">{item.icon}</div>
+            {isExpanded && (
+              <span className="truncate text-sm font-medium">{item.label}</span>
+            )}
           </button>
         ))}
       </nav>
 
-      {/* User section */}
-      <div className="border-t border-white/5 p-2 space-y-1">
+      <div className="space-y-1 border-t border-border/70 p-2">
         {onSettings && (
           <button
+            type="button"
             onClick={onSettings}
-            className="w-full p-3 rounded-lg hover:bg-white/5 transition-colors flex items-center gap-3 text-slate-400 hover:text-white"
+            className="flex w-full items-center gap-3 rounded-xl p-3 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title="Settings"
           >
-            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              className="h-5 w-5 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -96,25 +111,34 @@ export function LeftRail({
 
         {onProfile && (
           <button
+            type="button"
             onClick={onProfile}
-            className="w-full p-2 rounded-lg hover:bg-white/5 transition-colors flex items-center gap-3"
+            className="flex w-full items-center gap-3 rounded-xl p-2 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title="Profile"
           >
             {userAvatar ? (
-              <img
-                src={userAvatar}
-                alt="Profile"
-                className="w-8 h-8 rounded-full object-cover"
-              />
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary to-cyan-500 text-xs font-semibold text-primary-foreground">
+                {userAvatar.startsWith("http") ? (
+                  <img
+                    src={userAvatar}
+                    alt="Profile"
+                    className="h-full w-full rounded-full object-cover"
+                  />
+                ) : (
+                  userAvatar[0]
+                )}
+              </div>
             ) : (
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-400 to-slate-600 flex items-center justify-center text-xs font-semibold text-white">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
                 U
               </div>
             )}
-            {isExpanded && <span className="text-sm text-slate-400">Profile</span>}
+            {isExpanded && (
+              <span className="text-sm text-muted-foreground">Profile</span>
+            )}
           </button>
         )}
       </div>
-    </div>
-  )
+    </aside>
+  );
 }

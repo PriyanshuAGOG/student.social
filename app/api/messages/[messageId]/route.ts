@@ -142,6 +142,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ me
       return NextResponse.json({ success: true, message: updated })
     }
 
+
+    if (action === 'react') {
+      const emoji = typeof body?.emoji === 'string' ? body.emoji.trim().slice(0, 16) : ''
+      if (!emoji) {
+        throw new ApiError(400, 'INVALID_INPUT', 'emoji is required')
+      }
+
+      const currentReactions = metadata.reactions && typeof metadata.reactions === 'object' ? metadata.reactions : {}
+      const reactionUsers = uniqueStrings(currentReactions[emoji])
+      const nextUsers = reactionUsers.includes(auth.userId)
+        ? reactionUsers.filter((entry) => entry !== auth.userId)
+        : [...reactionUsers, auth.userId]
+      const nextReactions = { ...currentReactions }
+      if (nextUsers.length > 0) {
+        nextReactions[emoji] = nextUsers
+      } else {
+        delete nextReactions[emoji]
+      }
+
+      const nextMetadata = {
+        ...metadata,
+        reactions: nextReactions,
+        reactedAt: now,
+      }
+
+      const updated = await databases.updateDocument(DATABASE_ID, MESSAGES_COLLECTION_ID, messageId, {
+        metadata: stringifyMetadata(nextMetadata),
+      })
+
+      return NextResponse.json({ success: true, message: updated })
+    }
+
     if (action === 'pin' || action === 'star') {
       const field = action === 'pin' ? 'pinnedBy' : 'starredBy'
       const arrayValues = uniqueStrings(metadata[field])

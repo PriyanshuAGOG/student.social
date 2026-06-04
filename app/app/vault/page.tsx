@@ -396,6 +396,21 @@ export default function VaultPage() {
   const myUploads = sortedResources.filter((resource) => resource.authorId === user?.$id)
   const bookmarkedResources = sortedResources.filter((resource) => resource.isBookmarked)
   const recentResources = sortedResources.slice(0, 5)
+  const hasResources = resources.length > 0
+
+  const renderEmptyResources = (title = "No resources yet", description = "Upload notes, images, videos, code snippets, or flashcards to build your vault.") => (
+    <Card>
+      <CardContent className="flex flex-col items-center justify-center py-12">
+        <BookOpen className="w-12 h-12 text-muted-foreground mb-4" />
+        <h3 className="text-lg font-semibold mb-2">{title}</h3>
+        <p className="text-muted-foreground text-center mb-4">{description}</p>
+        <Button onClick={openFilePicker} className="bg-primary hover:bg-primary/90">
+          <Upload className="w-4 h-4 mr-2" />
+          Upload Resource
+        </Button>
+      </CardContent>
+    </Card>
+  )
 
   const getTypeIcon = (type: string) => {
     const typeMap = {
@@ -852,10 +867,12 @@ export default function VaultPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-8"
+                  disabled={!hasResources}
+                  aria-disabled={!hasResources}
                 />
               </div>
               <div className="flex items-center space-x-2">
-                <Select value={sortBy} onValueChange={setSortBy}>
+                <Select value={sortBy} onValueChange={setSortBy} disabled={!hasResources}>
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
@@ -907,7 +924,7 @@ export default function VaultPage() {
                   <List className="w-4 h-4" />
                 </Button>
               </div>
-              <Select value={sortBy} onValueChange={setSortBy}>
+              <Select value={sortBy} onValueChange={setSortBy} disabled={!hasResources}>
                 <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
@@ -930,7 +947,9 @@ export default function VaultPage() {
               </TabsList>
 
               <TabsContent value="all" className="space-y-4">
-                {viewMode === "grid" ? renderResourceGrid(sortedResources) : renderResourceList(sortedResources)}
+                {sortedResources.length > 0
+                  ? (viewMode === "grid" ? renderResourceGrid(sortedResources) : renderResourceList(sortedResources))
+                  : renderEmptyResources(searchQuery || selectedType !== "all" ? "No matching resources" : "No resources yet", searchQuery || selectedType !== "all" ? "Clear search and filters or upload a new resource." : undefined)}
               </TabsContent>
 
               <TabsContent value="my-uploads" className="space-y-4">
@@ -954,9 +973,9 @@ export default function VaultPage() {
               </TabsContent>
 
               <TabsContent value="bookmarked" className="space-y-4">
-                {viewMode === "grid"
-                  ? renderResourceGrid(bookmarkedResources)
-                  : renderResourceList(bookmarkedResources)}
+                {bookmarkedResources.length > 0
+                  ? (viewMode === "grid" ? renderResourceGrid(bookmarkedResources) : renderResourceList(bookmarkedResources))
+                  : renderEmptyResources("No bookmarked resources", "Bookmark useful resources and they will appear here.")}
               </TabsContent>
 
               <TabsContent value="recent" className="space-y-4">
@@ -966,7 +985,9 @@ export default function VaultPage() {
                     <CardDescription>Resources you&apos;ve accessed in the last 7 days</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {recentResources.map((resource) => (
+                    {recentResources.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No recently viewed resources yet.</p>
+                    ) : recentResources.map((resource) => (
                       <div key={resource.$id} className="flex items-center space-x-3 p-3 rounded-lg bg-secondary/50">
                         <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
                           {getTypeIcon(resource.category)}

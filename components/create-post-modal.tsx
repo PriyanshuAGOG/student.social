@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useRef, useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -21,6 +21,14 @@ import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { authService, feedService, podService } from "@/lib/appwrite"
 
+interface PostAttachment {
+  fileId?: string
+  fileUrl: string
+  fileName: string
+  fileSize?: number
+  fileType?: string
+}
+
 interface Post {
   id: string
   title?: string
@@ -40,13 +48,30 @@ interface Post {
     name: string
     members: number
   }
-  attachments?: string[]
+  attachments?: PostAttachment[]
   isLiked: boolean
   isBookmarked: boolean
 }
 
 interface CreatePostModalProps {
   onPostCreated: (post: Post) => void
+}
+
+
+function parsePostAttachments(value: unknown): PostAttachment[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => {
+      if (typeof item === "string") {
+        try {
+          return JSON.parse(item) as PostAttachment
+        } catch {
+          return null
+        }
+      }
+      return item as PostAttachment
+    })
+    .filter((item): item is PostAttachment => Boolean(item?.fileUrl && item?.fileName))
 }
 
 const SUGGESTED_TAGS = [
@@ -70,6 +95,9 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
   const [tags, setTags] = useState<string[]>([])
   const [newTag, setNewTag] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [attachments, setAttachments] = useState<File[]>([])
+  const [contentTouched, setContentTouched] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
   const { user: authUser } = useAuth()
   const [profile, setProfile] = useState<any | null>(null)
@@ -116,7 +144,37 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
     setTags(tags.filter((tag) => tag !== tagToRemove))
   }
 
+  const contentError = contentTouched && !content.trim() ? "Content is required before you can publish." : ""
+  const attachmentError = attachments.some((file) => file.size > 10 * 1024 * 1024)
+    ? "Each post attachment must be 10 MB or smaller."
+    : ""
+
+  const handleAttachmentChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || [])
+    const supported = files.filter((file) => file.type.startsWith("image/") || file.type === "application/pdf" || file.type.startsWith("text/"))
+    if (supported.length !== files.length) {
+      toast({ title: "Some files were skipped", description: "Posts currently support images, PDFs, and text/code files." })
+    }
+    setAttachments((prev) => [...prev, ...supported].slice(0, 4))
+    event.target.value = ""
+  }
+
+  const uploadPostAttachment = async (file: File): Promise<PostAttachment> => {
+    const formData = new FormData()
+    formData.append("file", file)
+    const response = await fetch("/api/posts/attachments", {
+      method: "POST",
+      body: formData,
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok || payload?.success === false) {
+      throw new Error(payload?.error || `Failed to upload ${file.name}`)
+    }
+    return payload.attachment as PostAttachment
+  }
+
   const handleSubmit = async () => {
+    setContentTouched(true)
     if (!content.trim()) {
       toast({
         title: "Content required",
@@ -137,8 +195,12 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
       const visibility = selectedPod === "public" ? "public" : "pod"
       const podId = selectedPod === "public" ? null : selectedPod
 
+      const uploadedAttachments = attachments.length > 0
+        ? await Promise.all(attachments.map(uploadPostAttachment))
+        : []
       const created = await feedService.createPost(authUser.$id, content.trim(), {
-        type: "text",
+        type: uploadedAttachments.length > 0 ? "media" : "text",
+        attachments: uploadedAttachments,
         podId: podId ?? undefined,
         visibility,
         tags,
@@ -159,6 +221,9 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
         comments: created.comments || 0,
         shares: created.shares || 0,
         tags: created.tags || tags,
+        attachments: uploadedAttachments.length > 0
+          ? uploadedAttachments
+          : parsePostAttachments(created.attachments),
         pod:
           visibility === "pod" && podMeta
             ? { id: podMeta.$id || podMeta.teamId, name: podMeta.name, members: podMeta.memberCount || 0 }
@@ -180,6 +245,8 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
       setSelectedPod("public")
       setTags([])
       setNewTag("")
+      setAttachments([])
+      setContentTouched(false)
       setIsOpen(false)
     } catch (error: any) {
       console.error(error)
@@ -258,10 +325,14 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
               placeholder="What's on your mind? Share your thoughts, ask questions, or celebrate achievements..."
               value={content}
               onChange={(e) => setContent(e.target.value)}
+              onBlur={() => setContentTouched(true)}
+              aria-invalid={Boolean(contentError)}
+              aria-describedby="content-error content-count"
               className="min-h-[120px] resize-none"
               maxLength={2000}
             />
-            <p className="text-xs text-muted-foreground">{content.length}/2000</p>
+            <p id="content-count" className="text-xs text-muted-foreground">{content.length}/2000</p>
+            {contentError && <p id="content-error" className="text-sm text-destructive">{contentError}</p>}
           </div>
 
           {/* Tags */}
@@ -335,20 +406,42 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
             <p className="text-xs text-muted-foreground">{tags.length}/5 tags used</p>
           </div>
 
-          {/* Media Attachments (Future Feature) */}
+          {/* Media Attachments */}
           <div className="space-y-2">
-            <Label>Attachments</Label>
-            <div className="flex space-x-2">
-              <Button variant="outline" size="sm" disabled>
-                <ImageIcon className="w-4 h-4 mr-2" /> {/* Updated usage */}
-                Image
+            <Label htmlFor="post-attachments">Attachments</Label>
+            <input
+              ref={fileInputRef}
+              id="post-attachments"
+              type="file"
+              className="sr-only"
+              multiple
+              accept="image/*,application/pdf,text/*,.js,.ts,.tsx,.py,.java,.cpp,.md"
+              onChange={handleAttachmentChange}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" type="button" onClick={() => fileInputRef.current?.click()} disabled={isSubmitting || attachments.length >= 4}>
+                <ImageIcon className="w-4 h-4 mr-2" />
+                Add files
               </Button>
-              <Button variant="outline" size="sm" disabled>
+              <Button variant="outline" size="sm" type="button" onClick={() => toast({ title: "Tip", description: "Paste a link in the post body or upload a file to attach it." })}>
                 <Link className="w-4 h-4 mr-2" />
-                Link
+                Add link tip
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">Media attachments coming soon!</p>
+            <p className="text-xs text-muted-foreground">Attach up to 4 images, PDFs, or code/text files. Images are uploaded with the post.</p>
+            {attachmentError && <p className="text-sm text-destructive">{attachmentError}</p>}
+            {attachments.length > 0 && (
+              <div className="space-y-2 rounded-md border p-2">
+                {attachments.map((file) => (
+                  <div key={`${file.name}-${file.size}`} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="truncate">{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                    <Button variant="ghost" size="sm" type="button" onClick={() => setAttachments((prev) => prev.filter((item) => item !== file))}>
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Actions */}
@@ -358,7 +451,7 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={!content.trim() || isSubmitting}
+              disabled={!content.trim() || Boolean(attachmentError) || isSubmitting}
               className="bg-primary hover:bg-primary/90"
             >
               {isSubmitting ? "Posting..." : "Post"}
