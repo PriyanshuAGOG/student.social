@@ -3005,6 +3005,13 @@ export const feedService = {
     metadata: {
       type?: string
       imageFiles?: File[]
+      attachments?: Array<{
+        fileId?: string
+        fileUrl: string
+        fileName: string
+        fileSize?: number
+        fileType?: string
+      }>
       visibility?: string
       podId?: string
       tags?: string[]
@@ -3075,67 +3082,29 @@ export const feedService = {
         authorUsername = normalizeUsername(authorName) || `@user_${authorId.slice(0, 6)}`
       }
 
-      if (!metadata.imageFiles || metadata.imageFiles.length === 0) {
-        const cleanTags = Array.isArray(metadata.tags)
-          ? metadata.tags.filter((tag: unknown) => typeof tag === 'string' && tag.trim()).slice(0, 10)
-          : []
+      const cleanTags = Array.isArray(metadata.tags)
+        ? metadata.tags.filter((tag: unknown) => typeof tag === 'string' && tag.trim()).slice(0, 10)
+        : []
 
-        const response = await apiJson('/api/posts', {
-          method: 'POST',
-          body: JSON.stringify({
-            authorId,
-            content,
-            metadata: {
-              ...metadata,
-              tags: cleanTags,
-              authorName,
-              authorAvatar,
-              authorUsername,
-            },
-          }),
-        })
-
-        return response.post
-      }
-
-      // Handle image uploads if provided
-      let imageUrls: string[] = []
-      if (metadata.imageFiles && metadata.imageFiles.length > 0) {
-        const uploadedFiles = await Promise.all(
-          metadata.imageFiles.map(async (file) => {
-            const response = await storage.createFile(BUCKETS.POST_IMAGES, "unique()", file)
-            // Generate view URL
-            return storage.getFileView(BUCKETS.POST_IMAGES, response.$id).toString()
-          })
-        )
-        imageUrls = uploadedFiles
-      }
-
-      // Ensure pod visibility and podId are consistent
-      const visibility = metadata.visibility || "public"
-      const podId = visibility === "pod" ? metadata.podId || null : null
-
-      // Create post document
-      const post = await databases.createDocument(DATABASE_ID, COLLECTIONS.POSTS, "unique()", {
-        authorId: authorId,
-        content: content.trim(),
-        type: metadata.type || "text",
-        podId: podId,
-        imageUrls: imageUrls,
-        mediaUrls: imageUrls,
-        timestamp: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        likes: 0,
-        comments: 0,
-        saves: 0,
-        likedBy: [],
-        savedBy: [],
-        visibility: visibility,
-        tags: Array.isArray(metadata.tags) ? metadata.tags.slice(0, 10) : [],
-        authorName: authorName,
-        authorAvatar: authorAvatar,
-        authorUsername: authorUsername,
+      const response = await apiJson('/api/posts', {
+        method: 'POST',
+        body: JSON.stringify({
+          authorId,
+          content,
+          metadata: {
+            ...metadata,
+            imageFiles: undefined,
+            attachments: Array.isArray(metadata.attachments) ? metadata.attachments.slice(0, 6) : [],
+            tags: cleanTags,
+            authorName,
+            authorAvatar,
+            authorUsername,
+          },
+        }),
       })
+
+      const post = response.post
+      const podId = post?.podId
 
       // Notify pod members if post is in a pod
       if (podId) {

@@ -25,6 +25,15 @@ import { useAuth } from "@/lib/auth-context"
 import { feedService, podService, profileService } from "@/lib/appwrite"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { buildSearchSuggestions, fuzzyIncludes } from "@/lib/search-utils"
+
+interface PostAttachment {
+  fileId?: string
+  fileUrl: string
+  fileName: string
+  fileSize?: number
+  fileType?: string
+}
 
 interface Post {
   id: string
@@ -46,11 +55,28 @@ interface Post {
     name: string
     members: number
   }
-  attachments?: string[]
+  attachments?: PostAttachment[]
   isLiked: boolean
   isBookmarked: boolean
   kind?: "post" | "achievement"
   visibility?: "public" | "pod"
+}
+
+
+function parsePostAttachments(value: unknown): PostAttachment[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => {
+      if (typeof item === "string") {
+        try {
+          return JSON.parse(item) as PostAttachment
+        } catch {
+          return null
+        }
+      }
+      return item as PostAttachment
+    })
+    .filter((item): item is PostAttachment => Boolean(item?.fileUrl && item?.fileName))
 }
 
 const INITIAL_POSTS: Post[] = []
@@ -122,6 +148,9 @@ export default function FeedPage() {
             comments: d.comments || 0,
             shares: d.shares || 0,
             tags: d.tags || [],
+            attachments: parsePostAttachments(d.attachments).length > 0
+              ? parsePostAttachments(d.attachments)
+              : (Array.isArray(d.imageUrls) ? d.imageUrls : d.imageUrl ? [d.imageUrl] : []).map((url: string) => ({ fileUrl: url, fileName: "Post image", fileType: "image/*" })),
             isLiked: likedBy.includes(user.$id),
             isBookmarked: savedIds.has(d.$id),
             kind: d.type === "achievement" ? "achievement" : "post",
@@ -405,13 +434,14 @@ export default function FeedPage() {
   }
 
   const followingIds = new Set(Array.isArray(profile?.following) ? profile.following : [])
+  const searchSuggestions = buildSearchSuggestions(
+    posts.flatMap((post) => [post.title || "", post.content, post.author.name, ...post.tags.map((tag) => `#${tag}`)]),
+    searchQuery,
+    6,
+  )
   const filteredPosts = posts.filter((post) => {
-    const matchesSearch =
-      searchQuery === "" ||
-      post.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      post.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      post.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      post.author.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const searchableText = [post.title, post.content, post.author.name, post.author.username, ...post.tags].filter(Boolean).join(" ")
+    const matchesSearch = fuzzyIncludes(searchableText, searchQuery)
 
     const matchesTab =
       activeTab === "all" ||
@@ -444,7 +474,22 @@ export default function FeedPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
+                  aria-label="Search posts with fuzzy matching"
                 />
+                {searchSuggestions.length > 0 && (
+                  <div className="absolute z-20 mt-2 w-full rounded-md border bg-background p-2 shadow-lg" role="listbox" aria-label="Post search suggestions">
+                    {searchSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                        onClick={() => setSearchQuery(suggestion.replace(/^#/, ""))}
+                      >
+                        {suggestion.length > 80 ? `${suggestion.slice(0, 80)}…` : suggestion}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <Button variant="outline" size="icon">
                 <Filter className="w-4 h-4" />
@@ -589,6 +634,24 @@ export default function FeedPage() {
                   <CardContent className="pt-0 px-4 md:px-6">
                     {post.title && <h3 className="font-semibold text-lg mb-2">{post.title}</h3>}
                     <div className="text-sm mb-4 whitespace-pre-wrap leading-relaxed">{post.content}</div>
+
+                    {post.attachments && post.attachments.length > 0 && (
+                      <div className="mb-4 grid gap-2 sm:grid-cols-2">
+                        {post.attachments.map((attachment) => {
+                          const isImage = attachment.fileType?.startsWith("image/")
+                          return isImage ? (
+                            <a key={attachment.fileId || attachment.fileUrl} href={attachment.fileUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border">
+                              <img src={attachment.fileUrl} alt={attachment.fileName || "Post attachment"} className="h-40 w-full object-cover" />
+                            </a>
+                          ) : (
+                            <a key={attachment.fileId || attachment.fileUrl} href={attachment.fileUrl} target="_blank" rel="noreferrer" className="rounded-lg border bg-muted/40 px-3 py-2 text-sm hover:bg-muted">
+                              <span className="font-medium">{attachment.fileName}</span>
+                              {attachment.fileSize ? <span className="text-muted-foreground"> · {(attachment.fileSize / 1024 / 1024).toFixed(2)} MB</span> : null}
+                            </a>
+                          )
+                        })}
+                      </div>
+                    )}
 
                     {post.tags.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-4">

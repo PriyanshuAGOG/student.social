@@ -261,6 +261,10 @@ function CalendarContent() {
       const endDateTime = new Date(`${formData.endDate}T${formData.endTime}`)
 
       // Validate dates are valid
+      if (endDateTime <= startDateTime) {
+        toast({ title: "End time must be after start time", variant: "destructive" })
+        return
+      }
       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
         toast({ title: "Invalid date or time", variant: "destructive" })
         return
@@ -400,13 +404,14 @@ function CalendarContent() {
   }
 
   const resetForm = () => {
+    const date = selectedDate.toISOString().split("T")[0]
     setFormData({
       title: "",
       description: "",
-      startDate: "",
-      startTime: "",
-      endDate: "",
-      endTime: "",
+      startDate: date,
+      startTime: "09:00",
+      endDate: date,
+      endTime: "10:00",
       type: "study",
       location: "",
       podId: "",
@@ -442,6 +447,14 @@ function CalendarContent() {
   }
 
   const days = getDaysInMonth(currentDate)
+  const hours = Array.from({ length: 24 }, (_, hour) => hour)
+  const startOfWeek = new Date(selectedDate)
+  startOfWeek.setDate(selectedDate.getDate() - selectedDate.getDay())
+  const weekDays = Array.from({ length: 7 }, (_, index) => {
+    const next = new Date(startOfWeek)
+    next.setDate(startOfWeek.getDate() + index)
+    return next
+  })
   const todayEvents = getEventsForDate(new Date())
   const upcomingEvents = events
     .filter((event) => event.startTime > new Date())
@@ -517,6 +530,7 @@ function CalendarContent() {
                       <Input
                         id="startTime"
                         type="time"
+                        step="900"
                         value={formData.startTime}
                         onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
                       />
@@ -537,6 +551,7 @@ function CalendarContent() {
                       <Input
                         id="endTime"
                         type="time"
+                        step="900"
                         value={formData.endTime}
                         onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
                       />
@@ -614,7 +629,7 @@ function CalendarContent() {
             </Tabs>
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
               <DialogTrigger asChild>
-                <Button>
+                <Button onClick={resetForm}>
                   <Plus className="h-4 w-4 mr-2" />
                   New Event
                 </Button>
@@ -659,6 +674,7 @@ function CalendarContent() {
                       <Input
                         id="startTime"
                         type="time"
+                        step="900"
                         value={formData.startTime}
                         onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
                       />
@@ -679,6 +695,7 @@ function CalendarContent() {
                       <Input
                         id="endTime"
                         type="time"
+                        step="900"
                         value={formData.endTime}
                         onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
                       />
@@ -734,6 +751,7 @@ function CalendarContent() {
         <div className="flex-1 flex flex-col">
           {/* Calendar Grid */}
           <div className="flex-1 p-2 md:p-4 overflow-auto">
+            {viewMode === "month" && (
             <div className="grid grid-cols-7 gap-0.5 md:gap-1 min-h-full">
               {/* Day headers */}
               {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
@@ -798,6 +816,70 @@ function CalendarContent() {
                 )
               })}
             </div>
+            )}
+
+            {viewMode === "week" && (
+              <div className="min-w-[760px] rounded-lg border bg-card">
+                <div className="grid grid-cols-[72px_repeat(7,1fr)] border-b text-sm font-medium text-muted-foreground">
+                  <div className="p-2">Time</div>
+                  {weekDays.map((day) => (
+                    <button key={day.toISOString()} className="p-2 text-left hover:bg-muted" onClick={() => setSelectedDate(day)}>
+                      <div>{day.toLocaleDateString([], { weekday: "short" })}</div>
+                      <div className={day.toDateString() === new Date().toDateString() ? "font-bold text-primary" : ""}>{day.getDate()}</div>
+                    </button>
+                  ))}
+                </div>
+                {hours.map((hour) => (
+                  <div key={hour} className="grid min-h-16 grid-cols-[72px_repeat(7,1fr)] border-b last:border-b-0">
+                    <div className="border-r p-2 text-xs text-muted-foreground">{`${String(hour).padStart(2, "0")}:00`}</div>
+                    {weekDays.map((day) => {
+                      const slotEvents = getEventsForDate(day).filter((event) => event.startTime.getHours() === hour)
+                      return (
+                        <button key={`${day.toISOString()}-${hour}`} className="min-h-16 border-r p-1 text-left last:border-r-0 hover:bg-muted/50" onClick={() => {
+                          const next = new Date(day)
+                          next.setHours(hour, 0, 0, 0)
+                          setSelectedDate(next)
+                          setFormData((prev) => ({ ...prev, startDate: next.toISOString().split("T")[0], endDate: next.toISOString().split("T")[0], startTime: `${String(hour).padStart(2, "0")}:00`, endTime: `${String(Math.min(hour + 1, 23)).padStart(2, "0")}:00` }))
+                          setIsCreateDialogOpen(true)
+                        }}>
+                          {slotEvents.map((event) => (
+                            <div key={event.id} className={`mb-1 rounded px-2 py-1 text-xs text-white ${event.color}`} onClick={(e) => { e.stopPropagation(); setSelectedEvent(event) }}>
+                              {event.title}
+                            </div>
+                          ))}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {viewMode === "day" && (
+              <div className="rounded-lg border bg-card">
+                <div className="border-b p-3 font-semibold">{formatDate(selectedDate)}</div>
+                {hours.map((hour) => {
+                  const slotEvents = getEventsForDate(selectedDate).filter((event) => event.startTime.getHours() === hour)
+                  return (
+                    <button key={hour} className="grid min-h-16 w-full grid-cols-[72px_1fr] border-b text-left last:border-b-0 hover:bg-muted/50" onClick={() => {
+                      const next = new Date(selectedDate)
+                      next.setHours(hour, 0, 0, 0)
+                      setFormData((prev) => ({ ...prev, startDate: next.toISOString().split("T")[0], endDate: next.toISOString().split("T")[0], startTime: `${String(hour).padStart(2, "0")}:00`, endTime: `${String(Math.min(hour + 1, 23)).padStart(2, "0")}:00` }))
+                      setIsCreateDialogOpen(true)
+                    }}>
+                      <div className="border-r p-2 text-xs text-muted-foreground">{`${String(hour).padStart(2, "0")}:00`}</div>
+                      <div className="p-2">
+                        {slotEvents.length === 0 ? <span className="text-xs text-muted-foreground">Add event</span> : slotEvents.map((event) => (
+                          <div key={event.id} className={`mb-1 rounded px-2 py-1 text-sm text-white ${event.color}`} onClick={(e) => { e.stopPropagation(); setSelectedEvent(event) }}>
+                            {event.title} · {formatTime(event.startTime)}-{formatTime(event.endTime)}
+                          </div>
+                        ))}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
 
