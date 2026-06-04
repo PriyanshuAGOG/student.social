@@ -108,7 +108,7 @@ export function getDefaultPeerSparkSettings(): PeerSparkSettings {
     },
     language: {
       language: 'en',
-      timezone: 'UTC-5',
+      timezone: 'auto',
       dateFormat: 'MM/DD/YYYY',
     },
     mobile: {

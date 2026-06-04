@@ -1,7 +1,7 @@
 export type UploadScanResult = { ok: boolean; reason?: string }
 
 const BLOCKED_MIME_PREFIXES = ['application/x-msdownload', 'application/x-sh', 'application/x-bat']
-const BLOCKED_EXTENSIONS = ['.exe', '.bat', '.cmd', '.sh', '.js']
+const BLOCKED_EXTENSIONS = ['.exe', '.bat', '.cmd', '.sh']
 const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024
 
 export function scanUploadMeta(file: { name?: string; type?: string; size?: number }): UploadScanResult {
