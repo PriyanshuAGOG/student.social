@@ -11,6 +11,7 @@ export const CallContext = createContext<CallContextType>(defaultCallContext)
 export function CallProvider({ children }: { children: React.ReactNode }) {
   const callHook = useCall()
   const [isInitializing, setIsInitializing] = useState(true)
+  const activeFetchFailuresRef = useRef(0)
   const [acceptingCallId, setAcceptingCallId] = useState<string | null>(null)
   const [rejectingCallId, setRejectingCallId] = useState<string | null>(null)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -23,24 +24,27 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           credentials: 'include',
         })
 
-        if (response.ok) {
-          const data = await response.json()
-          // If there are incoming ringing calls, set as incoming
-          const incomingCall = data.calls?.find((call: Call) => call.status === 'ringing')
-          if (incomingCall) {
-            // Enrich call with caller info
-            const enrichedCall: Call = {
-              ...incomingCall,
-              caller: data.calls?.[0]?.caller,
-            }
-            // Trigger incoming call UI
-            if (callHook.incomingCall?.id !== enrichedCall.id) {
-              // Update state through context
-            }
-          }
+        if (response.status === 401) {
+          return
         }
+
+        if (!response.ok) {
+          activeFetchFailuresRef.current += 1
+          if (activeFetchFailuresRef.current <= 2) {
+            const payload = await response.json().catch(() => null)
+            console.warn('[CallProvider] Active call polling unavailable:', payload?.error || response.statusText)
+          }
+          return
+        }
+
+        activeFetchFailuresRef.current = 0
+        const data = await response.json()
+        callHook.syncActiveCalls(data.calls || [])
       } catch (error) {
-        console.error('[CallProvider] Failed to fetch active calls:', error)
+        activeFetchFailuresRef.current += 1
+        if (activeFetchFailuresRef.current <= 2) {
+          console.warn('[CallProvider] Failed to fetch active calls:', error)
+        }
       } finally {
         setIsInitializing(false)
       }
@@ -56,7 +60,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         clearInterval(pollingIntervalRef.current)
       }
     }
-  }, [])
+  }, [callHook.syncActiveCalls])
 
   // Handle incoming call acceptance
   const handleAcceptCall = useCallback(

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
 
 function buildJoinUrl(sessionId: string): string {
-  return `https://meet.jit.si/student-social-${sessionId.replace(/[^a-zA-Z0-9_-]/g, '')}`
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || ''
+  const appBaseUrl = baseUrl.startsWith('http') ? baseUrl : baseUrl ? `https://${baseUrl}` : ''
+  return `${appBaseUrl}/app/chat?call=${encodeURIComponent(sessionId)}`
 }
 
 export async function POST(request: NextRequest) {
@@ -30,7 +32,7 @@ export async function POST(request: NextRequest) {
         participantIds: [fromUserId, toUserId],
         mediaType: 'voice',
         state: 'ringing',
-        provider: 'jitsi',
+        provider: 'livekit',
         providerSessionId,
         joinUrl,
         startedAt,

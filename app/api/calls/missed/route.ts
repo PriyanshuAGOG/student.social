@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
           message: 'You missed a call',
           isRead: false,
           timestamp: new Date().toISOString(),
-          actionUrl: `/app/calls/${callSessionId}`,
+          actionUrl: `/app/chat?call=${encodeURIComponent(callSessionId)}`,
         }
       )
     } catch (notifErr) {
