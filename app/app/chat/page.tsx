@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useCallContext } from "@/components/call/CallProvider";
-import { callService, chatService } from "@/lib/appwrite";
+import { LiveKitCallStage } from "@/components/call/LiveKitCallStage";
+import { callService, chatService, profileService } from "@/lib/appwrite";
 import {
   normalizeMessage,
   type StandardizedMessage,
@@ -42,6 +43,13 @@ interface ConversationItem {
   participants?: string[];
 }
 
+interface ChatProfile {
+  $id: string;
+  name?: string;
+  username?: string;
+  email?: string;
+}
+
 export default function PremiumChatPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -71,6 +79,18 @@ export default function PremiumChatPage() {
   >("all");
   const [chatDetailsOpen, setChatDetailsOpen] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
+  const [activeCallStage, setActiveCallStage] = useState<{
+    sessionId: string;
+    mediaType: "voice" | "video";
+    title: string;
+  } | null>(null);
+  const [isNewChatOpen, setIsNewChatOpen] = useState(false);
+  const [newChatMode, setNewChatMode] = useState<"direct" | "group">("direct");
+  const [groupName, setGroupName] = useState("");
+  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
+  const [availableProfiles, setAvailableProfiles] = useState<ChatProfile[]>([]);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -88,6 +108,32 @@ export default function PremiumChatPage() {
     if (!user?.$id) return;
     loadRooms();
   }, [user?.$id]);
+
+  useEffect(() => {
+    if (!isNewChatOpen || !user?.$id) return;
+    let cancelled = false;
+
+    const loadProfiles = async () => {
+      try {
+        const res = await profileService.getAllProfiles(100, 0);
+        if (cancelled) return;
+        setAvailableProfiles(
+          (res.documents || []).filter((profile: ChatProfile) => profile.$id !== user.$id),
+        );
+      } catch (error: any) {
+        toast({
+          title: "Could not load people",
+          description: error?.message || "Please try again.",
+          variant: "destructive",
+        });
+      }
+    };
+
+    loadProfiles();
+    return () => {
+      cancelled = true;
+    };
+  }, [isNewChatOpen, toast, user?.$id]);
 
   // Handle room selection from URL
   useEffect(() => {
@@ -292,6 +338,7 @@ export default function PremiumChatPage() {
   const sendAttachmentMessage = async (file: File, content = "") => {
     if (!selectedRoom || !user?.$id) return;
     setIsUploadingAttachment(true);
+    setUploadStatus(`Uploading ${file.name}...`);
     try {
       const attachment = await chatService.uploadAttachment(file, user.$id);
       const type = file.type.startsWith("audio/")
@@ -323,6 +370,7 @@ export default function PremiumChatPage() {
       });
     } finally {
       setIsUploadingAttachment(false);
+      setUploadStatus("");
     }
   };
 
@@ -399,8 +447,16 @@ export default function PremiumChatPage() {
           selectedRoom.$id,
           mediaType,
         );
-        if (session?.joinUrl)
+        const sessionId = session?.$id || session?.sessionId || session?.id;
+        if (sessionId) {
+          setActiveCallStage({
+            sessionId,
+            mediaType,
+            title: selectedRoom.name || "PeerSpark call",
+          });
+        } else if (session?.joinUrl) {
           window.open(session.joinUrl, "_blank", "noopener,noreferrer");
+        }
         toast({
           title: `${mediaType === "video" ? "Video" : "Voice"} room ready`,
           description:
@@ -451,6 +507,70 @@ export default function PremiumChatPage() {
   const handleHeaderDetails = () => {
     if (!selectedRoom) return;
     setChatDetailsOpen((prev) => !prev);
+  };
+
+  const openNewChat = () => {
+    setSelectedProfileIds([]);
+    setGroupName("");
+    setNewChatMode("direct");
+    setIsNewChatOpen(true);
+  };
+
+  const toggleSelectedProfile = (profileId: string) => {
+    setSelectedProfileIds((prev) => {
+      if (newChatMode === "direct") {
+        return prev.includes(profileId) ? [] : [profileId];
+      }
+      return prev.includes(profileId)
+        ? prev.filter((id) => id !== profileId)
+        : [...prev, profileId];
+    });
+  };
+
+  const createNewChat = async () => {
+    if (!user?.$id || selectedProfileIds.length === 0) return;
+    setIsCreatingChat(true);
+    try {
+      const room =
+        newChatMode === "direct"
+          ? await chatService.getOrCreateDirectRoom(user.$id, selectedProfileIds[0])
+          : await chatService.createGroupRoom(
+              groupName.trim() || "New group",
+              Array.from(new Set([user.$id, ...selectedProfileIds])),
+            );
+
+      const normalizedRoom: ChatRoom = {
+        $id: room.$id,
+        name: room.name || (newChatMode === "direct" ? "Direct message" : groupName.trim() || "New group"),
+        type: room.type || newChatMode,
+        avatar: room.avatar,
+        lastMessage: room.lastMessage || "",
+        lastMessageTime: room.lastMessageTime || "",
+        unreadCount: room.unreadCount || 0,
+        isOnline: room.isOnline || false,
+        participants: room.participants || room.memberIds || [user.$id, ...selectedProfileIds],
+        podId: room.podId,
+      };
+
+      setRooms((prev) => {
+        const exists = prev.some((item) => item.$id === normalizedRoom.$id);
+        return exists
+          ? prev.map((item) => (item.$id === normalizedRoom.$id ? { ...item, ...normalizedRoom } : item))
+          : [normalizedRoom, ...prev];
+      });
+      setSelectedRoom(normalizedRoom);
+      setShowMobileChatList(false);
+      setIsNewChatOpen(false);
+      toast({ title: "Chat ready", description: normalizedRoom.name });
+    } catch (error: any) {
+      toast({
+        title: "Could not create chat",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingChat(false);
+    }
   };
 
   const leftRailItems = [

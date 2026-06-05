@@ -23,6 +23,7 @@ interface ConversationListProps {
   onSearchChange?: (query: string) => void;
   isLoading?: boolean;
   showSearchBox?: boolean;
+  onNewChat?: () => void;
 }
 
 export function ConversationList({
@@ -60,7 +61,18 @@ export function ConversationList({
     <div className="h-full w-[340px] flex flex-col border-r border-border/70 bg-card/95 shadow-sm backdrop-blur-xl">
       {/* Header */}
       <div className="border-b border-border/70 px-4 py-4">
-        <h2 className="mb-3 text-lg font-semibold text-foreground">Messages</h2>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-foreground">Messages</h2>
+          {onNewChat && (
+            <button
+              type="button"
+              onClick={onNewChat}
+              className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              New
+            </button>
+          )}
+        </div>
 
         {/* Search box */}
         {showSearchBox && (
