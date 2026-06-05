@@ -23,16 +23,14 @@ interface Message {
 }
 
 interface MessageGroupProps {
-  messages: Message[];
-  currentUserId: string;
-  onReply?: (message: Message) => void;
-  onDelete?: (messageId: string) => void;
-  onEdit?: (message: Message, content: string) => void;
-  onReact?: (messageId: string, emoji: string) => void;
-  showDateDivider?: boolean;
-  highlightQuery?: string;
-  activeMessageId?: string | null;
-  onCopy?: (message: Message) => void;
+  messages: Message[]
+  currentUserId: string
+  onReply?: (message: Message) => void
+  onDelete?: (messageId: string) => void
+  onEdit?: (message: Message) => void
+  onReact?: (messageId: string, emoji: string) => void
+  showDateDivider?: boolean
+  highlightQuery?: string
 }
 
 export function MessageGroup({
@@ -43,9 +41,7 @@ export function MessageGroup({
   onEdit,
   onReact,
   showDateDivider = true,
-  highlightQuery = "",
-  activeMessageId = null,
-  onCopy,
+  highlightQuery = '',
 }: MessageGroupProps) {
   if (messages.length === 0) return null;
 
@@ -99,7 +95,6 @@ export function MessageGroup({
             onCopy={() => onCopy?.(message)}
             onReact={(emoji) => onReact?.(message.$id, emoji)}
             highlightQuery={highlightQuery}
-            isSearchActive={activeMessageId === message.$id}
           />
         );
       })}

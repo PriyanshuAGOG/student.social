@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
+import { useCallContext } from "@/components/call/CallProvider";
+import { LiveKitCallStage } from "@/components/call/LiveKitCallStage";
 import { callService, chatService, profileService } from "@/lib/appwrite";
 import {
   normalizeMessage,
@@ -15,7 +17,6 @@ import { ChatHeader } from "@/components/chat/premium/ChatHeader";
 import { MessageGroup } from "@/components/chat/premium/MessageGroup";
 import { ChatComposer } from "@/components/chat/premium/ChatComposer";
 import { TypingIndicator } from "@/components/chat/premium/TypingIndicator";
-import { LiveKitCallStage } from "@/components/call/LiveKitCallStage";
 
 interface ChatRoom {
   $id: string;
@@ -30,20 +31,6 @@ interface ChatRoom {
   podId?: string | null;
 }
 
-interface ChatProfile {
-  $id: string;
-  name?: string;
-  username?: string;
-  email?: string;
-  avatar?: string;
-}
-
-interface ActiveCallStage {
-  sessionId: string;
-  mediaType: "voice" | "video";
-  title: string;
-}
-
 interface ConversationItem {
   $id: string;
   name: string;
@@ -56,11 +43,20 @@ interface ConversationItem {
   participants?: string[];
 }
 
+interface ChatProfile {
+  $id: string;
+  name?: string;
+  username?: string;
+  email?: string;
+}
+
 export default function PremiumChatPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const { toast } = useToast();
+  const callContext = useCallContext();
+
   // State
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
@@ -84,14 +80,17 @@ export default function PremiumChatPage() {
   const [chatDetailsOpen, setChatDetailsOpen] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
+  const [activeCallStage, setActiveCallStage] = useState<{
+    sessionId: string;
+    mediaType: "voice" | "video";
+    title: string;
+  } | null>(null);
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [newChatMode, setNewChatMode] = useState<"direct" | "group">("direct");
-  const [availableProfiles, setAvailableProfiles] = useState<ChatProfile[]>([]);
-  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
   const [groupName, setGroupName] = useState("");
+  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
+  const [availableProfiles, setAvailableProfiles] = useState<ChatProfile[]>([]);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
-  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
-  const [activeCallStage, setActiveCallStage] = useState<ActiveCallStage | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -110,6 +109,32 @@ export default function PremiumChatPage() {
     loadRooms();
   }, [user?.$id]);
 
+  useEffect(() => {
+    if (!isNewChatOpen || !user?.$id) return;
+    let cancelled = false;
+
+    const loadProfiles = async () => {
+      try {
+        const res = await profileService.getAllProfiles(100, 0);
+        if (cancelled) return;
+        setAvailableProfiles(
+          (res.documents || []).filter((profile: ChatProfile) => profile.$id !== user.$id),
+        );
+      } catch (error: any) {
+        toast({
+          title: "Could not load people",
+          description: error?.message || "Please try again.",
+          variant: "destructive",
+        });
+      }
+    };
+
+    loadProfiles();
+    return () => {
+      cancelled = true;
+    };
+  }, [isNewChatOpen, toast, user?.$id]);
+
   // Handle room selection from URL
   useEffect(() => {
     const roomId = searchParams.get("room");
@@ -121,23 +146,6 @@ export default function PremiumChatPage() {
       }
     }
   }, [searchParams, rooms]);
-
-  useEffect(() => {
-    const callSessionId = searchParams.get("call");
-    if (!callSessionId) return;
-    const callType = searchParams.get("callType") === "voice" ? "voice" : "video";
-    setActiveCallStage((current) =>
-      current?.sessionId === callSessionId
-        ? current
-        : {
-            sessionId: callSessionId,
-            mediaType: callType,
-            title: selectedRoom?.name
-              ? `${selectedRoom.name} ${callType === "video" ? "video" : "voice"} call`
-              : `PeerSpark ${callType === "video" ? "video" : "voice"} call`,
-          },
-    );
-  }, [searchParams, selectedRoom?.name]);
 
   // Load messages when room changes
   useEffect(() => {
@@ -162,10 +170,6 @@ export default function PremiumChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  useEffect(() => {
-    setActiveSearchIndex(0);
-  }, [messageSearchQuery, selectedRoom?.$id]);
 
   const loadRooms = async () => {
     if (!user?.$id) return;
@@ -253,15 +257,8 @@ export default function PremiumChatPage() {
     const confirmed = window.confirm("Delete this message for everyone?");
     if (!confirmed) return;
     try {
-      const updated = await chatService.updateMessage(messageId, "delete");
-      setMessages((prev) =>
-        prev.map((message) =>
-          message.$id === messageId
-            ? normalizeMessage(updated, user?.$id)
-            : message,
-        ),
-      );
-      toast({ title: "Message deleted" });
+      await chatService.deleteMessage(messageId);
+      setMessages((prev) => prev.filter((m) => m.$id !== messageId));
     } catch (error: any) {
       toast({
         title: "Failed to delete message",
@@ -309,11 +306,14 @@ export default function PremiumChatPage() {
     }
   };
 
-  const handleEditMessage = async (
-    message: StandardizedMessage,
-    nextContent: string,
-  ) => {
-    if (!nextContent.trim() || nextContent.trim() === message.content) return;
+  const handleEditMessage = async (message: StandardizedMessage) => {
+    const nextContent = window.prompt("Edit message", message.content);
+    if (
+      nextContent === null ||
+      !nextContent.trim() ||
+      nextContent.trim() === message.content
+    )
+      return;
     try {
       const updated = await chatService.updateMessage(message.$id, "edit", {
         content: nextContent.trim(),
@@ -338,7 +338,7 @@ export default function PremiumChatPage() {
   const sendAttachmentMessage = async (file: File, content = "") => {
     if (!selectedRoom || !user?.$id) return;
     setIsUploadingAttachment(true);
-    setUploadStatus(`Uploading ${file.name}…`);
+    setUploadStatus(`Uploading ${file.name}...`);
     try {
       const attachment = await chatService.uploadAttachment(file, user.$id);
       const type = file.type.startsWith("audio/")
@@ -358,7 +358,6 @@ export default function PremiumChatPage() {
         },
       );
       setMessages((prev) => [...prev, normalizeMessage(response, user.$id)]);
-      setUploadStatus("");
       toast({
         title: type === "voice" ? "Voice message sent" : "Attachment sent",
         description: attachment.fileName,
@@ -432,23 +431,38 @@ export default function PremiumChatPage() {
 
   const handleStartRoomCall = async (mediaType: "voice" | "video") => {
     if (!selectedRoom) return;
+    const receiverId =
+      selectedRoom.type === "direct"
+        ? getDirectCallReceiverId(selectedRoom)
+        : null;
     try {
-      const session = await callService.startRoomCall(selectedRoom.$id, mediaType);
-      const sessionId = session?.$id || session?.providerSessionId || session?.id;
-      if (!sessionId) throw new Error("Call session was not created");
-      setActiveCallStage({
-        sessionId,
-        mediaType,
-        title: `${selectedRoom.name || "PeerSpark"} ${mediaType === "video" ? "video" : "voice"} call`,
-      });
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("call", sessionId);
-      params.set("callType", mediaType);
-      router.replace(`/app/chat?${params.toString()}`, { scroll: false });
-      toast({
-        title: `${mediaType === "video" ? "Video" : "Voice"} call ready`,
-        description: session?.participantMessage || "Join the in-page call room to start talking.",
-      });
+      if (receiverId) {
+        await callContext.startCall(
+          receiverId,
+          selectedRoom.$id,
+          mediaType === "voice" ? "audio" : "video",
+        );
+      } else {
+        const session = await callService.startRoomCall(
+          selectedRoom.$id,
+          mediaType,
+        );
+        const sessionId = session?.$id || session?.sessionId || session?.id;
+        if (sessionId) {
+          setActiveCallStage({
+            sessionId,
+            mediaType,
+            title: selectedRoom.name || "PeerSpark call",
+          });
+        } else if (session?.joinUrl) {
+          window.open(session.joinUrl, "_blank", "noopener,noreferrer");
+        }
+        toast({
+          title: `${mediaType === "video" ? "Video" : "Voice"} room ready`,
+          description:
+            session?.participantMessage || "Participants were invited to join.",
+        });
+      }
     } catch (error: any) {
       toast({
         title: `Failed to start ${mediaType} call`,
@@ -458,97 +472,12 @@ export default function PremiumChatPage() {
     }
   };
 
-  const openNewChat = async () => {
-    setIsNewChatOpen(true);
-    setSelectedProfileIds([]);
-    setGroupName("");
-    try {
-      const res = await profileService.getAllProfiles(100, 0);
-      setAvailableProfiles(
-        (res.documents || []).filter(
-          (profile: ChatProfile) => profile.$id !== user?.$id,
-        ),
-      );
-    } catch (error: any) {
-      toast({
-        title: "Could not load people",
-        description: error?.message || "Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const toggleSelectedProfile = (profileId: string) => {
-    setSelectedProfileIds((prev) =>
-      newChatMode === "direct"
-        ? [profileId]
-        : prev.includes(profileId)
-          ? prev.filter((id) => id !== profileId)
-          : [...prev, profileId],
+  const getDirectCallReceiverId = (room: ChatRoom) => {
+    return (
+      room.participants?.find(
+        (participantId) => participantId && participantId !== user?.$id,
+      ) || null
     );
-  };
-
-  const createNewChat = async () => {
-    if (!user?.$id || selectedProfileIds.length === 0) return;
-    setIsCreatingChat(true);
-    try {
-      const room =
-        newChatMode === "direct"
-          ? await chatService.getOrCreateDirectRoom(
-              user.$id,
-              selectedProfileIds[0],
-            )
-          : await chatService.createGroupRoom(groupName, selectedProfileIds);
-      const normalizedRoom: ChatRoom = {
-        $id: room.$id,
-        name:
-          room.name ||
-          (newChatMode === "direct"
-            ? "Direct Messages"
-            : groupName || "Group chat"),
-        type: room.type || newChatMode,
-        avatar: room.avatar,
-        lastMessage: room.lastMessage || "",
-        lastMessageTime: room.lastMessageTime || new Date().toISOString(),
-        unreadCount: room.unreadCount || 0,
-        isOnline: room.isOnline || false,
-        participants: room.members ||
-          room.participants || [user.$id, ...selectedProfileIds],
-        podId: room.podId,
-      };
-      setRooms((prev) => [
-        normalizedRoom,
-        ...prev.filter((entry) => entry.$id !== normalizedRoom.$id),
-      ]);
-      setSelectedRoom(normalizedRoom);
-      setShowMobileChatList(false);
-      setIsNewChatOpen(false);
-      toast({
-        title:
-          newChatMode === "direct" ? "Direct chat ready" : "Group chat created",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Failed to create chat",
-        description: error?.message || "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreatingChat(false);
-    }
-  };
-
-  const handleCopyMessage = async (message: StandardizedMessage) => {
-    try {
-      await navigator.clipboard.writeText(message.content);
-      toast({ title: "Message copied" });
-    } catch {
-      toast({
-        title: "Copy failed",
-        description: "Clipboard access is unavailable.",
-        variant: "destructive",
-      });
-    }
   };
 
   const handleHeaderSearch = () => {
@@ -559,29 +488,13 @@ export default function PremiumChatPage() {
     );
   };
 
-  const searchMatches = messageSearchQuery.trim()
+  const visibleMessages = messageSearchQuery.trim()
     ? messages.filter((message) =>
         `${message.content} ${message.authorName || ""} ${message.fileName || ""}`
           .toLowerCase()
           .includes(messageSearchQuery.trim().toLowerCase()),
       )
-    : [];
-  const visibleMessages = messageSearchQuery.trim() ? searchMatches : messages;
-  const activeMessageId = searchMatches[activeSearchIndex]?.$id || null;
-
-  const jumpToSearchResult = (direction: "next" | "previous") => {
-    if (searchMatches.length === 0) return;
-    const nextIndex =
-      direction === "next"
-        ? (activeSearchIndex + 1) % searchMatches.length
-        : (activeSearchIndex - 1 + searchMatches.length) % searchMatches.length;
-    setActiveSearchIndex(nextIndex);
-    requestAnimationFrame(() =>
-      document
-        .getElementById(`message-${searchMatches[nextIndex].$id}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" }),
-    );
-  };
+    : messages;
 
   const handleHeaderMute = () => {
     toast({
@@ -594,6 +507,70 @@ export default function PremiumChatPage() {
   const handleHeaderDetails = () => {
     if (!selectedRoom) return;
     setChatDetailsOpen((prev) => !prev);
+  };
+
+  const openNewChat = () => {
+    setSelectedProfileIds([]);
+    setGroupName("");
+    setNewChatMode("direct");
+    setIsNewChatOpen(true);
+  };
+
+  const toggleSelectedProfile = (profileId: string) => {
+    setSelectedProfileIds((prev) => {
+      if (newChatMode === "direct") {
+        return prev.includes(profileId) ? [] : [profileId];
+      }
+      return prev.includes(profileId)
+        ? prev.filter((id) => id !== profileId)
+        : [...prev, profileId];
+    });
+  };
+
+  const createNewChat = async () => {
+    if (!user?.$id || selectedProfileIds.length === 0) return;
+    setIsCreatingChat(true);
+    try {
+      const room =
+        newChatMode === "direct"
+          ? await chatService.getOrCreateDirectRoom(user.$id, selectedProfileIds[0])
+          : await chatService.createGroupRoom(
+              groupName.trim() || "New group",
+              Array.from(new Set([user.$id, ...selectedProfileIds])),
+            );
+
+      const normalizedRoom: ChatRoom = {
+        $id: room.$id,
+        name: room.name || (newChatMode === "direct" ? "Direct message" : groupName.trim() || "New group"),
+        type: room.type || newChatMode,
+        avatar: room.avatar,
+        lastMessage: room.lastMessage || "",
+        lastMessageTime: room.lastMessageTime || "",
+        unreadCount: room.unreadCount || 0,
+        isOnline: room.isOnline || false,
+        participants: room.participants || room.memberIds || [user.$id, ...selectedProfileIds],
+        podId: room.podId,
+      };
+
+      setRooms((prev) => {
+        const exists = prev.some((item) => item.$id === normalizedRoom.$id);
+        return exists
+          ? prev.map((item) => (item.$id === normalizedRoom.$id ? { ...item, ...normalizedRoom } : item))
+          : [normalizedRoom, ...prev];
+      });
+      setSelectedRoom(normalizedRoom);
+      setShowMobileChatList(false);
+      setIsNewChatOpen(false);
+      toast({ title: "Chat ready", description: normalizedRoom.name });
+    } catch (error: any) {
+      toast({
+        title: "Could not create chat",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingChat(false);
+    }
   };
 
   const leftRailItems = [
@@ -739,33 +716,10 @@ export default function PremiumChatPage() {
                 )}
               </div>
               {messageSearchQuery && (
-                <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <span>
-                    {visibleMessages.length} matching message
-                    {visibleMessages.length === 1 ? "" : "s"}
-                    {visibleMessages.length > 0
-                      ? ` · ${activeSearchIndex + 1}/${visibleMessages.length}`
-                      : ""}
-                  </span>
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      onClick={() => jumpToSearchResult("previous")}
-                      disabled={visibleMessages.length === 0}
-                      className="rounded border border-border px-2 py-1 hover:bg-muted disabled:opacity-50"
-                    >
-                      Previous
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => jumpToSearchResult("next")}
-                      disabled={visibleMessages.length === 0}
-                      className="rounded border border-border px-2 py-1 hover:bg-muted disabled:opacity-50"
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {visibleMessages.length} matching message
+                  {visibleMessages.length === 1 ? "" : "s"}
+                </p>
               )}
             </div>
           )}
@@ -791,37 +745,7 @@ export default function PremiumChatPage() {
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     Calls
                   </p>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleStartRoomCall("voice")}
-                      className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted"
-                    >
-                      Voice
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleStartRoomCall("video")}
-                      className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted"
-                    >
-                      Video
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 rounded-xl border border-border bg-background p-3">
-                <p className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">
-                  Members
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {(selectedRoom.participants || []).map((memberId) => (
-                    <span
-                      key={memberId}
-                      className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground"
-                    >
-                      {memberId === user?.$id ? "You" : memberId}
-                    </span>
-                  ))}
+                  <p className="font-medium">LiveKit voice/video enabled</p>
                 </div>
               </div>
             </div>
@@ -862,14 +786,10 @@ export default function PremiumChatPage() {
                   messages={visibleMessages}
                   currentUserId={user?.$id || ""}
                   highlightQuery={messageSearchQuery}
-                  activeMessageId={activeMessageId}
                   onReply={(message: any) => setReplyingTo(message)}
                   onDelete={handleDeleteMessage}
-                  onEdit={(message: any, content) =>
-                    handleEditMessage(message as StandardizedMessage, content)
-                  }
-                  onCopy={(message: any) =>
-                    handleCopyMessage(message as StandardizedMessage)
+                  onEdit={(message: any) =>
+                    handleEditMessage(message as StandardizedMessage)
                   }
                   onReact={handleReact}
                 />

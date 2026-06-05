@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
 import { ConversationItem } from "./ConversationItem";
 
 interface Conversation {
@@ -62,17 +61,17 @@ export function ConversationList({
     <div className="h-full w-[340px] flex flex-col border-r border-border/70 bg-card/95 shadow-sm backdrop-blur-xl">
       {/* Header */}
       <div className="border-b border-border/70 px-4 py-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-foreground">Messages</h2>
-          <button
-            type="button"
-            onClick={onNewChat}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="Start a new chat"
-            title="New chat"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
+          {onNewChat && (
+            <button
+              type="button"
+              onClick={onNewChat}
+              className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              New
+            </button>
+          )}
         </div>
 
         {/* Search box */}
