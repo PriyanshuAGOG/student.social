@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getEnv, requireServerSecret } from "./env"
+import { getEnv } from "./env"
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant"
@@ -61,8 +61,23 @@ export async function runAIChat(messages: ChatMessage[], options?: { model?: str
     })
   }
 
-  requireServerSecret("OPENROUTER_API_KEY")
-  throw new Error("Missing AI provider configuration. Set OPENROUTER_API_KEY or OPENAI_API_KEY.")
+  return buildOfflineStudyResponse(messages)
+}
+
+function buildOfflineStudyResponse(messages: ChatMessage[]): string {
+  const lastUserMessage = [...messages].reverse().find((message) => message.role === "user")?.content || "your question"
+  return [
+    "I’m running in offline study mode because the AI provider is not configured yet.",
+    "",
+    `Here is a practical way to approach: ${lastUserMessage.slice(0, 240)}`,
+    "",
+    "1. Identify the key concept or deliverable in the prompt.",
+    "2. Break it into 2–3 smaller subquestions.",
+    "3. Write what you already know, then mark the exact gap you need to research.",
+    "4. If this is code, create a minimal reproducible example and inspect inputs, outputs, and edge cases.",
+    "",
+    "Configure OPENAI_API_KEY or OPENROUTER_API_KEY to enable full AI responses.",
+  ].join("\n")
 }
 
 async function tryAIRequest(options: { apiKey: string; endpoint: string; model: string; messages: ChatMessage[]; maxTokens?: number; provider: "openrouter" | "openai" }): Promise<string> {

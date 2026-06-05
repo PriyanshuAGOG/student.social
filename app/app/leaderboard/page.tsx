@@ -143,7 +143,8 @@ export default function LeaderboardPage() {
           <select
             value={selectedPeriod}
             onChange={(e) => setSelectedPeriod(e.target.value as ScorePeriod)}
-            className="px-3 py-2 border border-border rounded-md bg-background"
+            aria-label="Leaderboard time period"
+            className="relative z-50 px-3 py-2 border border-border rounded-md bg-background shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="weekly">This Week</option>
             <option value="monthly">This Month</option>
@@ -224,7 +225,7 @@ export default function LeaderboardPage() {
 
           <TabsContent value="achievements" className="space-y-4">
             {achievements.map((achievement) => (
-              <Card key={achievement.name}>
+              <Card key={achievement.name} title="Badges are awarded from study streaks, recorded hours, pod participation, and points earned from learning activity.">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2"><TrendingUp className="w-5 h-5 text-green-500" />{achievement.name}</CardTitle>
                   <CardDescription>{achievement.metric}</CardDescription>

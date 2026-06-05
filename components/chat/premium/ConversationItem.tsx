@@ -1,24 +1,23 @@
-'use client'
+"use client";
 
-import React from 'react'
-import { formatDistanceToNow } from 'date-fns'
+import React from "react";
+import { formatDistanceToNow } from "date-fns";
 
 interface ConversationItemProps {
-  id: string
-  name: string
-  avatar?: string
-  lastMessage?: string
-  timestamp?: string
-  unreadCount?: number
-  isSelected?: boolean
-  isOnline?: boolean
-  onClick: () => void
-  onContextMenu?: (e: React.MouseEvent) => void
-  type?: 'direct' | 'group' | 'pod'
+  id: string;
+  name: string;
+  avatar?: string;
+  lastMessage?: string;
+  timestamp?: string;
+  unreadCount?: number;
+  isSelected?: boolean;
+  isOnline?: boolean;
+  onClick: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
+  type?: "direct" | "group" | "pod";
 }
 
 export function ConversationItem({
-  id,
   name,
   avatar,
   lastMessage,
@@ -28,52 +27,71 @@ export function ConversationItem({
   isOnline,
   onClick,
   onContextMenu,
-  type = 'direct',
+  type = "direct",
 }: ConversationItemProps) {
-  const timeFormatted = timestamp ? formatDistanceToNow(new Date(timestamp), { addSuffix: false }) : ''
+  const timeFormatted = timestamp
+    ? formatDistanceToNow(new Date(timestamp), { addSuffix: false })
+    : "";
+  const badgeLabel = type === "pod" ? "Pod" : type === "group" ? "Group" : "DM";
 
   return (
     <button
+      type="button"
       onClick={onClick}
       onContextMenu={onContextMenu}
-      className={`w-full flex items-center gap-3 px-4 py-3 transition-all duration-150 border-l-2 ${
+      className={`w-full border-l-2 px-4 py-3 text-left transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         isSelected
-          ? 'bg-white/10 border-l-white/40'
-          : 'hover:bg-white/5 border-l-transparent hover:border-l-white/20'
+          ? "border-l-primary bg-primary/10 shadow-inner"
+          : "border-l-transparent hover:border-l-primary/40 hover:bg-muted/70"
       }`}
     >
-      {/* Avatar */}
-      <div className="relative flex-shrink-0">
-        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-slate-400 to-slate-600 flex items-center justify-center text-sm font-semibold text-white overflow-hidden flex-shrink-0">
-          {avatar && avatar.startsWith('http') ? (
-            <img src={avatar} alt={name} className="w-full h-full object-cover" />
-          ) : (
-            <span>{name[0]?.toUpperCase()}</span>
+      <div className="flex items-center gap-3">
+        <div className="relative flex-shrink-0">
+          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-cyan-500 to-violet-500 text-sm font-semibold text-primary-foreground shadow-sm">
+            {avatar && avatar.startsWith("http") ? (
+              <img
+                src={avatar}
+                alt={name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span>{name[0]?.toUpperCase()}</span>
+            )}
+          </div>
+          {isOnline && (
+            <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 animate-pulse rounded-full border-2 border-card bg-emerald-500" />
           )}
         </div>
-        {/* Online indicator */}
-        {isOnline && (
-          <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-green-500 border-2 border-black animate-pulse" />
-        )}
-      </div>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0 text-left">
-        <div className="flex items-baseline justify-between gap-2 mb-0.5">
-          <h3 className="font-medium text-sm text-white truncate">{name}</h3>
-          {timeFormatted && (
-            <span className="text-xs text-slate-500 flex-shrink-0">{timeFormatted}</span>
-          )}
+        <div className="min-w-0 flex-1">
+          <div className="mb-0.5 flex items-baseline justify-between gap-2">
+            <h3 className="truncate text-sm font-semibold text-foreground">
+              {name}
+            </h3>
+            {timeFormatted && (
+              <span className="flex-shrink-0 text-xs text-muted-foreground">
+                {timeFormatted}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              {badgeLabel}
+            </span>
+            <p className="truncate text-xs text-muted-foreground">
+              {lastMessage || "No messages yet"}
+            </p>
+          </div>
         </div>
-        <p className="text-xs text-slate-400 truncate">{lastMessage || 'No messages yet'}</p>
-      </div>
 
-      {/* Unread indicator */}
-      {unreadCount && unreadCount > 0 && (
-        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-white flex items-center justify-center">
-          <span className="text-xs font-bold text-black">{unreadCount > 99 ? '99+' : unreadCount}</span>
-        </div>
-      )}
+        {unreadCount && unreadCount > 0 ? (
+          <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <span className="text-xs font-bold">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          </div>
+        ) : null}
+      </div>
     </button>
-  )
+  );
 }

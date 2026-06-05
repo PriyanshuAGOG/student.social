@@ -122,6 +122,7 @@ const collections = [
       { key: 'resourceId', type: 'string', size: 255 },
       { key: 'imageUrl', type: 'string', size: 500 },
       { key: 'imageUrls', type: 'string', size: 500, array: true },
+      { key: 'attachments', type: 'string', size: 1000, array: true },
       { key: 'imageFileId', type: 'string', size: 255 },
       { key: 'timestamp', type: 'string', size: 255, required: true },
       { key: 'updatedAt', type: 'string', size: 255 },

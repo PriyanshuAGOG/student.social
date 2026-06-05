@@ -2187,6 +2187,20 @@ export const chatService = {
     return response.room || response.data || response
   },
 
+
+  async createGroupRoom(name: string, memberIds: string[]) {
+    if (!Array.isArray(memberIds) || memberIds.length === 0) {
+      throw new Error('Select at least one member')
+    }
+
+    const response = await apiJson('/api/messages/group-room', {
+      method: 'POST',
+      body: JSON.stringify({ name, memberIds }),
+    })
+
+    return response.room || response.data || response
+  },
+
   async getOrCreatePodRoom(podId: string, podName = "Pod Chat", members: string[] = []) {
     try {
       if (!podId) throw new Error("Pod ID is required")
@@ -2307,6 +2321,20 @@ export const chatService = {
     return response.message || response.data || response
   },
 
+
+  async toggleReaction(messageId: string, emoji: string) {
+    if (!messageId || !emoji) {
+      throw new Error('Message ID and emoji are required')
+    }
+
+    const response = await apiJson(`/api/messages/${encodeURIComponent(messageId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action: 'react', emoji }),
+    })
+
+    return response.message || response.data || response
+  },
+
   async deleteMessage(messageId: string) {
     if (!messageId) {
       throw new Error('Message ID is required')
@@ -2387,7 +2415,7 @@ export const chatService = {
       .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.MESSAGES}.documents`, pushIfRelevant)
       .then((nextSubscription) => {
         if (closed) {
-          void nextSubscription.close?.()
+          Promise.resolve(nextSubscription.close?.()).catch(() => undefined)
           return
         }
         subscription = nextSubscription
@@ -2398,7 +2426,7 @@ export const chatService = {
 
     return () => {
       closed = true
-      void subscription?.close?.()
+      Promise.resolve(subscription?.close?.()).catch(() => undefined)
     }
   },
 
@@ -2422,7 +2450,7 @@ export const chatService = {
       .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_ROOMS}.documents`, pushIfRelevant)
       .then((nextSubscription) => {
         if (closed) {
-          void nextSubscription.close?.()
+          Promise.resolve(nextSubscription.close?.()).catch(() => undefined)
           return
         }
         subscription = nextSubscription
@@ -2433,7 +2461,7 @@ export const chatService = {
 
     return () => {
       closed = true
-      void subscription?.close?.()
+      Promise.resolve(subscription?.close?.()).catch(() => undefined)
     }
   },
 
@@ -2586,6 +2614,16 @@ export const callService = {
     return response.session || response.data || response
   },
 
+  async getSessionToken(sessionId: string) {
+    if (!sessionId) {
+      throw new Error('Session ID is required')
+    }
+
+    return apiJson(`/api/calls/sessions/${encodeURIComponent(sessionId)}/token`, {
+      method: 'POST',
+    })
+  },
+
   async getRoomCallHistory(roomId: string, limit = 20) {
     if (!roomId) {
       throw new Error('Room ID is required')
@@ -2641,7 +2679,7 @@ export const presenceService = {
       .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_PRESENCE}.documents`, pushIfRelevant)
       .then((nextSubscription) => {
         if (closed) {
-          void nextSubscription.close?.()
+          Promise.resolve(nextSubscription.close?.()).catch(() => undefined)
           return
         }
         subscription = nextSubscription
@@ -2652,7 +2690,7 @@ export const presenceService = {
 
     return () => {
       closed = true
-      void subscription?.close?.()
+      Promise.resolve(subscription?.close?.()).catch(() => undefined)
     }
   },
 }
@@ -3005,6 +3043,13 @@ export const feedService = {
     metadata: {
       type?: string
       imageFiles?: File[]
+      attachments?: Array<{
+        fileId?: string
+        fileUrl: string
+        fileName: string
+        fileSize?: number
+        fileType?: string
+      }>
       visibility?: string
       podId?: string
       tags?: string[]
@@ -3075,67 +3120,29 @@ export const feedService = {
         authorUsername = normalizeUsername(authorName) || `@user_${authorId.slice(0, 6)}`
       }
 
-      if (!metadata.imageFiles || metadata.imageFiles.length === 0) {
-        const cleanTags = Array.isArray(metadata.tags)
-          ? metadata.tags.filter((tag: unknown) => typeof tag === 'string' && tag.trim()).slice(0, 10)
-          : []
+      const cleanTags = Array.isArray(metadata.tags)
+        ? metadata.tags.filter((tag: unknown) => typeof tag === 'string' && tag.trim()).slice(0, 10)
+        : []
 
-        const response = await apiJson('/api/posts', {
-          method: 'POST',
-          body: JSON.stringify({
-            authorId,
-            content,
-            metadata: {
-              ...metadata,
-              tags: cleanTags,
-              authorName,
-              authorAvatar,
-              authorUsername,
-            },
-          }),
-        })
-
-        return response.post
-      }
-
-      // Handle image uploads if provided
-      let imageUrls: string[] = []
-      if (metadata.imageFiles && metadata.imageFiles.length > 0) {
-        const uploadedFiles = await Promise.all(
-          metadata.imageFiles.map(async (file) => {
-            const response = await storage.createFile(BUCKETS.POST_IMAGES, "unique()", file)
-            // Generate view URL
-            return storage.getFileView(BUCKETS.POST_IMAGES, response.$id).toString()
-          })
-        )
-        imageUrls = uploadedFiles
-      }
-
-      // Ensure pod visibility and podId are consistent
-      const visibility = metadata.visibility || "public"
-      const podId = visibility === "pod" ? metadata.podId || null : null
-
-      // Create post document
-      const post = await databases.createDocument(DATABASE_ID, COLLECTIONS.POSTS, "unique()", {
-        authorId: authorId,
-        content: content.trim(),
-        type: metadata.type || "text",
-        podId: podId,
-        imageUrls: imageUrls,
-        mediaUrls: imageUrls,
-        timestamp: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        likes: 0,
-        comments: 0,
-        saves: 0,
-        likedBy: [],
-        savedBy: [],
-        visibility: visibility,
-        tags: Array.isArray(metadata.tags) ? metadata.tags.slice(0, 10) : [],
-        authorName: authorName,
-        authorAvatar: authorAvatar,
-        authorUsername: authorUsername,
+      const response = await apiJson('/api/posts', {
+        method: 'POST',
+        body: JSON.stringify({
+          authorId,
+          content,
+          metadata: {
+            ...metadata,
+            imageFiles: undefined,
+            attachments: Array.isArray(metadata.attachments) ? metadata.attachments.slice(0, 6) : [],
+            tags: cleanTags,
+            authorName,
+            authorAvatar,
+            authorUsername,
+          },
+        }),
       })
+
+      const post = response.post
+      const podId = post?.podId
 
       // Notify pod members if post is in a pod
       if (podId) {

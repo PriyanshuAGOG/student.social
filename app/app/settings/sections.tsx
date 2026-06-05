@@ -235,12 +235,15 @@ export const settingsSections: SettingSection[] = [
         title: 'Timezone',
         description: 'Your local timezone for scheduling',
         type: 'select',
-        value: 'UTC-5',
+        value: 'auto',
         options: [
-          { label: 'Eastern Time (UTC-5)', value: 'UTC-5' },
-          { label: 'Central Time (UTC-6)', value: 'UTC-6' },
-          { label: 'Mountain Time (UTC-7)', value: 'UTC-7' },
-          { label: 'Pacific Time (UTC-8)', value: 'UTC-8' }
+          { label: 'Auto-detect from browser', value: 'auto' },
+          { label: 'Asia/Kolkata', value: 'Asia/Kolkata' },
+          { label: 'Eastern Time (America/New_York)', value: 'America/New_York' },
+          { label: 'Central Time (America/Chicago)', value: 'America/Chicago' },
+          { label: 'Mountain Time (America/Denver)', value: 'America/Denver' },
+          { label: 'Pacific Time (America/Los_Angeles)', value: 'America/Los_Angeles' },
+          { label: 'UTC', value: 'UTC' }
         ]
       },
       {
