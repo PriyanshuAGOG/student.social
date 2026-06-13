@@ -27,7 +27,8 @@ interface MessageGroupProps {
   currentUserId: string
   onReply?: (message: Message) => void
   onDelete?: (messageId: string) => void
-  onEdit?: (message: Message) => void
+  onEdit?: (message: Message, content?: string) => void
+  onCopy?: (message: Message) => void
   onReact?: (messageId: string, emoji: string) => void
   showDateDivider?: boolean
   highlightQuery?: string
@@ -39,6 +40,7 @@ export function MessageGroup({
   onReply,
   onDelete,
   onEdit,
+  onCopy,
   onReact,
   showDateDivider = true,
   highlightQuery = '',

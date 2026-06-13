@@ -7,6 +7,7 @@ import { Edit3, MoreHorizontal, Reply, Smile, Trash2 } from "lucide-react";
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🔥", "👏", "🎉"];
 
 interface ChatBubbleProps {
+  messageId?: string;
   content: string;
   isOwn: boolean;
   timestamp: string;
@@ -14,13 +15,15 @@ interface ChatBubbleProps {
   authorAvatar?: string;
   fileUrl?: string | null;
   fileName?: string | null;
+  type?: string;
   replyToMessage?: any;
   isEdited?: boolean;
   deliveryState?: "sending" | "sent" | "delivered" | "read" | "failed";
   onReply?: () => void;
   onDelete?: () => void;
-  onEdit?: () => void;
+  onEdit?: (content?: string) => void;
   onReact?: (emoji: string) => void;
+  onCopy?: () => void;
   reactions?: Record<string, string[]>;
   highlightQuery?: string;
   currentUserId?: string;
@@ -235,7 +238,7 @@ export function ChatBubble({
           {onEdit && isOwn && (
             <button
               type="button"
-              onClick={onEdit}
+              onClick={() => onEdit?.()}
               className="rounded-xl p-1.5 transition hover:bg-muted"
               title="Edit"
               aria-label="Edit message"
