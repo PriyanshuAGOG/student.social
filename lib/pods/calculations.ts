@@ -87,7 +87,9 @@ export function calculateLeaderboard(memberships: PodMembership[]): LeaderboardR
       return {
         rank: 0,
         userId: membership.userId,
-        name: membership.profile?.name || `Member ${membership.userId.slice(0, 5)}`,
+        name: membership.profile?.name || membership.profile?.username || `Member ${membership.userId.slice(0, 5)}`,
+        username: membership.profile?.username || "",
+        avatar: membership.profile?.avatar || "",
         role: membership.role,
         points,
         streak,

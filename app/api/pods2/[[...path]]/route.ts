@@ -11,6 +11,7 @@ import { scanUploadMeta } from "@/lib/upload-security"
 import { generateLiveKitToken } from "@/lib/livekit-service"
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || "peerspark-main-db"
+const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || "profiles"
 const APPWRITE_ENDPOINT = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT) || "https://fra.cloud.appwrite.io/v1"
 const APPWRITE_PROJECT_ID = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID || ""
 const POD_RESOURCES_BUCKET_ID = "pod-resources"
@@ -94,6 +95,32 @@ async function safeCreate(databases: any, collection: string, id: string, data: 
     }
     throw error
   }
+}
+
+function normalizeProfile(profile: any, userId: string) {
+  if (!profile) return null
+  return {
+    userId,
+    name: String(profile.name || profile.displayName || profile.fullName || profile.username || "").trim(),
+    username: String(profile.username || "").trim(),
+    email: String(profile.email || "").trim(),
+    avatar: String(profile.avatar || profile.profilePictureUrl || profile.photoURL || "").trim(),
+  }
+}
+
+async function hydrateProfiles(databases: any, userIds: string[]) {
+  const uniqueIds = Array.from(new Set(userIds.filter((id) => id && id !== "system")))
+  const entries = await Promise.all(
+    uniqueIds.map(async (userId) => {
+      try {
+        const profile = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, userId)
+        return [userId, normalizeProfile(profile, userId)] as const
+      } catch {
+        return [userId, null] as const
+      }
+    }),
+  )
+  return Object.fromEntries(entries.filter(([, profile]) => Boolean(profile)))
 }
 
 async function getMembership(databases: any, podId: string, userId: string) {
@@ -291,20 +318,42 @@ export async function GET(request: NextRequest, ctx: Params) {
         safeList(databases, POD_COLLECTIONS.reactions, [Query.equal("podId", pod.$id), Query.limit(200)]),
         safeList(databases, POD_COLLECTIONS.insights, [Query.equal("podId", pod.$id), Query.orderDesc("generatedAt"), Query.limit(20)]),
       ])
-      const membership = authUserId ? memberships.documents.find((item: any) => item.userId === authUserId) || null : null
-      const leaderboard = calculateLeaderboard(memberships.documents as any)
+      const profiles = await hydrateProfiles(databases, [
+        ...memberships.documents.map((item: any) => item.userId),
+        ...messages.documents.map((item: any) => item.senderId),
+        ...checkins.documents.map((item: any) => item.userId),
+        ...submissions.documents.map((item: any) => item.userId),
+      ])
+      const hydratedMemberships = memberships.documents.map((item: any) => ({
+        ...item,
+        profile: profiles[item.userId] || item.profile || null,
+      }))
+      const hydratedMessages = messages.documents.reverse().map((item: any) => {
+        const senderProfile = profiles[item.senderId] || item.senderProfile || null
+        return {
+          ...item,
+          senderProfile,
+          senderName: item.senderName || senderProfile?.name || senderProfile?.username || (item.senderId === "system" ? "PeerSpark" : `Member ${String(item.senderId || "").slice(0, 5)}`),
+        }
+      })
+      const hydratedCheckins = checkins.documents.map((item: any) => ({
+        ...item,
+        profile: profiles[item.userId] || item.profile || null,
+      }))
+      const membership = authUserId ? hydratedMemberships.find((item: any) => item.userId === authUserId) || null : null
+      const leaderboard = calculateLeaderboard(hydratedMemberships as any)
       return response({
         pod,
         membership,
-        memberships: memberships.documents,
+        memberships: hydratedMemberships,
         roadmap: roadmap.documents,
         tasks: tasks.documents,
         submissions: submissions.documents,
         sessions: sessions.documents,
         resources: resources.documents,
-        checkins: checkins.documents,
+        checkins: hydratedCheckins,
         channels: channels.documents,
-        messages: messages.documents.reverse(),
+        messages: hydratedMessages,
         reactions: reactions.documents,
         insights: insights.documents,
         leaderboard,

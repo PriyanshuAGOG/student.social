@@ -42,6 +42,8 @@ export type PodDocument = {
   [key: string]: unknown
 }
 
+export type PodProfile = { name?: string; avatar?: string; username?: string; email?: string }
+
 export type PodMembership = {
   $id: string
   podId: string
@@ -64,7 +66,7 @@ export type PodMembership = {
   notificationPreference?: "all" | "mentions_only" | "muted"
   createdAt?: string
   updatedAt?: string
-  profile?: { name?: string; avatar?: string; username?: string }
+  profile?: PodProfile
 }
 
 export type RoadmapItem = {
@@ -220,6 +222,7 @@ export type PodMessage = {
   channelId: string
   senderId: string
   senderName?: string
+  senderProfile?: PodProfile
   content?: string
   type?: "text" | "resource" | "task" | "system" | "attachment" | "submission" | "announcement"
   label?: "none" | "question" | "resource" | "update" | "blocker" | "announcement" | "submission"
@@ -286,6 +289,8 @@ export type LeaderboardRow = {
   rank: number
   userId: string
   name: string
+  username?: string
+  avatar?: string
   role: PodRole
   points: number
   streak: number

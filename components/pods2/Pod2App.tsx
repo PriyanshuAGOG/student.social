@@ -65,7 +65,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { pod2Api } from "@/lib/pods/client"
 import { calculateLeaderboard } from "@/lib/pods/calculations"
-import type { PodBundle, PodChannel, PodDocument, PodMessage, PodResource, PodTask } from "@/lib/pods/types"
+import type { PodBundle, PodDocument, PodMessage, PodProfile, PodResource, PodTask } from "@/lib/pods/types"
 import { usePodRealtime } from "@/hooks/pods/use-pod-realtime"
 
 const tabs = [
@@ -104,6 +104,38 @@ function formatDate(value?: string) {
 
 function roleCanManage(role?: string) {
   return ["owner", "mentor", "moderator"].includes(role || "")
+}
+
+function displayName(profile: PodProfile | null | undefined, userId?: string) {
+  return profile?.name || profile?.username || (userId ? `Member ${userId.slice(0, 5)}` : "Member")
+}
+
+function initials(profile: PodProfile | null | undefined, userId?: string) {
+  const name = displayName(profile, userId)
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "M"
+}
+
+function memberProfile(bundle: PodBundle, userId?: string) {
+  if (!userId) return null
+  return bundle.memberships.find((member) => member.userId === userId)?.profile || null
+}
+
+function PersonAvatar({ profile, userId, size = "md" }: { profile?: PodProfile | null; userId?: string; size?: "sm" | "md" | "lg" }) {
+  const sizeClass = size === "sm" ? "h-8 w-8 text-xs" : size === "lg" ? "h-12 w-12 text-base" : "h-10 w-10 text-sm"
+  return (
+    <div className={cx("shrink-0 overflow-hidden rounded-full border border-white/10 bg-white text-black", sizeClass)} aria-hidden="true">
+      {profile?.avatar ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={profile.avatar} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center font-semibold">{initials(profile, userId)}</div>
+      )}
+    </div>
+  )
+}
+
+function nextBestTask(bundle: PodBundle) {
+  return bundle.tasks.find((task) => task.status === "today") || bundle.tasks.find((task) => task.status === "this_week") || bundle.tasks.find((task) => task.status !== "completed" && task.status !== "archived")
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -474,6 +506,18 @@ function Metric({ label, value }: { label: string; value: string | number }) {
   return <div className="rounded-2xl border border-white/10 bg-[#0B0B0C] p-4"><div className="text-xs text-white/45">{label}</div><div className="mt-1 text-lg font-semibold">{value}</div></div>
 }
 
+function PageIntro({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
+  return (
+    <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <div>
+        <h2 className="text-2xl font-semibold tracking-normal">{title}</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">{body}</p>
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
+  )
+}
+
 export function PodWorkspacePage({ podId, tab = "overview", preview = false }: { podId: string; tab?: string; preview?: boolean }) {
   const router = useRouter()
   const { user } = useAuth()
@@ -520,8 +564,27 @@ export function PodWorkspacePage({ podId, tab = "overview", preview = false }: {
   return (
     <Shell>
       <div className="mx-auto max-w-[1440px] p-5 md:p-8">
-        <PodHeader pod={pod} role={role} onJoin={join} isMember={Boolean(bundle.membership)} />
-        {!preview ? <nav className="mt-5 flex gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-[#0B0B0C] p-1" aria-label="Pod sections">{tabs.map(([value, label, Icon]) => <Link key={value} href={`/app/pods/${pod.$id}/${value}`} className={cx("flex h-10 items-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm transition", activeTab === value ? "bg-white text-black" : "text-white/55 hover:bg-white/10 hover:text-white")}><Icon className="h-4 w-4" />{label}</Link>)}</nav> : null}
+        <PodHeader bundle={bundle} role={role} onJoin={join} isMember={Boolean(bundle.membership)} />
+        {!preview ? (
+          <>
+            <GuidedStart bundle={bundle} activeTab={activeTab} />
+            <nav className="mt-4 flex gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-[#0B0B0C] p-1" aria-label="Pod sections">
+              {tabs.map(([value, label, Icon]) => (
+                <Link
+                  key={value}
+                  href={`/app/pods/${pod.$id}/${value}`}
+                  className={cx(
+                    "flex h-10 items-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+                    activeTab === value ? "bg-white text-black" : "text-white/55 hover:bg-white/10 hover:text-white",
+                  )}
+                  aria-current={activeTab === value ? "page" : undefined}
+                >
+                  <Icon className="h-4 w-4" aria-hidden="true" />{label}
+                </Link>
+              ))}
+            </nav>
+          </>
+        ) : null}
         <div className="mt-6">
           {preview ? <PreviewTab bundle={bundle} onJoin={join} /> : null}
           {activeTab === "overview" ? <OverviewTab bundle={bundle} reload={load} /> : null}
@@ -540,38 +603,75 @@ export function PodWorkspacePage({ podId, tab = "overview", preview = false }: {
   )
 }
 
-function PodHeader({ pod, role, onJoin, isMember }: { pod: PodDocument; role?: string; onJoin: () => void; isMember: boolean }) {
+function PodHeader({ bundle, role, onJoin, isMember }: { bundle: PodBundle; role?: string; onJoin: () => void; isMember: boolean }) {
+  const pod = bundle.pod
+  const userProgress = Number(bundle.membership?.progressPercent ?? pod.completionRate ?? 0)
+  const helpers = bundle.memberships.filter((member) => member.status === "active").slice(0, 5)
   return (
     <header className="overflow-hidden rounded-[28px] border border-white/10 bg-[#0B0B0C]">
-      <div className="h-28 bg-[radial-gradient(circle_at_25%_30%,rgba(255,255,255,.18),transparent_24%),linear-gradient(135deg,#171717,#050505)]" />
-      <div className="flex flex-col gap-5 p-5 md:flex-row md:items-end md:justify-between md:p-6">
-        <div className="max-w-3xl">
+      <div className="grid gap-5 p-5 md:grid-cols-[1fr_360px] md:p-6">
+        <div className="min-w-0">
+          <div className="mb-4 h-20 rounded-[22px] border border-white/10 bg-[radial-gradient(circle_at_18%_22%,rgba(255,255,255,.22),transparent_22%),linear-gradient(135deg,#1b1b1b,#050505)]" />
           <div className="mb-3 flex flex-wrap gap-2">
             <Badge className="bg-white text-black hover:bg-white">Week {pod.currentWeek || 1}/{pod.totalWeeks || 4}</Badge>
             <Badge variant="outline" className="border-white/15 text-white">{role || "preview"}</Badge>
             <Badge variant="outline" className="border-white/15 text-white">{pod.visibility}</Badge>
           </div>
-          <h1 className="text-3xl font-bold tracking-normal md:text-4xl">{pod.name}</h1>
-          <p className="mt-2 text-sm leading-6 text-white/60">{pod.shortOutcome}</p>
-          <div className="mt-4 flex flex-wrap gap-4 text-sm text-white/55">
-            <span className="flex items-center gap-2"><Users className="h-4 w-4" />{pod.memberCount || 0} members</span>
-            <span className="flex items-center gap-2"><CircleDot className="h-4 w-4" />{pod.activeMemberCount || 0} active</span>
-            <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4" />{formatDate(pod.nextSessionAt)}</span>
+          <h1 className="text-balance text-3xl font-bold tracking-normal md:text-4xl">{pod.name}</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/60">{pod.shortOutcome}</p>
+          <div className="mt-5 flex flex-wrap gap-4 text-sm text-white/55">
+            <span className="flex items-center gap-2"><Users className="h-4 w-4" aria-hidden="true" />{pod.memberCount || bundle.memberships.length} members</span>
+            <span className="flex items-center gap-2"><CircleDot className="h-4 w-4" aria-hidden="true" />{pod.activeMemberCount || helpers.length} active</span>
+            <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4" aria-hidden="true" />{formatDate(pod.nextSessionAt)}</span>
           </div>
         </div>
-        <div className="flex min-w-64 flex-col gap-3">
+        <div className="flex flex-col justify-end gap-4">
           <div className="rounded-2xl border border-white/10 bg-[#111113] p-4">
-            <div className="mb-2 flex justify-between text-xs text-white/50"><span>Your progress</span><span>{pod.completionRate || 0}%</span></div>
-            <Progress value={Number(pod.completionRate || 0)} className="h-1.5 bg-white/10" />
+            <div className="mb-2 flex justify-between text-xs text-white/50"><span>Your progress</span><span>{userProgress}%</span></div>
+            <Progress value={userProgress} className="h-1.5 bg-white/10" />
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <div className="flex -space-x-2">
+                {helpers.map((member) => <PersonAvatar key={member.$id} profile={member.profile} userId={member.userId} size="sm" />)}
+              </div>
+              <span className="text-xs text-white/45">{helpers.length} learning now</span>
+            </div>
           </div>
           <div className="flex gap-2">
-            {!isMember ? <Button onClick={onJoin} className="h-10 flex-1 rounded-xl bg-white text-black hover:bg-white/90">{pod.approvalRequired ? "Request Access" : "Join Pod"}</Button> : <Button asChild className="h-10 flex-1 rounded-xl bg-white text-black hover:bg-white/90"><Link href={`/app/pods/${pod.$id}/overview`}>Open Workspace</Link></Button>}
-            <Button variant="outline" aria-label="Share pod" className="h-10 rounded-xl border-white/10 bg-transparent text-white hover:bg-white/10"><Share2 className="h-4 w-4" /></Button>
-            {roleCanManage(role) ? <Button asChild variant="outline" aria-label="Settings" className="h-10 rounded-xl border-white/10 bg-transparent text-white hover:bg-white/10"><Link href={`/app/pods/${pod.$id}/settings`}><Settings className="h-4 w-4" /></Link></Button> : null}
+            {!isMember ? <Button onClick={onJoin} className="h-10 flex-1 rounded-xl bg-white text-black hover:bg-white/90">{pod.approvalRequired ? "Request Access" : "Join Pod"}</Button> : <Button asChild className="h-10 flex-1 rounded-xl bg-white text-black hover:bg-white/90"><Link href={`/app/pods/${pod.$id}/overview`}>Continue</Link></Button>}
+            <Button variant="outline" aria-label="Share pod" className="h-10 rounded-xl border-white/10 bg-transparent text-white hover:bg-white/10"><Share2 className="h-4 w-4" aria-hidden="true" /></Button>
+            {roleCanManage(role) ? <Button asChild variant="outline" aria-label="Settings" className="h-10 rounded-xl border-white/10 bg-transparent text-white hover:bg-white/10"><Link href={`/app/pods/${pod.$id}/settings`}><Settings className="h-4 w-4" aria-hidden="true" /></Link></Button> : null}
           </div>
         </div>
       </div>
     </header>
+  )
+}
+
+function GuidedStart({ bundle, activeTab }: { bundle: PodBundle; activeTab: string }) {
+  const task = nextBestTask(bundle)
+  const session = bundle.sessions.find((item) => ["scheduled", "live"].includes(item.status || "scheduled"))
+  const steps = [
+    { label: "Next task", value: task?.title || "Open the roadmap", href: task ? `/app/pods/${bundle.pod.$id}/tasks` : `/app/pods/${bundle.pod.$id}/roadmap`, icon: ListChecks },
+    { label: "Live session", value: session ? formatDate(session.startsAt) : "No session yet", href: `/app/pods/${bundle.pod.$id}/study-room`, icon: CalendarDays },
+    { label: "Ask for help", value: "Use Doubts channel", href: `/app/pods/${bundle.pod.$id}/chat`, icon: MessageSquare },
+  ]
+  return (
+    <section className="mt-4 rounded-2xl border border-white/10 bg-[#111113] p-3" aria-label="Start here">
+      <div className="grid gap-2 md:grid-cols-3">
+        {steps.map((step) => (
+          <Link key={step.label} href={step.href} className={cx("group flex items-center gap-3 rounded-xl p-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60", activeTab === step.href.split("/").pop() ? "bg-white text-black" : "hover:bg-white/10")}>
+            <div className={cx("flex h-10 w-10 shrink-0 items-center justify-center rounded-full", activeTab === step.href.split("/").pop() ? "bg-black text-white" : "bg-white text-black")}>
+              <step.icon className="h-4 w-4" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <div className={cx("text-xs", activeTab === step.href.split("/").pop() ? "text-black/55" : "text-white/45")}>{step.label}</div>
+              <div className="truncate text-sm font-semibold">{step.value}</div>
+            </div>
+            <ChevronRight className="ml-auto h-4 w-4 opacity-45" aria-hidden="true" />
+          </Link>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -589,21 +689,108 @@ function PreviewTab({ bundle, onJoin }: { bundle: PodBundle; onJoin: () => void 
 
 function OverviewTab({ bundle, reload }: { bundle: PodBundle; reload: () => void }) {
   const todayTasks = bundle.tasks.filter((task) => task.status === "today").slice(0, 4)
+  const nextTask = nextBestTask(bundle)
   const nextSession = bundle.sessions.find((session) => ["scheduled", "live"].includes(session.status || "scheduled"))
+  const activeMembers = bundle.memberships.filter((member) => member.status === "active")
+  const recentActivity = [
+    ...bundle.checkins.slice(0, 3).map((item: any) => ({ ...item, kind: "check-in" })),
+    ...bundle.messages.slice(-3).map((item: any) => ({ ...item, kind: "message" })),
+  ].slice(0, 5)
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
       <div className="space-y-5">
-        <Panel>
-          <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-semibold">Today's Focus</h2><p className="mt-1 text-sm text-white/55">Your next best actions for this pod.</p></div><Button className="rounded-xl bg-white text-black">Start Today's Plan</Button></div>
-          <div className="mt-5 grid gap-3">{(todayTasks.length ? todayTasks : [{ title: "Open current lesson/resource", points: 10 }, { title: "Complete today’s task", points: 20 }, { title: "Post daily check-in", points: 5 }]).map((task: any, index) => <div key={task.$id || index} className="flex items-center justify-between rounded-2xl border border-white/10 bg-[#0B0B0C] p-4"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-black"><Check className="h-4 w-4" /></div><div><div className="font-medium">{task.title}</div><div className="text-xs text-white/45">{task.estimatedMinutes || 25} min • {task.points || 10} pts</div></div></div><Button variant="ghost" className="rounded-xl text-white/70 hover:bg-white/10">Open</Button></div>)}</div>
+        <Panel className="p-6">
+          <div className="grid gap-5 md:grid-cols-[1fr_auto] md:items-start">
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#0B0B0C] px-3 py-1 text-xs text-white/55">
+                <Target className="h-3.5 w-3.5" aria-hidden="true" /> Start here
+              </div>
+              <h2 className="text-2xl font-semibold">Today’s Focus</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/58">One calm path through the pod: complete the next task, check in, and use the right space when you need help.</p>
+            </div>
+            <Button asChild className="h-11 rounded-xl bg-white px-5 text-black hover:bg-white/90">
+              <Link href={nextTask ? `/app/pods/${bundle.pod.$id}/tasks` : `/app/pods/${bundle.pod.$id}/roadmap`}>Start today</Link>
+            </Button>
+          </div>
+          <div className="mt-6 grid gap-3">
+            {(todayTasks.length ? todayTasks : [
+              nextTask || { title: "Open the roadmap", points: 10, estimatedMinutes: 10 },
+              { title: "Post a daily check-in", points: 5, estimatedMinutes: 3 },
+              { title: "Ask one clear question if blocked", points: 0, estimatedMinutes: 5 },
+            ]).slice(0, 4).map((task: any, index) => (
+              <Link
+                key={task.$id || `${task.title}-${index}`}
+                href={`/app/pods/${bundle.pod.$id}/${task.$id ? "tasks" : index === 1 ? "overview" : "chat"}`}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#0B0B0C] p-4 transition hover:border-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-black"><Check className="h-4 w-4" aria-hidden="true" /></div>
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{task.title}</div>
+                    <div className="text-xs text-white/45">{task.estimatedMinutes || 20} min • {task.points || 0} pts</div>
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 shrink-0 text-white/35" aria-hidden="true" />
+              </Link>
+            ))}
+          </div>
         </Panel>
-        <Panel><h2 className="text-xl font-semibold">Current Sprint</h2><div className="mt-4 grid gap-3 md:grid-cols-4"><Metric label="Pod completion" value={`${bundle.pod.completionRate || 0}%`} /><Metric label="Your completion" value={`${bundle.membership?.progressPercent || 0}%`} /><Metric label="Active members" value={bundle.pod.activeMemberCount || 0} /><Metric label="Tasks remaining" value={bundle.tasks.filter((t) => t.status !== "completed").length} /></div></Panel>
-        <Panel><h2 className="text-xl font-semibold">Pod Activity Feed</h2>{bundle.checkins.length || bundle.messages.length ? <div className="mt-4 space-y-3">{[...bundle.checkins.slice(0, 3), ...bundle.messages.slice(-3)].map((item: any) => <div key={item.$id} className="rounded-2xl border border-white/10 bg-[#0B0B0C] p-4 text-sm text-white/60"><span className="text-white">{item.senderName || item.userId || "Member"}</span> {item.content ? "posted a message" : "posted a check-in"} <span className="text-white/35">• {formatDate(item.createdAt)}</span></div>)}</div> : <EmptyState icon={Activity} title="No activity yet" body="Activity appears as members complete tasks, post check-ins, upload resources, and pin messages." />}</Panel>
+        <Panel>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold">This Week</h2>
+              <p className="mt-1 text-sm text-white/55">A compact view of progress, work, and live time.</p>
+            </div>
+            <Badge variant="outline" className="border-white/15 text-white">Week {bundle.pod.currentWeek || 1}</Badge>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <Metric label="Your progress" value={`${bundle.membership?.progressPercent || 0}%`} />
+            <Metric label="Tasks left" value={bundle.tasks.filter((t) => t.status !== "completed" && t.status !== "archived").length} />
+            <Metric label="Resources" value={bundle.resources.length} />
+            <Metric label="Next session" value={nextSession ? formatDate(nextSession.startsAt) : "None"} />
+          </div>
+        </Panel>
+        <Panel>
+          <h2 className="text-xl font-semibold">Recent Activity</h2>
+          {recentActivity.length ? (
+            <div className="mt-4 space-y-3">
+              {recentActivity.map((item: any) => {
+                const profile = item.senderProfile || item.profile || memberProfile(bundle, item.senderId || item.userId)
+                return (
+                  <div key={`${item.kind}-${item.$id}`} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#0B0B0C] p-4 text-sm">
+                    <PersonAvatar profile={profile} userId={item.senderId || item.userId} size="sm" />
+                    <div className="min-w-0">
+                      <div className="text-white"><span className="font-medium">{item.senderName || displayName(profile, item.userId)}</span> posted a {item.kind}</div>
+                      <div className="mt-1 truncate text-xs text-white/42">{item.content || item.todayPlan || item.blocker || "Progress update"} • {formatDate(item.createdAt)}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : <EmptyState icon={Activity} title="No activity yet" body="Activity appears as members complete tasks, post check-ins, upload resources, and send messages." />}
+        </Panel>
       </div>
       <aside className="space-y-5">
-        <Panel><h2 className="text-lg font-semibold">Your Progress</h2><div className="mt-4 grid grid-cols-2 gap-3"><Metric label="Streak" value={bundle.membership?.currentStreak || 0} /><Metric label="Points" value={bundle.membership?.totalPoints || 0} /><Metric label="Tasks" value={bundle.membership?.tasksCompleted || 0} /><Metric label="Sessions" value={bundle.membership?.sessionsAttended || 0} /></div></Panel>
-        <Panel><h2 className="text-lg font-semibold">Upcoming Session</h2>{nextSession ? <div className="mt-4 space-y-3 text-sm text-white/60"><div className="text-base font-semibold text-white">{nextSession.title}</div><div>{formatDate(nextSession.startsAt)}</div><div>{nextSession.agenda}</div><Button className="w-full rounded-xl bg-white text-black">Join Session</Button><Button variant="outline" className="w-full rounded-xl border-white/10 bg-transparent text-white">Add to calendar</Button></div> : <EmptyState icon={CalendarDays} title="No session scheduled" body="Mentors can schedule a live room from the Study Room tab." />}</Panel>
-        <Panel><h2 className="text-lg font-semibold">Pod Health</h2><div className="mt-4"><Metric label="Health score" value={bundle.pod.healthScore || 0} /></div><p className="mt-4 text-sm leading-6 text-white/55">Based on activity, check-ins, task submissions, and upcoming sessions.</p></Panel>
+        <Panel>
+          <h2 className="text-lg font-semibold">Your Progress</h2>
+          <div className="mt-4 grid grid-cols-2 gap-3"><Metric label="Streak" value={bundle.membership?.currentStreak || 0} /><Metric label="Points" value={bundle.membership?.totalPoints || 0} /><Metric label="Tasks" value={bundle.membership?.tasksCompleted || 0} /><Metric label="Sessions" value={bundle.membership?.sessionsAttended || 0} /></div>
+        </Panel>
+        <Panel>
+          <h2 className="text-lg font-semibold">People</h2>
+          <p className="mt-1 text-sm text-white/55">Active members who can help you move.</p>
+          <div className="mt-4 space-y-3">
+            {activeMembers.slice(0, 5).map((member) => (
+              <Link key={member.$id} href={`/app/profile/${member.profile?.username || member.userId}`} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#0B0B0C] p-3 transition hover:border-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60">
+                <PersonAvatar profile={member.profile} userId={member.userId} />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">{displayName(member.profile, member.userId)}</div>
+                  <div className="text-xs text-white/45">{member.role} • {member.currentStreak || 0} day streak</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </Panel>
+        <Panel><h2 className="text-lg font-semibold">Upcoming Session</h2>{nextSession ? <div className="mt-4 space-y-3 text-sm text-white/60"><div className="text-base font-semibold text-white">{nextSession.title}</div><div>{formatDate(nextSession.startsAt)}</div><div>{nextSession.agenda}</div><Button asChild className="w-full rounded-xl bg-white text-black"><Link href={`/app/pods/${bundle.pod.$id}/study-room`}>Join Session</Link></Button><Button variant="outline" className="w-full rounded-xl border-white/10 bg-transparent text-white">Add to calendar</Button></div> : <EmptyState icon={CalendarDays} title="No session scheduled" body="Mentors can schedule a live room from the Study Room tab." />}</Panel>
       </aside>
     </div>
   )
@@ -622,11 +809,66 @@ function RoadmapTab({ bundle, reload, readonly }: { bundle: PodBundle; reload?: 
   }
   if (!bundle.roadmap.length) return <EmptyState icon={BookOpen} title="No roadmap yet" body="Create a roadmap so members know what to learn and complete each week." action={!readonly && roleCanManage(bundle.membership?.role) ? <div className="flex gap-2"><Button onClick={generate} className="rounded-xl bg-white text-black"><Wand2 className="mr-2 h-4 w-4" />Generate Roadmap</Button><Button variant="outline" className="rounded-xl border-white/10 bg-transparent text-white">Create Manually</Button></div> : null} />
   const phases = bundle.roadmap.filter((item) => item.type === "phase")
+  const currentItems = bundle.roadmap.filter((item) => item.type !== "phase" && Number(item.week || 1) <= Number(bundle.pod.currentWeek || 1))
+  const nextItem = currentItems.find((item) => item.status !== "completed" && item.status !== "archived") || bundle.roadmap.find((item) => item.type !== "phase")
   return (
-    <div className="grid gap-5 lg:grid-cols-[320px_1fr_320px]">
-      <Panel><h2 className="text-lg font-semibold">Timeline</h2><div className="mt-4 space-y-3">{phases.map((phase) => <div key={phase.$id} className="rounded-2xl border border-white/10 bg-[#0B0B0C] p-4"><div className="text-xs text-white/40">Week {phase.week}</div><div className="mt-1 font-medium">{phase.title}</div><div className="mt-2 text-xs text-white/45">{phase.status}</div></div>)}</div></Panel>
-      <Panel><h2 className="text-lg font-semibold">Roadmap Items</h2><div className="mt-4 space-y-3">{bundle.roadmap.filter((item) => item.type !== "phase").map((item) => <div key={item.$id} className="rounded-2xl border border-white/10 bg-[#0B0B0C] p-4"><div className="flex items-start justify-between gap-4"><div><div className="text-xs uppercase text-white/40">{item.type} • week {item.week}</div><h3 className="mt-1 font-semibold">{item.title}</h3><p className="mt-2 text-sm leading-6 text-white/55">{item.description}</p></div><Badge variant="outline" className="border-white/15 text-white">{item.points || 0} pts</Badge></div><div className="mt-4 flex gap-2"><Button size="sm" className="rounded-xl bg-white text-black">Start</Button><Button size="sm" variant="outline" className="rounded-xl border-white/10 bg-transparent text-white">Ask doubt</Button></div></div>)}</div></Panel>
-      <Panel><h2 className="text-lg font-semibold">Progress Summary</h2><div className="mt-4 space-y-3"><Metric label="Items" value={bundle.roadmap.length} /><Metric label="Available" value={bundle.roadmap.filter((i) => i.status === "available").length} /><Metric label="Completed" value={bundle.roadmap.filter((i) => i.status === "completed").length} /></div></Panel>
+    <div>
+      <PageIntro
+        title="Roadmap"
+        body="A simple learning path by week. Start with the highlighted item, then move down the list."
+        action={!readonly && roleCanManage(bundle.membership?.role) ? <Button onClick={generate} variant="outline" className="rounded-xl border-white/10 bg-transparent text-white"><Wand2 className="mr-2 h-4 w-4" aria-hidden="true" />Generate next week</Button> : null}
+      />
+      <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
+        <aside className="space-y-5">
+          <Panel>
+            <h3 className="text-lg font-semibold">Weeks</h3>
+            <div className="mt-4 space-y-2">
+              {phases.map((phase) => (
+                <div key={phase.$id} className={cx("rounded-2xl border p-4", Number(phase.week) === Number(bundle.pod.currentWeek || 1) ? "border-white/24 bg-white text-black" : "border-white/10 bg-[#0B0B0C]")}>
+                  <div className={cx("text-xs", Number(phase.week) === Number(bundle.pod.currentWeek || 1) ? "text-black/55" : "text-white/40")}>Week {phase.week}</div>
+                  <div className="mt-1 font-medium">{phase.title}</div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+          <Panel>
+            <h3 className="text-lg font-semibold">Summary</h3>
+            <div className="mt-4 space-y-3"><Metric label="Items" value={bundle.roadmap.length} /><Metric label="Available" value={bundle.roadmap.filter((i) => i.status === "available").length} /><Metric label="Completed" value={bundle.roadmap.filter((i) => i.status === "completed").length} /></div>
+          </Panel>
+        </aside>
+        <div className="space-y-5">
+          {nextItem ? (
+            <Panel className="border-white/18">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <Badge className="bg-white text-black hover:bg-white">Next step</Badge>
+                  <h3 className="mt-4 text-xl font-semibold">{nextItem.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-white/58">{nextItem.description || "Open this item to keep moving through the pod."}</p>
+                </div>
+                <Button className="rounded-xl bg-white text-black">Start</Button>
+              </div>
+            </Panel>
+          ) : null}
+          <Panel>
+            <h3 className="text-lg font-semibold">Learning Path</h3>
+            <div className="mt-4 divide-y divide-white/10 overflow-hidden rounded-2xl border border-white/10">
+              {bundle.roadmap.filter((item) => item.type !== "phase").map((item) => (
+                <div key={item.$id} className="grid gap-3 bg-[#0B0B0C] p-4 md:grid-cols-[1fr_auto] md:items-center">
+                  <div className="min-w-0">
+                    <div className="text-xs uppercase text-white/40">{item.type} • week {item.week} • {item.estimatedMinutes || 20} min</div>
+                    <h4 className="mt-1 truncate font-semibold">{item.title}</h4>
+                    <p className="mt-1 line-clamp-2 text-sm leading-6 text-white/52">{item.description}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="border-white/15 text-white">{item.status || "available"}</Badge>
+                    <Button size="sm" variant="outline" className="rounded-xl border-white/10 bg-transparent text-white">Open</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </div>
+      </div>
     </div>
   )
 }
@@ -646,19 +888,32 @@ function TasksTab({ bundle, reload }: { bundle: PodBundle; reload: () => void })
   }
   return (
     <>
-      <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-semibold">Task Board</h2>{roleCanManage(bundle.membership?.role) ? <Button onClick={quickTask} className="rounded-xl bg-white text-black"><Plus className="mr-2 h-4 w-4" />Create Task</Button> : null}</div>
-      <div className="grid gap-4 overflow-x-auto lg:grid-cols-6">
+      <PageIntro
+        title="Tasks"
+        body="Everything is grouped by when it matters. New users can stay in Today and This Week without managing the full board."
+        action={roleCanManage(bundle.membership?.role) ? <Button onClick={quickTask} className="rounded-xl bg-white text-black"><Plus className="mr-2 h-4 w-4" aria-hidden="true" />Create Task</Button> : null}
+      />
+      <div className="mb-5 grid gap-3 md:grid-cols-4">
+        <Metric label="Today" value={bundle.tasks.filter((task) => task.status === "today").length} />
+        <Metric label="This week" value={bundle.tasks.filter((task) => task.status === "this_week").length} />
+        <Metric label="Submitted" value={bundle.tasks.filter((task) => task.status === "submitted").length} />
+        <Metric label="Done" value={bundle.tasks.filter((task) => task.status === "completed").length} />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-3 2xl:grid-cols-6">
         {columns.map((column) => {
           const tasks = bundle.tasks.filter((task) => (task.status || "backlog") === column)
           return (
-            <Panel key={column} className="min-h-[420px] p-4">
-              <h3 className="mb-4 text-sm font-semibold capitalize text-white/70">{column.replace("_", " ")}</h3>
+            <Panel key={column} className="min-h-[260px] p-4">
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold capitalize text-white/70">{column.replace("_", " ")}</h3>
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/45">{tasks.length}</span>
+              </div>
               <div className="space-y-3">
                 {tasks.map((task) => (
                   <button
                     key={task.$id}
                     onClick={() => setSelected(task)}
-                    className="w-full rounded-2xl border border-white/10 bg-[#0B0B0C] p-4 text-left transition hover:border-white/20"
+                    className="w-full rounded-2xl border border-white/10 bg-[#0B0B0C] p-4 text-left transition hover:border-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                   >
                     <div className="font-medium">{task.title}</div>
                     <p className="mt-2 line-clamp-2 text-sm text-white/50">{task.description}</p>
@@ -719,9 +974,36 @@ function StudyRoomTab({ bundle }: { bundle: PodBundle }) {
     }
   }
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
-      <Panel className="min-h-[560px]"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">{session?.title || "Study Room"}</h2><p className="mt-1 text-sm text-white/55">{session ? formatDate(session.startsAt) : "No session scheduled yet."}</p></div><div className="flex gap-2"><Button onClick={joinLiveKit} disabled={joining} className="rounded-xl bg-white text-black">{joining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Video className="mr-2 h-4 w-4" />}Join Video</Button><Button onClick={joinLiveKit} variant="outline" className="rounded-xl border-white/10 bg-transparent text-white"><Mic className="mr-2 h-4 w-4" />Join Audio</Button></div></div><div className="mt-6 grid min-h-[380px] place-items-center rounded-2xl border border-white/10 bg-[#0B0B0C]"><div className="max-w-lg text-center"><MonitorUp className="mx-auto mb-4 h-10 w-10 text-white/50" /><h3 className="font-semibold">{callInfo ? "LiveKit room issued" : "Collaboration workspace"}</h3><p className="mt-2 text-sm leading-6 text-white/50">{callInfo ? `Room ${callInfo.roomName} is ready at ${callInfo.url}. The token is kept client-side and should be passed to the LiveKit room component.` : "Video, audio, whiteboard, shared notes, and timer controls are available here. Join Video requests a real provider token when LiveKit env vars are configured."}</p>{callInfo ? <div className="mt-4 rounded-xl border border-white/10 bg-black p-3 text-left text-xs text-white/45">Token issued • {callInfo.token.slice(0, 18)}...</div> : null}</div></div></Panel>
-      <aside className="space-y-5"><Panel><h3 className="font-semibold">Agenda</h3><p className="mt-3 text-sm leading-6 text-white/55">{session?.agenda || "Set an agenda before the session starts."}</p></Panel><Panel><h3 className="font-semibold">Pomodoro</h3><div className="mt-4 text-4xl font-bold">25:00</div><Button onClick={() => setFocus(!focus)} className="mt-4 w-full rounded-xl bg-white text-black"><Timer className="mr-2 h-4 w-4" />{focus ? "Pause" : "Start focus"}</Button></Panel><Panel><h3 className="font-semibold">Shared Notes</h3><Textarea placeholder="Session notes..." className="pod-textarea mt-4 min-h-40" /><Button className="mt-3 w-full rounded-xl bg-white text-black">Save as resource</Button></Panel></aside>
+    <div>
+      <PageIntro title="Study Room" body="A focused place for the next live session: join, follow the agenda, take notes, and run a short focus block." />
+      <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
+        <Panel className="min-h-[520px]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <Badge variant="outline" className="mb-3 border-white/15 text-white">{session?.status || "ready"}</Badge>
+              <h2 className="text-xl font-semibold">{session?.title || "No session scheduled"}</h2>
+              <p className="mt-1 text-sm text-white/55">{session ? formatDate(session.startsAt) : "Create a session to activate live collaboration."}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={joinLiveKit} disabled={joining} className="rounded-xl bg-white text-black">{joining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Video className="mr-2 h-4 w-4" aria-hidden="true" />}Join Video</Button>
+              <Button onClick={joinLiveKit} variant="outline" className="rounded-xl border-white/10 bg-transparent text-white"><Mic className="mr-2 h-4 w-4" aria-hidden="true" />Audio</Button>
+            </div>
+          </div>
+          <div className="mt-6 grid min-h-[340px] place-items-center rounded-2xl border border-white/10 bg-[#0B0B0C]">
+            <div className="max-w-lg text-center">
+              <MonitorUp className="mx-auto mb-4 h-10 w-10 text-white/50" aria-hidden="true" />
+              <h3 className="font-semibold">{callInfo ? "Live room ready" : "Live workspace"}</h3>
+              <p className="mt-2 text-sm leading-6 text-white/50">{callInfo ? `Room ${callInfo.roomName} is ready at ${callInfo.url}.` : "Video and audio request a real provider token when LiveKit is configured. Until then, the room gives a clear setup state instead of dead controls."}</p>
+              {callInfo ? <div className="mt-4 rounded-xl border border-white/10 bg-black p-3 text-left text-xs text-white/45">Token issued • {callInfo.token.slice(0, 18)}...</div> : null}
+            </div>
+          </div>
+        </Panel>
+        <aside className="space-y-5">
+          <Panel><h3 className="font-semibold">Agenda</h3><p className="mt-3 text-sm leading-6 text-white/55">{session?.agenda || "Set an agenda before the session starts."}</p></Panel>
+          <Panel><h3 className="font-semibold">Focus Timer</h3><div className="mt-4 text-4xl font-bold">25:00</div><Button onClick={() => setFocus(!focus)} className="mt-4 w-full rounded-xl bg-white text-black"><Timer className="mr-2 h-4 w-4" aria-hidden="true" />{focus ? "Pause" : "Start focus"}</Button></Panel>
+          <Panel><h3 className="font-semibold">Shared Notes</h3><Textarea placeholder="Session notes..." className="pod-textarea mt-4 min-h-40" /><Button className="mt-3 w-full rounded-xl bg-white text-black">Save as resource</Button></Panel>
+        </aside>
+      </div>
     </div>
   )
 }
@@ -765,10 +1047,34 @@ function ChatTab({ bundle, reload }: { bundle: PodBundle; reload: () => void }) 
     }
   }
   return (
-    <div className="grid min-h-[680px] gap-5 lg:grid-cols-[260px_1fr_320px]">
-      <Panel className="p-3"><div className="mb-3 px-2 text-sm font-semibold text-white/60">Channels</div>{bundle.channels.map((item) => <button key={item.$id} onClick={() => setChannelId(item.$id)} className={cx("flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm", channel?.$id === item.$id ? "bg-white text-black" : "text-white/60 hover:bg-white/10 hover:text-white")}><Hash className="h-4 w-4" />{item.name}</button>)}</Panel>
-      <Panel className="flex flex-col p-0"><div className="flex items-center justify-between border-b border-white/10 p-4"><div><h2 className="font-semibold">#{channel?.name || "general"}</h2><p className="text-xs text-white/45">{channel?.description}</p></div><div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" /><Input value={search} onChange={(e) => setSearch(e.target.value)} className="pod-input h-9 pl-9" placeholder="Search" /></div></div><div className="flex-1 space-y-3 overflow-y-auto p-4">{messages.length ? messages.map((message) => <MessageRow key={message.$id} message={message} podId={bundle.pod.$id} reload={reload} />) : <EmptyState icon={MessageSquare} title="No messages yet" body="Start the channel with a question, resource, update, blocker, or submission." />}</div><div className="border-t border-white/10 p-4"><div className="mb-2 flex gap-2"><Select value={label} onValueChange={(value) => setLabel(value as typeof label)}><SelectTrigger className="h-9 w-40 rounded-xl border-white/10 bg-[#0B0B0C] text-white"><SelectValue /></SelectTrigger><SelectContent>{["none", "question", "resource", "update", "blocker", "announcement", "submission"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select><input ref={fileInputRef} type="file" className="hidden" onChange={(e) => uploadAttachment(e.target.files?.[0])} aria-label="Upload chat attachment" /><Button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingAttachment} variant="outline" className="h-9 rounded-xl border-white/10 bg-transparent text-white">{uploadingAttachment ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}</Button></div><div className="flex gap-2"><Textarea ref={textareaRef} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send() } }} className="pod-textarea min-h-12" placeholder="Message this pod..." /><Button onClick={send} aria-label="Send message" className="h-12 rounded-xl bg-white text-black"><Send className="h-4 w-4" /></Button></div></div></Panel>
-      <Panel><h3 className="font-semibold">Channel Details</h3><p className="mt-3 text-sm leading-6 text-white/55">{channel?.description || "Organized pod communication with labels, search, reactions, edits, soft delete, and thread-ready metadata."}</p><div className="mt-5 space-y-2 text-sm text-white/55"><div>Messages: {messages.length}</div><div>Search matches: {search ? messages.length : 0}</div><div>Posting: {channel?.postingRole || "everyone"}</div></div></Panel>
+    <div>
+      <PageIntro title="Chat" body="Organized channels for questions, blockers, resources, wins, and announcements without burying the learning flow." />
+      <div className="grid min-h-[680px] gap-5 lg:grid-cols-[240px_1fr]">
+        <Panel className="p-3">
+          <div className="mb-3 px-2 text-sm font-semibold text-white/60">Channels</div>
+          {bundle.channels.map((item) => (
+            <button key={item.$id} onClick={() => setChannelId(item.$id)} className={cx("flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60", channel?.$id === item.$id ? "bg-white text-black" : "text-white/60 hover:bg-white/10 hover:text-white")}>
+              <Hash className="h-4 w-4" aria-hidden="true" />{item.name}
+            </button>
+          ))}
+        </Panel>
+        <Panel className="flex flex-col p-0">
+          <div className="flex flex-col gap-3 border-b border-white/10 p-4 md:flex-row md:items-center md:justify-between">
+            <div><h2 className="font-semibold">#{channel?.name || "general"}</h2><p className="text-xs text-white/45">{channel?.description}</p></div>
+            <div className="relative md:w-64"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" aria-hidden="true" /><Input value={search} onChange={(e) => setSearch(e.target.value)} className="pod-input h-9 pl-9" placeholder="Search messages" /></div>
+          </div>
+          <div className="flex-1 space-y-3 overflow-y-auto p-4">{messages.length ? messages.map((message) => <MessageRow key={message.$id} message={message} podId={bundle.pod.$id} reload={reload} />) : <EmptyState icon={MessageSquare} title="No messages yet" body="Start the channel with a question, resource, update, blocker, or submission." />}</div>
+          <div className="border-t border-white/10 p-4">
+            <div className="mb-2 flex flex-wrap gap-2">
+              <Select value={label} onValueChange={(value) => setLabel(value as typeof label)}><SelectTrigger className="h-9 w-40 rounded-xl border-white/10 bg-[#0B0B0C] text-white"><SelectValue /></SelectTrigger><SelectContent>{["none", "question", "resource", "update", "blocker", "announcement", "submission"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
+              <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => uploadAttachment(e.target.files?.[0])} aria-label="Upload chat attachment" />
+              <Button type="button" aria-label="Upload attachment" onClick={() => fileInputRef.current?.click()} disabled={uploadingAttachment} variant="outline" className="h-9 rounded-xl border-white/10 bg-transparent text-white">{uploadingAttachment ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" aria-hidden="true" />}</Button>
+              <span className="ml-auto self-center text-xs text-white/38">{search ? `${messages.length} matches` : `${messages.length} messages`}</span>
+            </div>
+            <div className="flex gap-2"><Textarea ref={textareaRef} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send() } }} className="pod-textarea min-h-12" placeholder="Message this pod..." /><Button onClick={send} aria-label="Send message" className="h-12 rounded-xl bg-white text-black"><Send className="h-4 w-4" aria-hidden="true" /></Button></div>
+          </div>
+        </Panel>
+      </div>
     </div>
   )
 }
@@ -786,13 +1092,46 @@ function MessageRow({ message, podId, reload }: { message: PodMessage; podId: st
   async function remove() {
     try { await pod2Api.deleteMessage(podId, message.$id); reload() } catch (err: any) { toast({ title: "Delete failed", description: err.message, variant: "destructive" }) }
   }
-  return <div className="rounded-2xl border border-white/10 bg-[#0B0B0C] p-4"><div className="flex items-start justify-between gap-3"><div><div className="font-medium">{message.senderName || message.senderId}</div><div className="mt-1 text-xs text-white/40">{formatDate(message.createdAt)} {message.edited ? "• edited" : ""}</div></div><Badge variant="outline" className="border-white/15 text-white">{message.label || "none"}</Badge></div>{editing ? <div className="mt-3 space-y-2"><Textarea value={content} onChange={(e) => setContent(e.target.value)} className="pod-textarea" /><Button size="sm" onClick={save} className="rounded-xl bg-white text-black">Save</Button></div> : <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-white/70">{message.deleted ? "Message deleted" : message.content}</p>}<div className="mt-3 flex flex-wrap gap-1"><Button size="sm" variant="ghost" onClick={() => react("✓")} className="h-8 rounded-lg text-white/60 hover:bg-white/10">✓</Button><Button size="sm" variant="ghost" onClick={() => react("🔥")} className="h-8 rounded-lg text-white/60 hover:bg-white/10">🔥</Button><Button size="sm" variant="ghost" onClick={() => setEditing(true)} className="h-8 rounded-lg text-white/60 hover:bg-white/10">Edit</Button><Button size="sm" variant="ghost" onClick={remove} className="h-8 rounded-lg text-white/60 hover:bg-white/10">Delete</Button><Button size="sm" variant="ghost" className="h-8 rounded-lg text-white/60 hover:bg-white/10">Create task</Button></div></div>
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#0B0B0C] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <PersonAvatar profile={message.senderProfile} userId={message.senderId} />
+          <div className="min-w-0">
+            <div className="truncate font-medium">{message.senderName || displayName(message.senderProfile, message.senderId)}</div>
+            <div className="mt-1 text-xs text-white/40">{formatDate(message.createdAt)} {message.edited ? "• edited" : ""}</div>
+          </div>
+        </div>
+        <Badge variant="outline" className="shrink-0 border-white/15 text-white">{message.label || "none"}</Badge>
+      </div>
+      {editing ? <div className="mt-3 space-y-2"><Textarea value={content} onChange={(e) => setContent(e.target.value)} className="pod-textarea" /><Button size="sm" onClick={save} className="rounded-xl bg-white text-black">Save</Button></div> : <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-white/70">{message.deleted ? "Message deleted" : message.content}</p>}
+      <div className="mt-3 flex flex-wrap gap-1">
+        <Button size="sm" variant="ghost" aria-label="React with check" onClick={() => react("✓")} className="h-8 rounded-lg text-white/60 hover:bg-white/10">✓</Button>
+        <Button size="sm" variant="ghost" aria-label="React with fire" onClick={() => react("🔥")} className="h-8 rounded-lg text-white/60 hover:bg-white/10">🔥</Button>
+        <Button size="sm" variant="ghost" onClick={() => setEditing(true)} className="h-8 rounded-lg text-white/60 hover:bg-white/10">Edit</Button>
+        <Button size="sm" variant="ghost" onClick={remove} className="h-8 rounded-lg text-white/60 hover:bg-white/10">Delete</Button>
+        <Button size="sm" variant="ghost" className="h-8 rounded-lg text-white/60 hover:bg-white/10">Create task</Button>
+      </div>
+    </div>
+  )
 }
 
 function ResourcesTab({ bundle, reload }: { bundle: PodBundle; reload: () => void }) {
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
-  return <div className="space-y-5"><div className="flex items-center justify-between"><h2 className="text-xl font-semibold">Knowledge Base</h2><Button onClick={() => setOpen(true)} className="rounded-xl bg-white text-black"><Upload className="mr-2 h-4 w-4" />Upload Resource</Button></div>{bundle.resources.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{bundle.resources.map((resource) => <ResourceCard key={resource.$id} resource={resource} />)}</div> : <EmptyState icon={FolderOpen} title="No resources yet" body="Upload a note, link, PDF, video, code file, template, assignment, or recording." action={<Button onClick={() => setOpen(true)} className="rounded-xl bg-white text-black">Upload Resource</Button>} />}<ResourceDialog open={open} onOpenChange={setOpen} podId={bundle.pod.$id} onDone={reload} /></div>
+  return (
+    <div className="space-y-5">
+      <PageIntro title="Resources" body="A clean knowledge base for files, links, notes, templates, and recordings attached to the pod." action={<Button onClick={() => setOpen(true)} className="rounded-xl bg-white text-black"><Upload className="mr-2 h-4 w-4" aria-hidden="true" />Upload Resource</Button>} />
+      <div className="grid gap-3 md:grid-cols-4">
+        <Metric label="All resources" value={bundle.resources.length} />
+        <Metric label="Links" value={bundle.resources.filter((resource) => resource.type === "link").length} />
+        <Metric label="Files" value={bundle.resources.filter((resource) => resource.storageFileId).length} />
+        <Metric label="Useful votes" value={bundle.resources.reduce((sum, resource) => sum + Number(resource.usefulCount || 0), 0)} />
+      </div>
+      {bundle.resources.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{bundle.resources.map((resource) => <ResourceCard key={resource.$id} resource={resource} />)}</div> : <EmptyState icon={FolderOpen} title="No resources yet" body="Upload a note, link, PDF, video, code file, template, assignment, or recording." action={<Button onClick={() => setOpen(true)} className="rounded-xl bg-white text-black">Upload Resource</Button>} />}
+      <ResourceDialog open={open} onOpenChange={setOpen} podId={bundle.pod.$id} onDone={reload} />
+    </div>
+  )
 }
 
 function ResourceCard({ resource }: { resource: PodResource }) {
@@ -839,18 +1178,66 @@ function ResourceDialog({ open, onOpenChange, podId, onDone }: { open: boolean; 
 }
 
 function MembersTab({ bundle }: { bundle: PodBundle }) {
-  return <div className="space-y-5"><div className="flex items-center justify-between"><h2 className="text-xl font-semibold">Members</h2><Button className="rounded-xl bg-white text-black"><Plus className="mr-2 h-4 w-4" />Invite</Button></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{bundle.memberships.map((member) => <Panel key={member.$id}><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-black font-semibold">{member.userId.slice(0, 2).toUpperCase()}</div><div><div className="font-semibold">{member.profile?.name || `Member ${member.userId.slice(0, 6)}`}</div><div className="text-sm text-white/45">{member.role} • {member.status}</div></div></div><div className="mt-4 grid grid-cols-3 gap-2"><Metric label="Progress" value={`${member.progressPercent || 0}%`} /><Metric label="Streak" value={member.currentStreak || 0} /><Metric label="Points" value={member.totalPoints || 0} /></div><div className="mt-4 flex gap-2"><Button size="sm" variant="outline" className="rounded-xl border-white/10 bg-transparent text-white">DM</Button><Button size="sm" variant="outline" className="rounded-xl border-white/10 bg-transparent text-white">Invite to session</Button></div></Panel>)}</div></div>
+  return (
+    <div className="space-y-5">
+      <PageIntro title="Members" body="Real profiles, roles, progress, and accountability in one calm directory." action={<Button className="rounded-xl bg-white text-black"><Plus className="mr-2 h-4 w-4" aria-hidden="true" />Invite</Button>} />
+      <div className="grid gap-3 md:grid-cols-4">
+        <Metric label="Total" value={bundle.memberships.length} />
+        <Metric label="Active" value={bundle.memberships.filter((member) => member.status === "active").length} />
+        <Metric label="Mentors" value={bundle.memberships.filter((member) => ["owner", "mentor"].includes(member.role)).length} />
+        <Metric label="Avg progress" value={`${Math.round(bundle.memberships.reduce((sum, member) => sum + Number(member.progressPercent || 0), 0) / Math.max(bundle.memberships.length, 1))}%`} />
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {bundle.memberships.map((member) => (
+          <Panel key={member.$id}>
+            <div className="flex items-center gap-3">
+              <PersonAvatar profile={member.profile} userId={member.userId} size="lg" />
+              <div className="min-w-0">
+                <div className="truncate font-semibold">{displayName(member.profile, member.userId)}</div>
+                <div className="truncate text-sm text-white/45">{member.profile?.username ? `@${member.profile.username}` : member.role} • {member.status}</div>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2"><Metric label="Progress" value={`${member.progressPercent || 0}%`} /><Metric label="Streak" value={member.currentStreak || 0} /><Metric label="Points" value={member.totalPoints || 0} /></div>
+            <div className="mt-4 flex gap-2">
+              <Button asChild size="sm" variant="outline" className="rounded-xl border-white/10 bg-transparent text-white"><Link href={`/app/profile/${member.profile?.username || member.userId}`}>Profile</Link></Button>
+              <Button size="sm" variant="outline" className="rounded-xl border-white/10 bg-transparent text-white">Invite to session</Button>
+            </div>
+          </Panel>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function LeaderboardTab({ rows }: { rows: any[] }) {
   const [open, setOpen] = useState(false)
-  return <div className="space-y-5"><div className="flex items-center justify-between"><h2 className="text-xl font-semibold">Leaderboard</h2><Button onClick={() => setOpen(true)} variant="outline" className="rounded-xl border-white/10 bg-transparent text-white"><Info className="mr-2 h-4 w-4" />How scoring works</Button></div>{rows.length ? <Panel><div className="space-y-2">{rows.map((row) => <div key={row.userId} className="grid grid-cols-[54px_1fr_120px_120px] items-center gap-3 rounded-2xl border border-white/10 bg-[#0B0B0C] p-4 text-sm"><div className="text-lg font-bold">#{row.rank}</div><div><div className="font-semibold">{row.name}</div><div className="text-white/45">{row.badge}</div></div><div>{row.points} pts</div><div>{row.streak} streak</div></div>)}</div></Panel> : <EmptyState icon={Trophy} title="No leaderboard yet" body="Members appear after joining, completing tasks, attending sessions, and posting check-ins." />}<Dialog open={open} onOpenChange={setOpen}><DialogContent className="border-white/10 bg-[#111113] text-white"><DialogHeader><DialogTitle>How scoring works</DialogTitle></DialogHeader><p className="text-sm leading-6 text-white/60">Daily check-in: 5, task completed: 10, task submitted: 20, session attended: 15, resource uploaded: 10, helpful reaction: 2, peer review: 15, final project: 50.</p></DialogContent></Dialog></div>
+  return <div className="space-y-5"><div className="flex items-center justify-between"><h2 className="text-xl font-semibold">Leaderboard</h2><Button onClick={() => setOpen(true)} variant="outline" className="rounded-xl border-white/10 bg-transparent text-white"><Info className="mr-2 h-4 w-4" aria-hidden="true" />How scoring works</Button></div>{rows.length ? <Panel><div className="space-y-2">{rows.map((row) => <div key={row.userId} className="grid grid-cols-[44px_1fr_auto] gap-3 rounded-2xl border border-white/10 bg-[#0B0B0C] p-4 text-sm md:grid-cols-[54px_1fr_120px_120px] md:items-center"><div className="text-lg font-bold">#{row.rank}</div><div className="flex min-w-0 items-center gap-3"><PersonAvatar profile={{ name: row.name, username: row.username, avatar: row.avatar }} userId={row.userId} /><div className="min-w-0"><div className="truncate font-semibold">{row.name}</div><div className="truncate text-white/45">{row.badge}</div></div></div><div>{row.points} pts</div><div className="hidden md:block">{row.streak} streak</div></div>)}</div></Panel> : <EmptyState icon={Trophy} title="No leaderboard yet" body="Members appear after joining, completing tasks, attending sessions, and posting check-ins." />}<Dialog open={open} onOpenChange={setOpen}><DialogContent className="border-white/10 bg-[#111113] text-white"><DialogHeader><DialogTitle>How scoring works</DialogTitle></DialogHeader><p className="text-sm leading-6 text-white/60">Daily check-in: 5, task completed: 10, task submitted: 20, session attended: 15, resource uploaded: 10, helpful reaction: 2, peer review: 15, final project: 50.</p></DialogContent></Dialog></div>
 }
 
 function InsightsTab({ bundle }: { bundle: PodBundle }) {
   const stuck = bundle.checkins.filter((item) => item.helpNeeded || item.status === "blocked").length
   const actions = bundle.insights.flatMap((item) => item.suggestedActions || [])
-  return <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3"><Insight title={`${stuck} members need help`} body={stuck ? "Schedule a doubt session or create a blocker thread before the weekend." : "No active blockers from check-ins."} cta="Open check-ins" /><Insight title={`${bundle.tasks.filter((t) => t.status === "today").length} tasks pinned today`} body="Today’s focus is based on task state and roadmap availability." cta="Review tasks" /><Insight title={`${bundle.resources.length} resources available`} body={bundle.resources.length ? "Promote the most useful resources into the roadmap." : "Add starter resources so members have a clear first step."} cta="Open resources" />{actions.map((action) => <Insight key={action} title="Suggested intervention" body={action} cta="Apply" />)}</div>
+  const inactive = bundle.memberships.filter((member) => {
+    const lastActive = member.lastActiveAt ? new Date(member.lastActiveAt).getTime() : 0
+    return member.status === "active" && Date.now() - lastActive > 7 * 24 * 60 * 60 * 1000
+  }).length
+  return (
+    <div>
+      <PageIntro title="Insights" body="A short, actionable readout of what needs attention. No noisy charts, just next decisions." />
+      <div className="mb-5 grid gap-3 md:grid-cols-4">
+        <Metric label="Needs help" value={stuck} />
+        <Metric label="Inactive" value={inactive} />
+        <Metric label="Tasks today" value={bundle.tasks.filter((t) => t.status === "today").length} />
+        <Metric label="Health" value={bundle.pod.healthScore || 0} />
+      </div>
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <Insight title={stuck ? `${stuck} members need help` : "No active blockers"} body={stuck ? "Schedule a doubt session or create a blocker thread before the weekend." : "Check-ins do not show active blockers right now."} cta="Open check-ins" />
+        <Insight title={`${bundle.tasks.filter((t) => t.status === "today").length} tasks pinned today`} body="Today’s focus is based on task state and roadmap availability." cta="Review tasks" />
+        <Insight title={`${bundle.resources.length} resources available`} body={bundle.resources.length ? "Promote the most useful resources into the roadmap." : "Add starter resources so members have a clear first step."} cta="Open resources" />
+        {actions.map((action) => <Insight key={action} title="Suggested intervention" body={action} cta="Apply" />)}
+      </div>
+    </div>
+  )
 }
 
 function Insight({ title, body, cta }: { title: string; body: string; cta: string }) {
@@ -865,7 +1252,26 @@ function SettingsTab({ bundle, reload }: { bundle: PodBundle; reload: () => void
     try { await pod2Api.updatePod(bundle.pod.$id, { name, shortOutcome }); toast({ title: "Settings updated" }); reload() } catch (err: any) { toast({ title: "Update failed", description: err.message, variant: "destructive" }) }
   }
   if (!roleCanManage(bundle.membership?.role)) return <EmptyState icon={Lock} title="Settings are restricted" body="Only owners, mentors, and moderators can manage this pod." />
-  return <div className="grid gap-5 lg:grid-cols-[1fr_340px]"><Panel><h2 className="text-xl font-semibold">Basic Details</h2><div className="mt-5 grid gap-4"><Field label="Name"><Input value={name} onChange={(e) => setName(e.target.value)} className="pod-input" /></Field><Field label="Outcome"><Input value={shortOutcome} onChange={(e) => setShortOutcome(e.target.value)} className="pod-input" /></Field><Button onClick={save} className="w-fit rounded-xl bg-white text-black">Save changes</Button></div></Panel><aside className="space-y-5"><Panel><h3 className="font-semibold">Automation</h3><div className="mt-4 space-y-3 text-sm text-white/60">{["Daily check-in reminders", "Task due reminders", "Session reminders", "Inactive nudges", "Weekly summaries"].map((item) => <div key={item} className="flex items-center justify-between"><span>{item}</span><Switch /></div>)}</div></Panel><Panel className="border-red-500/20"><h3 className="font-semibold text-red-200">Danger Zone</h3><p className="mt-2 text-sm text-white/50">Pause, archive, and delete actions require typed confirmation and server-side role validation.</p><Button variant="outline" className="mt-4 rounded-xl border-red-500/25 bg-red-950/20 text-red-100">Archive pod</Button></Panel></aside></div>
+  return (
+    <div>
+      <PageIntro title="Settings" body="Keep pod controls grouped by intent: identity, automation, and safety." />
+      <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
+        <Panel>
+          <h2 className="text-xl font-semibold">Basic Details</h2>
+          <p className="mt-2 text-sm leading-6 text-white/55">These fields shape what members see first when they open the workspace.</p>
+          <div className="mt-5 grid gap-4">
+            <Field label="Name"><Input value={name} onChange={(e) => setName(e.target.value)} className="pod-input" /></Field>
+            <Field label="Outcome"><Input value={shortOutcome} onChange={(e) => setShortOutcome(e.target.value)} className="pod-input" /></Field>
+            <Button onClick={save} className="w-fit rounded-xl bg-white text-black">Save changes</Button>
+          </div>
+        </Panel>
+        <aside className="space-y-5">
+          <Panel><h3 className="font-semibold">Automation</h3><p className="mt-2 text-sm text-white/50">Reminders stay quiet and focused.</p><div className="mt-4 space-y-3 text-sm text-white/60">{["Daily check-in reminders", "Task due reminders", "Session reminders", "Inactive nudges", "Weekly summaries"].map((item) => <div key={item} className="flex items-center justify-between gap-4"><span>{item}</span><Switch aria-label={item} /></div>)}</div></Panel>
+          <Panel className="border-red-500/20"><h3 className="font-semibold text-red-200">Danger Zone</h3><p className="mt-2 text-sm text-white/50">Pause, archive, and delete actions require typed confirmation and server-side role validation.</p><Button variant="outline" className="mt-4 rounded-xl border-red-500/25 bg-red-950/20 text-red-100">Archive pod</Button></Panel>
+        </aside>
+      </div>
+    </div>
+  )
 }
 
 export function PodInviteAcceptPage({ inviteCode }: { inviteCode: string }) {
