@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "setup-appwrite": "node scripts/setup-appwrite.js",
+    "appwrite:setup-pods": "node scripts/appwrite/setup-pods.mjs",
+    "appwrite:seed-pods": "node scripts/appwrite/seed-pods.mjs",
+    "appwrite:verify-pods": "node scripts/appwrite/verify-pods.mjs",
     "update-schema": "node scripts/update-schema.js",
     "appwrite:setup-pods": "node --experimental-strip-types scripts/appwrite/setup-pods.ts",
     "appwrite:seed-pods": "node --experimental-strip-types scripts/appwrite/seed-pods.ts",
@@ -14,7 +17,8 @@
     "lint": "eslint . --ext .ts,.tsx",
     "start": "next start",
     "test:contracts": "node --test tests.contract.mjs",
-    "test:e2e": "node --test tests.e2e-smoke.mjs"
+    "test:e2e": "node --test tests.e2e-smoke.mjs",
+    "test:pods": "node --test tests.pods.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

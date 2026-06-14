@@ -63,15 +63,15 @@ export function ConversationList({
       <div className="border-b border-border/70 px-4 py-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-foreground">Messages</h2>
-          {onNewChat ? (
+          {onNewChat && (
             <button
               type="button"
               onClick={onNewChat}
-              className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted"
+              className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
             >
               New
             </button>
-          ) : null}
+          )}
         </div>
 
         {/* Search box */}

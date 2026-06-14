@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useCallContext } from "@/components/call/CallProvider";
-import { callService, chatService } from "@/lib/appwrite";
+import { LiveKitCallStage } from "@/components/call/LiveKitCallStage";
+import { callService, chatService, profileService } from "@/lib/appwrite";
 import {
   normalizeMessage,
   type StandardizedMessage,
@@ -16,8 +17,6 @@ import { ChatHeader } from "@/components/chat/premium/ChatHeader";
 import { MessageGroup } from "@/components/chat/premium/MessageGroup";
 import { ChatComposer } from "@/components/chat/premium/ChatComposer";
 import { TypingIndicator } from "@/components/chat/premium/TypingIndicator";
-import { LiveKitCallStage } from "@/components/call/LiveKitCallStage";
-import { profileService } from "@/lib/appwrite";
 
 interface ChatRoom {
   $id: string;
@@ -42,6 +41,13 @@ interface ConversationItem {
   isOnline?: boolean;
   type?: "direct" | "group" | "pod";
   participants?: string[];
+}
+
+interface ChatProfile {
+  $id: string;
+  name?: string;
+  username?: string;
+  email?: string;
 }
 
 export default function PremiumChatPage() {
@@ -81,9 +87,9 @@ export default function PremiumChatPage() {
   } | null>(null);
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [newChatMode, setNewChatMode] = useState<"direct" | "group">("direct");
-  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
-  const [availableProfiles, setAvailableProfiles] = useState<any[]>([]);
   const [groupName, setGroupName] = useState("");
+  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
+  const [availableProfiles, setAvailableProfiles] = useState<ChatProfile[]>([]);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -103,6 +109,32 @@ export default function PremiumChatPage() {
     loadRooms();
   }, [user?.$id]);
 
+  useEffect(() => {
+    if (!isNewChatOpen || !user?.$id) return;
+    let cancelled = false;
+
+    const loadProfiles = async () => {
+      try {
+        const res = await profileService.getAllProfiles(100, 0);
+        if (cancelled) return;
+        setAvailableProfiles(
+          (res.documents || []).filter((profile: ChatProfile) => profile.$id !== user.$id),
+        );
+      } catch (error: any) {
+        toast({
+          title: "Could not load people",
+          description: error?.message || "Please try again.",
+          variant: "destructive",
+        });
+      }
+    };
+
+    loadProfiles();
+    return () => {
+      cancelled = true;
+    };
+  }, [isNewChatOpen, toast, user?.$id]);
+
   // Handle room selection from URL
   useEffect(() => {
     const roomId = searchParams.get("room");
@@ -114,32 +146,6 @@ export default function PremiumChatPage() {
       }
     }
   }, [searchParams, rooms]);
-
-  useEffect(() => {
-    const call = searchParams.get("call");
-    const callType = searchParams.get("callType") === "voice" ? "voice" : "video";
-    if (call) {
-      setActiveCallStage({
-        sessionId: call,
-        mediaType: callType,
-        title: "PeerSpark room call",
-      });
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (!isNewChatOpen || !user?.$id) return;
-    let cancelled = false;
-    profileService.getAllProfiles(80, 0).then((res: any) => {
-      if (cancelled) return;
-      setAvailableProfiles((res.documents || []).filter((profile: any) => profile.$id !== user.$id));
-    }).catch(() => {
-      if (!cancelled) setAvailableProfiles([]);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [isNewChatOpen, user?.$id]);
 
   // Load messages when room changes
   useEffect(() => {
@@ -356,7 +362,6 @@ export default function PremiumChatPage() {
         title: type === "voice" ? "Voice message sent" : "Attachment sent",
         description: attachment.fileName,
       });
-      setUploadStatus("");
     } catch (error: any) {
       toast({
         title: "Upload failed",
@@ -442,12 +447,12 @@ export default function PremiumChatPage() {
           selectedRoom.$id,
           mediaType,
         );
-        const sessionId = session?.session?.$id || session?.session?.providerSessionId || session?.$id;
+        const sessionId = session?.$id || session?.sessionId || session?.id;
         if (sessionId) {
           setActiveCallStage({
             sessionId,
             mediaType,
-            title: selectedRoom.name || "PeerSpark room call",
+            title: selectedRoom.name || "PeerSpark call",
           });
         } else if (session?.joinUrl) {
           window.open(session.joinUrl, "_blank", "noopener,noreferrer");
@@ -505,33 +510,58 @@ export default function PremiumChatPage() {
   };
 
   const openNewChat = () => {
-    setIsNewChatOpen(true);
     setSelectedProfileIds([]);
     setGroupName("");
+    setNewChatMode("direct");
+    setIsNewChatOpen(true);
   };
 
   const toggleSelectedProfile = (profileId: string) => {
-    setSelectedProfileIds((prev) =>
-      prev.includes(profileId)
+    setSelectedProfileIds((prev) => {
+      if (newChatMode === "direct") {
+        return prev.includes(profileId) ? [] : [profileId];
+      }
+      return prev.includes(profileId)
         ? prev.filter((id) => id !== profileId)
-        : newChatMode === "direct"
-          ? [profileId]
-          : [...prev, profileId],
-    );
+        : [...prev, profileId];
+    });
   };
 
   const createNewChat = async () => {
     if (!user?.$id || selectedProfileIds.length === 0) return;
     setIsCreatingChat(true);
     try {
-      const room = newChatMode === "direct"
-        ? await chatService.getOrCreateDirectRoom(user.$id, selectedProfileIds[0])
-        : await chatService.createGroupRoom(groupName.trim() || "Group chat", selectedProfileIds);
-      await loadRooms();
-      setSelectedRoom(room);
+      const room =
+        newChatMode === "direct"
+          ? await chatService.getOrCreateDirectRoom(user.$id, selectedProfileIds[0])
+          : await chatService.createGroupRoom(
+              groupName.trim() || "New group",
+              Array.from(new Set([user.$id, ...selectedProfileIds])),
+            );
+
+      const normalizedRoom: ChatRoom = {
+        $id: room.$id,
+        name: room.name || (newChatMode === "direct" ? "Direct message" : groupName.trim() || "New group"),
+        type: room.type || newChatMode,
+        avatar: room.avatar,
+        lastMessage: room.lastMessage || "",
+        lastMessageTime: room.lastMessageTime || "",
+        unreadCount: room.unreadCount || 0,
+        isOnline: room.isOnline || false,
+        participants: room.participants || room.memberIds || [user.$id, ...selectedProfileIds],
+        podId: room.podId,
+      };
+
+      setRooms((prev) => {
+        const exists = prev.some((item) => item.$id === normalizedRoom.$id);
+        return exists
+          ? prev.map((item) => (item.$id === normalizedRoom.$id ? { ...item, ...normalizedRoom } : item))
+          : [normalizedRoom, ...prev];
+      });
+      setSelectedRoom(normalizedRoom);
       setShowMobileChatList(false);
       setIsNewChatOpen(false);
-      toast({ title: "Chat ready" });
+      toast({ title: "Chat ready", description: normalizedRoom.name });
     } catch (error: any) {
       toast({
         title: "Could not create chat",

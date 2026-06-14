@@ -21,15 +21,16 @@ interface ChatBubbleProps {
   deliveryState?: "sending" | "sent" | "delivered" | "read" | "failed";
   onReply?: () => void;
   onDelete?: () => void;
-  onEdit?: () => void;
-  onCopy?: () => void;
+  onEdit?: (content?: string) => void;
   onReact?: (emoji: string) => void;
+  onCopy?: () => void;
   reactions?: Record<string, string[]>;
   highlightQuery?: string;
   currentUserId?: string;
 }
 
 export function ChatBubble({
+  messageId,
   content,
   isOwn,
   timestamp,
@@ -37,6 +38,7 @@ export function ChatBubble({
   authorAvatar,
   fileUrl,
   fileName,
+  type,
   replyToMessage,
   isEdited,
   deliveryState,
@@ -44,6 +46,7 @@ export function ChatBubble({
   onDelete,
   onEdit,
   onReact,
+  onCopy,
   reactions,
   highlightQuery = "",
   currentUserId = "",
@@ -235,7 +238,7 @@ export function ChatBubble({
           {onEdit && isOwn && (
             <button
               type="button"
-              onClick={onEdit}
+              onClick={() => onEdit?.()}
               className="rounded-xl p-1.5 transition hover:bg-muted"
               title="Edit"
               aria-label="Edit message"
