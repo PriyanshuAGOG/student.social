@@ -1,0 +1,9 @@
+{
+  "name": "peerspark-pod-automation",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/main.js",
+  "dependencies": {
+    "node-appwrite": "^21.1.0"
+  }
+}

@@ -91,8 +91,7 @@ export function MessageGroup({
             currentUserId={currentUserId}
             onReply={() => onReply?.(message)}
             onDelete={() => onDelete?.(message.$id)}
-            onEdit={(content) => onEdit?.(message, content)}
-            onCopy={() => onCopy?.(message)}
+            onEdit={() => onEdit?.(message)}
             onReact={(emoji) => onReact?.(message.$id, emoji)}
             highlightQuery={highlightQuery}
           />

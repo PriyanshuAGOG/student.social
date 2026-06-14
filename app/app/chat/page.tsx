@@ -16,6 +16,8 @@ import { ChatHeader } from "@/components/chat/premium/ChatHeader";
 import { MessageGroup } from "@/components/chat/premium/MessageGroup";
 import { ChatComposer } from "@/components/chat/premium/ChatComposer";
 import { TypingIndicator } from "@/components/chat/premium/TypingIndicator";
+import { LiveKitCallStage } from "@/components/call/LiveKitCallStage";
+import { profileService } from "@/lib/appwrite";
 
 interface ChatRoom {
   $id: string;
@@ -71,6 +73,18 @@ export default function PremiumChatPage() {
   >("all");
   const [chatDetailsOpen, setChatDetailsOpen] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
+  const [activeCallStage, setActiveCallStage] = useState<{
+    sessionId: string;
+    mediaType: "voice" | "video";
+    title: string;
+  } | null>(null);
+  const [isNewChatOpen, setIsNewChatOpen] = useState(false);
+  const [newChatMode, setNewChatMode] = useState<"direct" | "group">("direct");
+  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
+  const [availableProfiles, setAvailableProfiles] = useState<any[]>([]);
+  const [groupName, setGroupName] = useState("");
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -100,6 +114,32 @@ export default function PremiumChatPage() {
       }
     }
   }, [searchParams, rooms]);
+
+  useEffect(() => {
+    const call = searchParams.get("call");
+    const callType = searchParams.get("callType") === "voice" ? "voice" : "video";
+    if (call) {
+      setActiveCallStage({
+        sessionId: call,
+        mediaType: callType,
+        title: "PeerSpark room call",
+      });
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!isNewChatOpen || !user?.$id) return;
+    let cancelled = false;
+    profileService.getAllProfiles(80, 0).then((res: any) => {
+      if (cancelled) return;
+      setAvailableProfiles((res.documents || []).filter((profile: any) => profile.$id !== user.$id));
+    }).catch(() => {
+      if (!cancelled) setAvailableProfiles([]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isNewChatOpen, user?.$id]);
 
   // Load messages when room changes
   useEffect(() => {
@@ -292,6 +332,7 @@ export default function PremiumChatPage() {
   const sendAttachmentMessage = async (file: File, content = "") => {
     if (!selectedRoom || !user?.$id) return;
     setIsUploadingAttachment(true);
+    setUploadStatus(`Uploading ${file.name}...`);
     try {
       const attachment = await chatService.uploadAttachment(file, user.$id);
       const type = file.type.startsWith("audio/")
@@ -315,6 +356,7 @@ export default function PremiumChatPage() {
         title: type === "voice" ? "Voice message sent" : "Attachment sent",
         description: attachment.fileName,
       });
+      setUploadStatus("");
     } catch (error: any) {
       toast({
         title: "Upload failed",
@@ -323,6 +365,7 @@ export default function PremiumChatPage() {
       });
     } finally {
       setIsUploadingAttachment(false);
+      setUploadStatus("");
     }
   };
 
@@ -399,8 +442,16 @@ export default function PremiumChatPage() {
           selectedRoom.$id,
           mediaType,
         );
-        if (session?.joinUrl)
+        const sessionId = session?.session?.$id || session?.session?.providerSessionId || session?.$id;
+        if (sessionId) {
+          setActiveCallStage({
+            sessionId,
+            mediaType,
+            title: selectedRoom.name || "PeerSpark room call",
+          });
+        } else if (session?.joinUrl) {
           window.open(session.joinUrl, "_blank", "noopener,noreferrer");
+        }
         toast({
           title: `${mediaType === "video" ? "Video" : "Voice"} room ready`,
           description:
@@ -451,6 +502,45 @@ export default function PremiumChatPage() {
   const handleHeaderDetails = () => {
     if (!selectedRoom) return;
     setChatDetailsOpen((prev) => !prev);
+  };
+
+  const openNewChat = () => {
+    setIsNewChatOpen(true);
+    setSelectedProfileIds([]);
+    setGroupName("");
+  };
+
+  const toggleSelectedProfile = (profileId: string) => {
+    setSelectedProfileIds((prev) =>
+      prev.includes(profileId)
+        ? prev.filter((id) => id !== profileId)
+        : newChatMode === "direct"
+          ? [profileId]
+          : [...prev, profileId],
+    );
+  };
+
+  const createNewChat = async () => {
+    if (!user?.$id || selectedProfileIds.length === 0) return;
+    setIsCreatingChat(true);
+    try {
+      const room = newChatMode === "direct"
+        ? await chatService.getOrCreateDirectRoom(user.$id, selectedProfileIds[0])
+        : await chatService.createGroupRoom(groupName.trim() || "Group chat", selectedProfileIds);
+      await loadRooms();
+      setSelectedRoom(room);
+      setShowMobileChatList(false);
+      setIsNewChatOpen(false);
+      toast({ title: "Chat ready" });
+    } catch (error: any) {
+      toast({
+        title: "Could not create chat",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingChat(false);
+    }
   };
 
   const leftRailItems = [

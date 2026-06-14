@@ -5,6 +5,10 @@
   "scripts": {
     "setup-appwrite": "node scripts/setup-appwrite.js",
     "update-schema": "node scripts/update-schema.js",
+    "appwrite:setup-pods": "node --experimental-strip-types scripts/appwrite/setup-pods.ts",
+    "appwrite:seed-pods": "node --experimental-strip-types scripts/appwrite/seed-pods.ts",
+    "appwrite:verify-pods": "node --experimental-strip-types scripts/appwrite/verify-pods.ts",
+    "appwrite:run-pod-jobs": "node --experimental-strip-types scripts/appwrite/run-pod-jobs.ts",
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint . --ext .ts,.tsx",
@@ -85,6 +89,7 @@
   "devDependencies": {
     "@next/eslint-plugin-next": "16.1.1",
     "@tailwindcss/postcss": "^4.1.9",
+    "@types/dom-mediacapture-record": "^1.0.22",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22",
     "@types/pdfkit": "^0.17.6",
