@@ -1,12 +1,13 @@
 // Service Worker for Student.social PWA
-const CACHE_VERSION = 'student-social-v5';
+const CACHE_VERSION = 'student-social-v6';
 const RUNTIME_CACHE = 'student-social-runtime';
 
 // Assets to cache on install
 const ASSETS_TO_CACHE = [
   '/',
   '/manifest.json',
-  '/logo.png',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
   '/favicon.ico',
 ];
 
@@ -19,7 +20,9 @@ self.addEventListener('install', (event) => {
       });
     })
   );
-  self.skipWaiting();
+  // Activate immediately on first install. Updates wait for the person to
+  // accept the in-app update prompt before taking over the current session.
+  if (!self.registration.active) self.skipWaiting();
 });
 
 // Activate event - clean up old caches
@@ -214,6 +217,10 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
   if (event.data?.type !== 'CALL_RESOLVED' || !event.data.callId) return;
   event.waitUntil((async () => {
     const notifications = await self.registration.getNotifications({ tag: `student-call-${event.data.callId}` });

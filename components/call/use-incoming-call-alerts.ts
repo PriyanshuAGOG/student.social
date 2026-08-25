@@ -40,6 +40,25 @@ function playRingtone(context: AudioContext): void {
   }
 }
 
+function playRingbackTone(context: AudioContext): void {
+  const start = context.currentTime
+  const master = context.createGain()
+  master.gain.setValueAtTime(0.0001, start)
+  master.gain.exponentialRampToValueAtTime(0.12, start + 0.025)
+  master.gain.setValueAtTime(0.12, start + 0.72)
+  master.gain.exponentialRampToValueAtTime(0.0001, start + 0.9)
+  master.connect(context.destination)
+
+  for (const frequency of [440, 480]) {
+    const oscillator = context.createOscillator()
+    oscillator.type = 'sine'
+    oscillator.frequency.value = frequency
+    oscillator.connect(master)
+    oscillator.start(start)
+    oscillator.stop(start + 0.92)
+  }
+}
+
 export function useIncomingCallAlerts(active: boolean): void {
   useEffect(() => {
     const primeAudio = () => {
@@ -69,5 +88,20 @@ export function useIncomingCallAlerts(active: boolean): void {
       window.clearInterval(interval)
       if ('vibrate' in navigator) navigator.vibrate(0)
     }
+  }, [active])
+}
+
+export function useOutgoingCallTone(active: boolean): void {
+  useEffect(() => {
+    if (!active) return
+    const context = getAudioContext()
+    const ring = () => {
+      if (context?.state === 'running') playRingbackTone(context)
+    }
+
+    if (context?.state === 'suspended') void context.resume().then(ring).catch(() => undefined)
+    else ring()
+    const interval = window.setInterval(ring, 3000)
+    return () => window.clearInterval(interval)
   }, [active])
 }

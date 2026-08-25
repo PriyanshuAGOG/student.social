@@ -6,10 +6,8 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   Bell,
-  BookOpen,
   Bot,
   CalendarDays,
-  ChevronRight,
   FileText,
   FileUp,
   Plus,
@@ -51,13 +49,25 @@ export function AppWorkspace({ children }: { children: React.ReactNode }) {
   const [createPostOpen, setCreatePostOpen] = useState(false)
   const [chatConversationOpen, setChatConversationOpen] = useState(false)
   const [composerFocused, setComposerFocused] = useState(false)
+  const [greeting, setGreeting] = useState("Hello")
   const section = pathname.split("/").filter(Boolean)[1] || "feed"
   const title = pageNames[section] || "Student.social"
   const immersive = pathname.startsWith("/app/chat") || pathname.startsWith("/app/messages/") || pathname.startsWith("/app/ai") || pathname.startsWith("/app/search") || pathname.startsWith("/app/calendar") || /^\/app\/pods\/[^/]+/.test(pathname)
   const displayName = profile?.name || user?.name || "Student"
+  const firstName = displayName.trim().split(/\s+/)[0] || "Student"
   const initials = displayName.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "S"
   const primaryHome = ["/app", "/app/feed", "/app/pods", "/app/calendar", "/app/chat", "/app/vault"].includes(pathname)
   const showTutorLauncher = primaryHome && !chatConversationOpen && !createPostOpen && !composerFocused
+
+  useEffect(() => {
+    const updateGreeting = () => {
+      const hour = new Date().getHours()
+      setGreeting(hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening")
+    }
+    updateGreeting()
+    const timer = window.setInterval(updateGreeting, 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -86,8 +96,8 @@ export function AppWorkspace({ children }: { children: React.ReactNode }) {
       {!immersive ? (
         <header className="student-global-bar">
           <Link href="/app/feed" className="student-global-brand md:hidden" aria-label="Student.social home"><StudentMark /><strong>student.social</strong></Link>
-          <div className="student-global-location hidden md:flex">
-            <span>Workspace</span><ChevronRight aria-hidden="true" /><strong>{title}</strong>
+          <div className="student-global-greeting hidden md:flex">
+            <span>{greeting},</span><strong>{firstName}</strong><small>{title}</small>
           </div>
           <Button asChild variant="ghost" className="student-global-search"><Link href="/app/search" aria-label="Search posts, pods, and people"><Search aria-hidden="true" /><span>Search posts, pods, or people…</span><kbd>⌘K</kbd></Link></Button>
           <div className="student-global-actions">

@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@/lib/auth-context"
 import { ClientErrorReporter } from "@/components/admin/ClientErrorReporter"
 import { ServiceWorkerRegister } from "@/components/sw-register"
+import PWAInstallPrompt from "@/components/pwa-install-prompt"
 
 const publicSans = DM_Sans({ subsets: ["latin"], variable: "--font-sans" })
 const publicSerif = Instrument_Serif({ subsets: ["latin"], weight: "400", variable: "--font-serif" })
@@ -101,6 +102,7 @@ export default function RootLayout({
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
             {children}
             <ServiceWorkerRegister />
+            <PWAInstallPrompt />
             <ClientErrorReporter />
             <Toaster />
           </ThemeProvider>

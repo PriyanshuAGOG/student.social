@@ -706,8 +706,8 @@ export default function PremiumChatPage() {
         { title: selectedRoom.name || (selectedRoom.type === "pod" ? "Pod study call" : "Student.social call") },
       );
       toast({
-        title: `${mediaType === "video" ? "Video" : "Voice"} room ready`,
-        description: "Participants were invited to join.",
+        title: `${mediaType === "video" ? "Video" : "Voice"} call placed`,
+        description: selectedRoom.type === "direct" ? "Ringing now…" : "Everyone in the room is being invited.",
       });
     } catch (error: any) {
       toast({

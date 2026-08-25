@@ -13,7 +13,8 @@ export function CallAlertsPrompt() {
     const next = getCallNotificationStatus()
     setStatus(next)
     if (next === 'enabled') void syncCallNotificationSubscription(false).catch(() => undefined)
-    if (next === 'prompt' && isInstalledPwa() && sessionStorage.getItem('student-call-alert-prompt-dismissed') !== '1') {
+    const isAndroidWrapper = localStorage.getItem('student-social-android-version-code') !== null
+    if (next === 'prompt' && (isInstalledPwa() || isAndroidWrapper) && sessionStorage.getItem('student-call-alert-prompt-dismissed') !== '1') {
       const timer = window.setTimeout(() => setVisible(true), 1400)
       return () => window.clearTimeout(timer)
     }

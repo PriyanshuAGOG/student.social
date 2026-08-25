@@ -21,6 +21,18 @@ next-env.d.ts
 .DS_Store
 *.pem
 
+# Android local build and signing material
+android/.gradle/
+android/build/
+android/app/build/
+android/.idea/
+android/local.properties
+android/signing/
+*.jks
+*.keystore
+work/
+public/downloads/*.apk
+
 # Debug
 npm-debug.log*
 yarn-debug.log*

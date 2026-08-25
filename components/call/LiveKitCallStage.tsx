@@ -12,23 +12,16 @@ import {
 } from '@livekit/components-react'
 import { ExternalE2EEKeyProvider, isE2EESupported, type E2EEOptions } from 'livekit-client'
 import {
-  Camera,
-  CameraOff,
   Check,
   ChevronLeft,
   Copy,
   LoaderCircle,
   LockKeyhole,
   Maximize2,
-  Mic,
-  MicOff,
   PhoneOff,
   Search,
   Settings2,
-  ShieldCheck,
-  Users,
   UserPlus,
-  Video,
   X,
 } from 'lucide-react'
 import { callService } from '@/lib/appwrite/calls'
@@ -37,6 +30,8 @@ interface LiveKitCallStageProps {
   sessionId: string
   roomTitle?: string
   mediaType?: 'voice' | 'video'
+  callState?: 'outgoing_ringing' | 'incoming_ringing' | 'connecting' | 'active' | 'reconnecting' | 'ended' | 'idle'
+  direction?: 'incoming' | 'outgoing'
   onClose: () => void
 }
 
@@ -67,12 +62,6 @@ interface InviteCandidate {
   invited?: boolean
 }
 
-const CALL_FEATURES = [
-  'End-to-end encrypted media',
-  'Screen sharing and in-call chat',
-  'Adaptive quality on weaker networks',
-]
-
 function CallIdentity({ title, size = 'large' }: { title: string; size?: 'small' | 'large' }) {
   const initial = title.trim().charAt(0).toUpperCase() || 'P'
   const dimension = size === 'large' ? 'h-28 w-28 text-4xl md:h-36 md:w-36 md:text-5xl' : 'h-10 w-10 text-sm'
@@ -85,38 +74,12 @@ function CallIdentity({ title, size = 'large' }: { title: string; size?: 'small'
   )
 }
 
-function LobbyControl({
-  active,
-  icon,
-  inactiveIcon,
-  label,
-  onClick,
-}: {
-  active: boolean
-  icon: React.ReactNode
-  inactiveIcon: React.ReactNode
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className="group flex min-w-20 flex-col items-center gap-2 rounded-2xl px-2 py-1 text-xs font-medium text-white/65 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8fbdb7]"
-    >
-      <span className={`flex h-12 w-12 items-center justify-center rounded-full border transition md:h-14 md:w-14 ${active ? 'border-white/12 bg-white/10 text-white group-hover:bg-white/15' : 'border-white/8 bg-white text-[#10211b]'}`}>
-        {active ? icon : inactiveIcon}
-      </span>
-      {label}
-    </button>
-  )
-}
-
 export function LiveKitCallStage({
   sessionId,
   roomTitle = 'Student.social call',
   mediaType = 'video',
+  callState = 'connecting',
+  direction,
   onClose,
 }: LiveKitCallStageProps) {
   const [tokenPayload, setTokenPayload] = useState<TokenPayload | null>(null)
@@ -139,6 +102,7 @@ export function LiveKitCallStage({
   const e2eeWorkerRef = useRef<Worker | null>(null)
   const leaveInFlightRef = useRef(false)
   const reportedDiagnosticsRef = useRef(new Set<string>())
+  const autoJoinAttemptedRef = useRef(false)
 
   const effectiveMediaType = tokenPayload?.session?.mediaType || mediaType
   const isVideoCall = effectiveMediaType === 'video'
@@ -165,6 +129,7 @@ export function LiveKitCallStage({
     e2eeWorkerRef.current = null
     leaveInFlightRef.current = false
     reportedDiagnosticsRef.current.clear()
+    autoJoinAttemptedRef.current = false
   }, [sessionId, mediaType])
 
   useEffect(() => {
@@ -227,6 +192,50 @@ export function LiveKitCallStage({
     return () => observer.disconnect()
   }, [isJoined])
 
+  useEffect(() => {
+    if (!isJoined || !callShellRef.current) return
+    const root = callShellRef.current
+    const configuredVideos = new Map<HTMLVideoElement, () => void>()
+
+    const syncVideoFrame = (video: HTMLVideoElement) => {
+      const source = video.dataset.source
+      const fit = source === 'screen_share' ? 'contain' : videoFit === 'fill' ? 'cover' : 'contain'
+      video.style.setProperty('position', 'absolute', 'important')
+      video.style.setProperty('inset', '0', 'important')
+      video.style.setProperty('width', '100%', 'important')
+      video.style.setProperty('height', '100%', 'important')
+      video.style.setProperty('max-width', '100%', 'important')
+      video.style.setProperty('max-height', '100%', 'important')
+      video.style.setProperty('object-fit', fit, 'important')
+      video.style.setProperty('object-position', '50% 50%', 'important')
+      if (video.videoWidth && video.videoHeight) {
+        video.dataset.peerFrame = video.videoHeight > video.videoWidth ? 'portrait' : 'landscape'
+      }
+    }
+
+    const configureVideos = () => {
+      root.querySelectorAll<HTMLVideoElement>('video.lk-participant-media-video').forEach((video) => {
+        syncVideoFrame(video)
+        if (configuredVideos.has(video)) return
+        const handleGeometryChange = () => syncVideoFrame(video)
+        configuredVideos.set(video, handleGeometryChange)
+        video.addEventListener('loadedmetadata', handleGeometryChange)
+        video.addEventListener('resize', handleGeometryChange)
+      })
+    }
+
+    configureVideos()
+    const observer = new MutationObserver(configureVideos)
+    observer.observe(root, { childList: true, subtree: true })
+    return () => {
+      observer.disconnect()
+      configuredVideos.forEach((handler, video) => {
+        video.removeEventListener('loadedmetadata', handler)
+        video.removeEventListener('resize', handler)
+      })
+    }
+  }, [isJoined, videoFit])
+
   const markSession = useCallback(async (action: 'join' | 'leave' | 'end') => {
     await fetch(`/api/calls/sessions/${encodeURIComponent(sessionId)}`, {
       method: 'PATCH',
@@ -260,7 +269,7 @@ export function LiveKitCallStage({
     }).catch(() => undefined)
   }, [effectiveMediaType, sessionId, tokenPayload?.session?.roomId])
 
-  const joinCall = async () => {
+  const joinCall = useCallback(async () => {
     setIsJoining(true)
     setError(null)
     try {
@@ -287,19 +296,26 @@ export function LiveKitCallStage({
     } finally {
       setIsJoining(false)
     }
-  }
+  }, [sessionId])
+
+  useEffect(() => {
+    if (autoJoinAttemptedRef.current || isJoined || isJoining) return
+    autoJoinAttemptedRef.current = true
+    void joinCall()
+  }, [isJoined, isJoining, joinCall])
 
   const leaveCall = useCallback(async (endForEveryone = false) => {
     if (leaveInFlightRef.current) return
     leaveInFlightRef.current = true
-    await markSession(endForEveryone ? 'end' : 'leave')
+    const shouldEndForEveryone = endForEveryone || (direction === 'outgoing' && callState === 'outgoing_ringing')
+    await markSession(shouldEndForEveryone ? 'end' : 'leave')
     setIsJoined(false)
     setTokenPayload(null)
     setE2eeOptions(undefined)
     e2eeWorkerRef.current?.terminate()
     e2eeWorkerRef.current = null
     onClose()
-  }, [markSession, onClose])
+  }, [callState, direction, markSession, onClose])
 
   const handleDisconnected = useCallback(() => {
     if (leaveInFlightRef.current) return
@@ -329,6 +345,14 @@ export function LiveKitCallStage({
     }
   }
 
+  const retryJoin = () => {
+    autoJoinAttemptedRef.current = true
+    setError(null)
+    void joinCall()
+  }
+
+  const waitingForAnswer = direction === 'outgoing' && callState === 'outgoing_ringing'
+
   return (
     <div
       ref={callShellRef}
@@ -341,106 +365,27 @@ export function LiveKitCallStage({
       <div className="peer-call-ambient" aria-hidden="true" />
 
       {!isJoined || !tokenPayload ? (
-        <div className="relative flex h-full flex-col">
-          <header className="flex h-16 shrink-0 items-center justify-between px-4 md:h-20 md:px-8">
-            <button type="button" onClick={() => void leaveCall(false)} className="peer-call-icon-button" aria-label="Leave call lobby">
+        <div className="relative flex h-full flex-col items-center justify-between px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
+          <div className="flex w-full items-center justify-between">
+            <button type="button" onClick={() => void leaveCall(false)} className="peer-call-icon-button" aria-label="Cancel call">
               <ChevronLeft className="h-5 w-5" />
             </button>
-            <div className="min-w-0 text-center">
-              <p className="truncate text-sm font-semibold text-white md:text-base">{roomTitle}</p>
-              <p className="mt-0.5 flex items-center justify-center gap-1.5 text-[11px] text-white/45">
-                <LockKeyhole className="h-3 w-3 text-[#8fbdb7]" /> Private call
-              </p>
-            </div>
-            <button type="button" onClick={copyInvite} className="peer-call-icon-button" aria-label="Copy call invite">
-              {copied ? <Check className="h-5 w-5 text-[#8fbdb7]" /> : <Copy className="h-5 w-5" />}
-            </button>
-          </header>
-
-          <main className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,1fr)_390px] lg:grid-rows-1">
-            <section className="relative flex min-h-0 items-center justify-center overflow-hidden px-5 pb-4 pt-2 md:px-10 lg:pb-10">
-              <div className="peer-call-preview relative flex h-full max-h-[720px] w-full max-w-5xl items-center justify-center overflow-hidden rounded-[28px] border border-white/[0.07] bg-[#30342f] md:rounded-[36px]">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_36%,rgba(143,189,183,0.18),transparent_34%),radial-gradient(circle_at_8%_92%,rgba(118,85,109,0.14),transparent_30%),linear-gradient(180deg,transparent_60%,rgba(0,0,0,0.28))]" />
-                <div className="relative flex flex-col items-center px-5 text-center">
-                  <CallIdentity title={roomTitle} />
-                  <h1 className="mt-7 max-w-xl text-balance text-2xl font-semibold tracking-[-0.025em] md:text-4xl">{roomTitle}</h1>
-                  <p className="mt-2 text-sm text-white/50 md:text-base">
-                    {isVideoCall ? (cameraEnabled ? 'Your camera will turn on when you join' : 'You will join with your camera off') : 'A quiet voice room for learning together'}
-                  </p>
-                </div>
-                <div className="absolute bottom-5 left-5 flex items-center gap-2 rounded-full border border-white/[0.08] bg-black/25 px-3 py-1.5 text-xs text-white/55 backdrop-blur-xl">
-                  <Users className="h-3.5 w-3.5" /> Waiting room
-                </div>
-              </div>
-            </section>
-
-            <aside className="peer-call-lobby-panel flex shrink-0 flex-col justify-between border-t border-white/[0.07] bg-[#292c28]/96 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] backdrop-blur-2xl md:p-7 lg:border-l lg:border-t-0 lg:pb-7">
-              <div className="hidden lg:block">
-                <span className="inline-flex items-center gap-2 rounded-full border border-[#8fbdb7]/20 bg-[#8fbdb7]/10 px-3 py-1.5 text-xs font-medium text-[#b9d8d4]">
-                  <ShieldCheck className="h-3.5 w-3.5" /> Ready to join
-                </span>
-                <h2 className="mt-5 text-2xl font-semibold tracking-[-0.025em]">Set up your space</h2>
-                <p className="mt-2 text-sm leading-6 text-white/45">Choose how you enter. You can change devices, share your screen, or use chat once connected.</p>
-                <div className="mt-7 space-y-3">
-                  {CALL_FEATURES.map((feature) => (
-                    <div key={feature} className="flex items-center gap-3 text-sm text-white/60">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/[0.06] text-[#8fbdb7]"><Check className="h-3.5 w-3.5" /></span>
-                      {feature}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-5 flex items-center justify-center gap-2 lg:justify-start">
-                  <LobbyControl
-                    active={micEnabled}
-                    icon={<Mic className="h-5 w-5" />}
-                    inactiveIcon={<MicOff className="h-5 w-5" />}
-                    label={micEnabled ? 'Mic on' : 'Muted'}
-                    onClick={() => setMicEnabled((enabled) => !enabled)}
-                  />
-                  {isVideoCall ? (
-                    <LobbyControl
-                      active={cameraEnabled}
-                      icon={<Camera className="h-5 w-5" />}
-                      inactiveIcon={<CameraOff className="h-5 w-5" />}
-                      label={cameraEnabled ? 'Camera on' : 'Camera off'}
-                      onClick={() => setCameraEnabled((enabled) => !enabled)}
-                    />
-                  ) : null}
-                  <LobbyControl
-                    active={settingsOpen}
-                    icon={<Settings2 className="h-5 w-5" />}
-                    inactiveIcon={<Settings2 className="h-5 w-5" />}
-                    label="Devices"
-                    onClick={() => setSettingsOpen((open) => !open)}
-                  />
-                </div>
-
-                {settingsOpen ? (
-                  <div className="mb-4 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-4 text-sm text-white/55">
-                    Device selection becomes available immediately after you join. Your browser will remember the choice for this session.
-                  </div>
-                ) : null}
-
-                {error ? <p className="mb-4 rounded-2xl border border-red-300/15 bg-red-400/10 px-4 py-3 text-sm text-red-100" role="alert">{error}</p> : null}
-
-                <button
-                  type="button"
-                  onClick={joinCall}
-                  disabled={isJoining}
-                  className="flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[#8fbdb7] px-6 text-sm font-semibold text-[#182826] shadow-[0_12px_36px_rgba(63,111,107,0.25)] transition hover:bg-[#a2cac5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b9d8d4] disabled:cursor-wait disabled:opacity-60"
-                >
-                  {isJoining ? <LoaderCircle className="h-5 w-5 animate-spin" /> : isVideoCall ? <Video className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                  {isJoining ? 'Joining securely…' : `Join ${isVideoCall ? 'video' : 'voice'} call`}
-                </button>
-                <button type="button" onClick={() => void leaveCall(false)} className="mt-2 h-11 w-full rounded-full text-sm font-medium text-white/50 transition hover:bg-white/[0.05] hover:text-white">
-                  Not now
-                </button>
-              </div>
-            </aside>
-          </main>
+            <span className="inline-flex items-center gap-1.5 text-xs text-white/45"><LockKeyhole className="h-3 w-3" /> Private call</span>
+            <span className="size-11" aria-hidden="true" />
+          </div>
+          <div className="relative flex flex-col items-center text-center">
+            <CallIdentity title={roomTitle} />
+            <h1 className="mt-7 max-w-[min(90vw,34rem)] truncate text-2xl font-semibold tracking-[-0.03em] md:text-4xl">{roomTitle}</h1>
+            <p className="mt-2 text-sm text-white/50">{error ? 'Could not connect' : waitingForAnswer ? 'Calling…' : 'Connecting securely…'}</p>
+            {error ? <p className="mt-4 max-w-sm rounded-2xl border border-red-300/15 bg-red-400/10 px-4 py-3 text-sm text-red-100" role="alert">{error}</p> : <LoaderCircle className="mt-6 h-5 w-5 animate-spin text-[#8fbdb7]" aria-label="Connecting" />}
+          </div>
+          <div className="flex min-h-20 items-center justify-center">
+            {error ? (
+              <button type="button" onClick={retryJoin} className="h-12 rounded-full bg-[#8fbdb7] px-6 text-sm font-semibold text-[#182826]">Try again</button>
+            ) : (
+              <button type="button" onClick={() => void leaveCall(false)} className="grid size-14 place-items-center rounded-full bg-[#a7595c] text-white shadow-[0_12px_34px_rgba(89,35,42,.34)]" aria-label="End call"><PhoneOff className="h-5 w-5" /></button>
+            )}
+          </div>
         </div>
       ) : (
         <LiveKitRoom
@@ -451,7 +396,9 @@ export function LiveKitCallStage({
           video={isVideoCall && cameraEnabled}
           options={{ adaptiveStream: true, dynacast: true, e2ee: e2eeOptions }}
           connectOptions={{ autoSubscribe: true, maxRetries: 8 }}
-          onConnected={() => void markSession('join')}
+          onConnected={() => {
+            if (!waitingForAnswer) void markSession('join')
+          }}
           onDisconnected={handleDisconnected}
           onEncryptionError={(encryptionError) => {
             const message = `Call encryption failed: ${encryptionError.message}`
@@ -512,6 +459,17 @@ export function LiveKitCallStage({
           <main className="min-h-0 flex-1">
             <VideoConference className="peer-call-conference" />
           </main>
+
+          {waitingForAnswer ? (
+            <div className="absolute inset-0 z-40 flex flex-col items-center justify-between bg-[#242724]/95 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(5.5rem,calc(env(safe-area-inset-top)+4.5rem))] backdrop-blur-xl">
+              <div className="flex flex-1 flex-col items-center justify-center text-center">
+                <CallIdentity title={roomTitle} />
+                <h2 className="mt-7 max-w-[min(90vw,34rem)] truncate text-2xl font-semibold tracking-[-0.03em] md:text-4xl">{roomTitle}</h2>
+                <p className="mt-2 text-sm text-white/50">Ringing…</p>
+              </div>
+              <button type="button" onClick={() => void leaveCall(false)} className="grid size-14 place-items-center rounded-full bg-[#a7595c] text-white shadow-[0_12px_34px_rgba(89,35,42,.34)]" aria-label="End call"><PhoneOff className="h-5 w-5" /></button>
+            </div>
+          ) : null}
 
           {settingsOpen ? (
             <>

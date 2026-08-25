@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "social.student.mobile",
+      "sha256_cert_fingerprints": [
+        "76:58:A2:63:4F:A9:A9:87:71:5B:2E:F0:14:97:7E:86:26:17:96:54:CB:4E:D1:7E:9B:2C:39:E4:32:79:76:B4"
+      ]
+    }
+  }
+]

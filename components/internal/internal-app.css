@@ -118,7 +118,7 @@
   z-index: 55;
   display: grid;
   min-height: 4.35rem;
-  grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr);
+  grid-template-columns: minmax(130px, 0.7fr) minmax(180px, 1.25fr) auto;
   align-items: center;
   gap: 1rem;
   border-bottom: 1px solid rgba(86, 72, 55, 0.12);
@@ -127,18 +127,20 @@
   backdrop-filter: blur(24px) saturate(130%);
 }
 
-.student-global-location { align-items: center; gap: 0.35rem; color: var(--muted-foreground); font-size: 0.68rem; }
-.student-global-location svg { width: 0.75rem; height: 0.75rem; opacity: 0.5; }
-.student-global-location strong { color: var(--foreground); font-weight: 700; }
+.student-global-greeting { min-width: 0; align-items: baseline; gap: 0.28rem; color: var(--muted-foreground); white-space: nowrap; }
+.student-global-greeting > span { font-size: 0.74rem; }
+.student-global-greeting > strong { overflow: hidden; color: var(--foreground); font-size: 0.82rem; font-weight: 750; text-overflow: ellipsis; }
+.student-global-greeting > small { margin-left: 0.35rem; color: var(--muted-foreground); font-size: 0.62rem; opacity: 0.72; }
 .student-global-brand { display: flex; align-items: center; gap: 0.6rem; color: var(--foreground); }
 .student-global-brand .student-app-mark { transform: rotate(-10deg) scale(0.8); }
 .student-global-brand strong { font-size: 0.88rem; letter-spacing: -0.025em; }
 
 .student-global-search {
   display: grid;
-  width: 2.7rem;
+  width: 100%;
+  max-width: 30rem;
   min-height: 2.7rem !important;
-  grid-template-columns: auto 0fr 0fr;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.65rem;
   border: 1px solid rgba(86, 72, 55, 0.13);
@@ -148,19 +150,16 @@
   color: var(--muted-foreground);
   text-align: left;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.65) inset;
+  justify-self: center;
   overflow: hidden;
-  transition: width 260ms cubic-bezier(0.22, 1, 0.36, 1), grid-template-columns 260ms cubic-bezier(0.22, 1, 0.36, 1), border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 .student-global-search:hover,
-.student-global-search:focus-visible { width: min(34vw, 27rem); grid-template-columns: auto minmax(9rem, 1fr) auto; transform: translateY(-1px); border-color: rgba(63, 111, 107, 0.34); box-shadow: 0 10px 28px rgba(61, 45, 28, 0.06); }
+.student-global-search:focus-visible { transform: translateY(-1px); border-color: rgba(63, 111, 107, 0.34); box-shadow: 0 10px 28px rgba(61, 45, 28, 0.06); }
 .student-global-search > svg { width: 0.95rem; height: 0.95rem; }
-.student-global-search > span { max-width: 0; overflow: hidden; opacity: 0; font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; transition: max-width 220ms ease, opacity 140ms ease; }
-.student-global-search:hover > span,
-.student-global-search:focus-visible > span { max-width: 18rem; opacity: 1; }
+.student-global-search > span { overflow: hidden; opacity: 1; font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; }
 .student-global-search kbd { display: flex; align-items: center; gap: 0.12rem; border: 1px solid rgba(86, 72, 55, 0.13); border-radius: 999px; background: var(--card); padding: 0.28rem 0.48rem; font-size: 0.56rem; }
-.student-global-search kbd { visibility: hidden; opacity: 0; transition: opacity 140ms ease; }
-.student-global-search:hover kbd,
-.student-global-search:focus-visible kbd { visibility: visible; opacity: 1; }
+.student-global-search kbd { visibility: visible; opacity: 1; }
 .student-global-search kbd svg { width: 0.62rem; height: 0.62rem; }
 
 .student-global-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.35rem; }

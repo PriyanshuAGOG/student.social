@@ -7,7 +7,7 @@ import { IncomingCallOverlay } from './IncomingCallOverlay'
 import { subscribeToCallSessions } from '@/lib/appwrite/call-realtime'
 import { closeCallNotification } from '@/lib/pwa/call-notifications'
 import { CallAlertsPrompt } from './CallAlertsPrompt'
-import { useIncomingCallAlerts } from './use-incoming-call-alerts'
+import { useIncomingCallAlerts, useOutgoingCallTone } from './use-incoming-call-alerts'
 
 const LiveKitCallStage = dynamic(
   () => import('./LiveKitCallStage').then((module) => module.LiveKitCallStage),
@@ -26,6 +26,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const [rejectingCallId, setRejectingCallId] = useState<string | null>(null)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   useIncomingCallAlerts(Boolean(callHook.incomingCall && callHook.callState === 'incoming_ringing'))
+  useOutgoingCallTone(callHook.callState === 'outgoing_ringing')
 
   // Fetch active calls on mount
   useEffect(() => {
@@ -145,6 +146,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           sessionId={callHook.activeCall.id}
           roomTitle={callHook.activeCall.roomTitle || callHook.activeCall.caller?.name || 'Student.social call'}
           mediaType={callHook.activeCall.mediaType}
+          callState={callHook.callState}
+          direction={callHook.activeCall.direction}
           onClose={callHook.clearActiveCall}
         />
       )}

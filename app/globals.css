@@ -1,4 +1,7 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+@source ".";
+@source "../components";
+@source "../lib";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
@@ -152,23 +155,30 @@
 /* Camera feeds default to the complete frame. Some mobile browsers publish
    portrait video before orientation metadata settles; fitting independently
    of that metadata prevents laptop and phone participants from being cropped. */
-.peer-call-conference .lk-participant-media-video[data-source="camera"] {
-  width: 100%;
-  height: 100%;
+.peer-call-conference video.lk-participant-media-video {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
   object-fit: contain !important;
   object-position: center center !important;
   background: #0c1210;
 }
 
-.peer-call-room[data-video-fit="fill"] .lk-participant-media-video[data-source="camera"] {
+.peer-call-room[data-video-fit="fill"] video.lk-participant-media-video[data-source="camera"] {
   object-fit: cover !important;
 }
 
-.peer-call-conference .lk-participant-media-video[data-source="screen_share"] {
+.peer-call-conference video.lk-participant-media-video[data-source="screen_share"] {
   object-fit: contain !important;
 }
 
 .peer-call-conference .lk-participant-tile {
+  position: relative;
+  contain: layout paint;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 1.25rem;
