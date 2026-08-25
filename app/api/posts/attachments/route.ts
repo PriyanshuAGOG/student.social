@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ID, Permission, Role } from 'node-appwrite'
 import { InputFile } from 'node-appwrite/file'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
 import { normalizeAppwriteEndpoint } from '@/lib/env'
 import { scanUploadMeta } from '@/lib/upload-security'

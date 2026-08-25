@@ -2,7 +2,7 @@ import crypto from 'crypto'
 import { ID } from 'node-appwrite'
 import { z } from 'zod'
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { ApiError, enforceRateLimit, jsonError, parseJsonBody, requireUser } from '@/lib/api-security'
 import { ADMIN_COLLECTIONS, DATABASE_ID } from '@/lib/admin-server'
 

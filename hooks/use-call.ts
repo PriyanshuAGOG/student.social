@@ -1,31 +1,33 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { callService } from '@/lib/appwrite/calls'
 
 export interface Call {
   id: string
+  $id?: string
   roomName: string
+  roomTitle?: string
   chatId: string
+  roomId: string
   callerId: string
-  receiverId: string
+  participantIds: string[]
   callType: 'audio' | 'video'
-  status: 'ringing' | 'accepted' | 'rejected' | 'missed' | 'ended' | 'failed'
+  mediaType: 'voice' | 'video'
+  status: 'ringing' | 'accepted' | 'declined' | 'ended' | 'missed' | 'failed'
+  state: 'ringing' | 'active' | 'declined' | 'ended' | 'missed' | 'failed'
+  direction?: 'incoming' | 'outgoing'
   startedAt: string
   acceptedAt?: string
   endedAt?: string
-  durationSeconds?: number
-  caller?: {
-    id: string
-    name: string
-    avatar?: string
-  }
+  caller?: { id: string; name: string; avatar?: string }
 }
 
 export interface CallContextType {
   activeCall: Call | null
   incomingCall: Call | null
   callState: 'idle' | 'outgoing_ringing' | 'incoming_ringing' | 'connecting' | 'active' | 'reconnecting' | 'ended'
-  startCall: (receiverId: string, chatId: string, type: 'audio' | 'video') => Promise<Call>
+  startCall: (receiverId: string, chatId: string, type: 'audio' | 'video', options?: { title?: string }) => Promise<Call>
   acceptCall: (callId: string) => Promise<void>
   rejectCall: (callId: string) => Promise<void>
   endCall: (callId: string) => Promise<void>
@@ -33,6 +35,7 @@ export interface CallContextType {
   toggleMute: () => void
   toggleCamera: () => void
   switchAudioOutput: (deviceId: string) => Promise<void>
+  clearActiveCall: () => void
   isMuted: boolean
   isCameraOff: boolean
   callDuration: number
@@ -40,7 +43,24 @@ export interface CallContextType {
   syncActiveCalls: (calls: Call[]) => void
 }
 
-// Default context value
+function normalizeCall(input: any): Call {
+  const state = input?.state || (input?.status === 'accepted' ? 'active' : input?.status) || 'ringing'
+  const mediaType = input?.mediaType === 'voice' || input?.callType === 'audio' ? 'voice' : 'video'
+  return {
+    ...input,
+    id: input?.$id || input?.id,
+    roomId: input?.roomId || input?.chatId,
+    chatId: input?.roomId || input?.chatId,
+    roomName: input?.providerSessionId || input?.roomName || input?.$id || input?.id,
+    participantIds: Array.isArray(input?.participantIds) ? input.participantIds : [],
+    mediaType,
+    callType: mediaType === 'voice' ? 'audio' : 'video',
+    state,
+    status: state === 'active' ? 'accepted' : state,
+    startedAt: input?.startedAt || new Date().toISOString(),
+  }
+}
+
 export const defaultCallContext: CallContextType = {
   activeCall: null,
   incomingCall: null,
@@ -53,6 +73,7 @@ export const defaultCallContext: CallContextType = {
   toggleMute: () => {},
   toggleCamera: () => {},
   switchAudioOutput: async () => {},
+  clearActiveCall: () => {},
   isMuted: false,
   isCameraOff: false,
   callDuration: 0,
@@ -64,240 +85,111 @@ export function useCall(): CallContextType {
   const [activeCall, setActiveCall] = useState<Call | null>(null)
   const [incomingCall, setIncomingCall] = useState<Call | null>(null)
   const [callState, setCallState] = useState<CallContextType['callState']>('idle')
-  const [isMuted, setIsMuted] = useState(false)
-  const [isCameraOff, setIsCameraOff] = useState(false)
   const [callDuration, setCallDuration] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const durationIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const noAnswerTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const dismissedCallIdsRef = useRef(new Set<string>())
 
-  // Cleanup duration timer
   useEffect(() => {
-    if (callState !== 'active') {
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current)
-        durationIntervalRef.current = null
-      }
-      setCallDuration(0)
-      return
-    }
-
-    durationIntervalRef.current = setInterval(() => {
-      setCallDuration((prev) => prev + 1)
-    }, 1000)
-
+    if (callState !== 'active') return
+    durationIntervalRef.current = setInterval(() => setCallDuration((seconds) => seconds + 1), 1000)
     return () => {
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current)
-      }
+      if (durationIntervalRef.current) clearInterval(durationIntervalRef.current)
+      durationIntervalRef.current = null
     }
   }, [callState])
 
-  const startCall = useCallback(
-    async (receiverId: string, chatId: string, type: 'audio' | 'video'): Promise<Call> => {
-      setError(null)
+  const clearActiveCall = useCallback(() => {
+    setActiveCall((current) => {
+      if (current?.id) dismissedCallIdsRef.current.add(current.id)
+      return null
+    })
+    setIncomingCall((current) => {
+      if (current?.id) dismissedCallIdsRef.current.add(current.id)
+      return null
+    })
+    setCallState('idle')
+    setCallDuration(0)
+    setError(null)
+  }, [])
+
+  const startCall = useCallback(async (_receiverId: string, chatId: string, type: 'audio' | 'video', options?: { title?: string }) => {
+    setError(null)
+    setCallState('connecting')
+    try {
+      const session = normalizeCall(await callService.startRoomCall(chatId, type === 'audio' ? 'voice' : 'video', options?.title))
+      dismissedCallIdsRef.current.delete(session.id)
+      setActiveCall({ ...session, roomTitle: options?.title, direction: 'outgoing' })
       setCallState('outgoing_ringing')
+      return session
+    } catch (cause: any) {
+      setError(cause?.message || 'Failed to start call')
+      setCallState('ended')
+      throw cause
+    }
+  }, [])
 
-      try {
-        const response = await fetch('/api/calls/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ receiverId, chatId, type }),
-        })
+  const acceptCall = useCallback(async (callId: string) => {
+    setError(null)
+    setCallState('connecting')
+    try {
+      const session = normalizeCall(await callService.updateSession(callId, 'accept'))
+      dismissedCallIdsRef.current.delete(session.id)
+      setActiveCall({ ...(incomingCall || session), ...session, direction: 'incoming' })
+      setIncomingCall(null)
+      setCallState('active')
+    } catch (cause: any) {
+      setError(cause?.message || 'Failed to accept call')
+      setCallState('ended')
+      throw cause
+    }
+  }, [incomingCall])
 
-        if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || 'Failed to start call')
-        }
+  const rejectCall = useCallback(async (callId: string) => {
+    try {
+      await callService.updateSession(callId, 'decline')
+      clearActiveCall()
+    } catch (cause: any) {
+      setError(cause?.message || 'Failed to decline call')
+      throw cause
+    }
+  }, [clearActiveCall])
 
-        const data = await response.json()
-        const call = data.call
+  const endCall = useCallback(async (callId: string) => {
+    try {
+      await callService.updateSession(callId, 'end')
+      clearActiveCall()
+    } catch (cause: any) {
+      setError(cause?.message || 'Failed to end call')
+      throw cause
+    }
+  }, [clearActiveCall])
 
-        setActiveCall({
-          ...call,
-          chatId,
-          callType: type,
-        } as Call)
-
-        if (noAnswerTimeoutRef.current) {
-          clearTimeout(noAnswerTimeoutRef.current)
-        }
-        noAnswerTimeoutRef.current = setTimeout(async () => {
-          setActiveCall((current) => {
-            if (current && current.id === call.id && current.status === 'ringing') {
-              void fetch('/api/calls/end', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ callId: call.id }),
-              }).catch(() => undefined)
-              setCallState('idle')
-            }
-            return current
-          })
-        }, 45000)
-
-        return call
-      } catch (err: any) {
-        const errorMsg = err.message || 'Failed to start call'
-        setError(errorMsg)
-        setCallState('ended')
-        throw err
-      }
-    },
-    []
-  )
-
-  const acceptCall = useCallback(
-    async (callId: string) => {
-      setError(null)
-      setCallState('connecting')
-
-      try {
-        const response = await fetch('/api/calls/respond', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ callId, action: 'accept' }),
-        })
-
-        if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || 'Failed to accept call')
-        }
-
-        await response.json().catch(() => null)
-
-        // Update incoming call to active
-        if (incomingCall) {
-          setActiveCall({
-            ...incomingCall,
-            status: 'accepted',
-          })
-          setIncomingCall(null)
-          setCallState('active')
-        }
-      } catch (err: any) {
-        const errorMsg = err.message || 'Failed to accept call'
-        setError(errorMsg)
-        setCallState('ended')
-        throw err
-      }
-    },
-    [incomingCall]
-  )
-
-  const rejectCall = useCallback(
-    async (callId: string) => {
-      setError(null)
-
-      try {
-        const response = await fetch('/api/calls/respond', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ callId, action: 'reject' }),
-        })
-
-        if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || 'Failed to reject call')
-        }
-
-        setIncomingCall(null)
-        setCallState('ended')
-      } catch (err: any) {
-        const errorMsg = err.message || 'Failed to reject call'
-        setError(errorMsg)
-        throw err
-      }
-    },
-    []
-  )
-
-  const endCall = useCallback(
-    async (callId: string) => {
-      setError(null)
-
-      try {
-        const response = await fetch('/api/calls/end', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ callId }),
-        })
-
-        if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || 'Failed to end call')
-        }
-
-        if (noAnswerTimeoutRef.current) {
-          clearTimeout(noAnswerTimeoutRef.current)
-          noAnswerTimeoutRef.current = null
-        }
-        setActiveCall(null)
-        setIncomingCall(null)
-        setCallState('idle')
-        setIsMuted(false)
-        setIsCameraOff(false)
-        setCallDuration(0)
-      } catch (err: any) {
-        const errorMsg = err.message || 'Failed to end call'
-        setError(errorMsg)
-        throw err
-      }
-    },
-    []
-  )
-
-  const cancelCall = useCallback(
-    async (callId: string) => {
-      await endCall(callId)
-    },
-    [endCall]
-  )
-
+  const cancelCall = useCallback((callId: string) => endCall(callId), [endCall])
 
   const syncActiveCalls = useCallback((calls: Call[]) => {
-    const normalizedCalls = (calls || []).map((call) => ({
-      ...call,
-      id: call.id || (call as any).$id,
-    }))
+    const normalized = (calls || [])
+      .map(normalizeCall)
+      .filter((call) => !dismissedCallIdsRef.current.has(call.id))
+    const active = normalized.find((call) => call.state === 'active')
+    if (active) {
+      setActiveCall((current) => current?.id === active.id
+        ? { ...current, ...active, roomTitle: active.roomTitle || current.roomTitle }
+        : active)
+      setIncomingCall(null)
+      setCallState('active')
+      return
+    }
 
-    const ringingIncoming = normalizedCalls.find((call) => call.status === 'ringing') || null
-    const acceptedCall = normalizedCalls.find((call) => call.status === 'accepted') || null
-
-    if (ringingIncoming) {
-      setIncomingCall((current) => (current?.id === ringingIncoming.id ? current : ringingIncoming))
-      setCallState((current) => (current === 'active' ? current : 'incoming_ringing'))
+    const incoming = normalized.find((call) => call.state === 'ringing' && call.direction === 'incoming')
+    if (incoming) {
+      setIncomingCall((current) => current?.id === incoming.id ? current : incoming)
+      setCallState((current) => current === 'active' || current === 'outgoing_ringing' ? current : 'incoming_ringing')
       return
     }
 
     setIncomingCall(null)
-
-    if (acceptedCall) {
-      setActiveCall((current) => (current?.id === acceptedCall.id ? current : acceptedCall))
-      setCallState('active')
-    }
   }, [])
-
-  const toggleMute = useCallback(() => {
-    setIsMuted((prev) => !prev)
-  }, [])
-
-  const toggleCamera = useCallback(() => {
-    setIsCameraOff((prev) => !prev)
-  }, [])
-
-  const switchAudioOutput = useCallback(
-    async (deviceId: string) => {
-      // This would be implemented with actual audio device selection
-      // For now, just acknowledge the action
-    },
-    []
-  )
 
   return {
     activeCall,
@@ -308,11 +200,12 @@ export function useCall(): CallContextType {
     rejectCall,
     endCall,
     cancelCall,
-    toggleMute,
-    toggleCamera,
-    switchAudioOutput,
-    isMuted,
-    isCameraOff,
+    toggleMute: () => {},
+    toggleCamera: () => {},
+    switchAudioOutput: async () => {},
+    clearActiveCall,
+    isMuted: false,
+    isCameraOff: false,
     callDuration,
     error,
     syncActiveCalls,

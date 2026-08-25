@@ -11,8 +11,10 @@
  */
 
 import { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
+import { createAdminClient } from '@/lib/server/appwrite';
 import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
+import { z } from 'zod';
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireUser } from '@/lib/api-security';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const COURSES_COLLECTION_ID = (process.env.NEXT_PUBLIC_COURSES_COLLECTION_ID || 'courses');
@@ -98,28 +100,17 @@ class SSEWriter {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { youtubeUrl, courseName, instructorId, description } = body;
-
-  // Validate inputs
   try {
-    validateInput(
-      { youtubeUrl, courseName, instructorId },
-      {
-        youtubeUrl: { required: true },
-        courseName: { required: true, minLength: 3, maxLength: 200 },
-        instructorId: { required: true },
-      }
-    );
-  } catch (validationError: any) {
-    return new Response(
-      JSON.stringify({ error: validationError.message }),
-      {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
-  }
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'courses:generate-youtube', max: 3, windowMs: 60_000 });
+    const auth = requireUser(request);
+    const { youtubeUrl, courseName, description } = await parseJsonBody(request, z.object({
+      youtubeUrl: z.string().trim().min(1).max(500),
+      courseName: z.string().trim().min(3).max(200),
+      instructorId: z.string().optional(),
+      description: z.string().trim().max(2000).optional(),
+    }));
+    const instructorId = auth.userId;
 
   const videoId = extractYouTubeId(youtubeUrl);
   if (!videoId) {
@@ -289,4 +280,8 @@ export async function POST(request: NextRequest) {
       'Connection': 'keep-alive',
     },
   });
+  } catch (error) {
+    if (error instanceof ApiError) return Response.json({ error: error.message, code: error.code }, { status: error.status });
+    return Response.json({ error: 'Unable to start course generation' }, { status: 500 });
+  }
 }

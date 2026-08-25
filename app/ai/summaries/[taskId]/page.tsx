@@ -1,4 +1,4 @@
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { cookies } from 'next/headers'
 import { requireUser } from '@/lib/api-security'
 

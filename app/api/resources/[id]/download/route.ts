@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { getEnv } from '@/lib/env'
 
 const DATABASE_ID = getEnv().NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db'

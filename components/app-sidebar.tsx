@@ -1,20 +1,23 @@
 "use client"
 
 import type * as React from "react"
-import Image from "next/image"
+import Link from "next/link"
+import { usePathname, useRouter } from "next/navigation"
 import {
+  BarChart3,
+  Bell,
   BookOpen,
   Bot,
   Calendar,
+  Flame,
   Home,
-  Settings,
-  Users,
-  BarChart3,
-  Trophy,
-  Bell,
-  User,
   LogOut,
   MessageSquare,
+  Settings,
+  Sparkles,
+  Trophy,
+  User,
+  Users,
 } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -39,62 +42,40 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { isAdminUser } from "@/lib/admin-access"
 
-// Menu items.
-const data = {
-  navMain: [
-    {
-      title: "Feed",
-      url: "/app/feed",
-      icon: Home,
-      isActive: true,
-    },
-    {
-      title: "Pods",
-      url: "/app/pods",
-      icon: Users,
-    },
-    {
-      title: "AI Assistant",
-      url: "/app/ai",
-      icon: Bot,
-    },
-    {
-      title: "Chat",
-      url: "/app/chat",
-      icon: MessageSquare,
-    },
-    {
-      title: "Resource Vault",
-      url: "/app/vault",
-      icon: BookOpen,
-    },
-    {
-      title: "Calendar",
-      url: "/app/calendar",
-      icon: Calendar,
-    },
-    {
-      title: "Leaderboard",
-      url: "/app/leaderboard",
-      icon: Trophy,
-    },
-    {
-      title: "Notifications",
-      url: "/app/notifications",
-      icon: Bell,
-    },
-    {
-      title: "Settings",
-      url: "/app/settings",
-      icon: Settings,
-    },
-  ],
+const navigation = [
+  {
+    label: "Your day",
+    items: [
+      { title: "Learning feed", url: "/app/feed", icon: Home },
+      { title: "Study pods", url: "/app/pods", icon: Users },
+      { title: "AI tutor", url: "/app/ai", icon: Bot, accent: true },
+    ],
+  },
+  {
+    label: "Together",
+    items: [
+      { title: "Messages", url: "/app/chat", icon: MessageSquare },
+      { title: "Resource vault", url: "/app/vault", icon: BookOpen },
+      { title: "Calendar", url: "/app/calendar", icon: Calendar },
+    ],
+  },
+  {
+    label: "Progress",
+    items: [
+      { title: "Leaderboard", url: "/app/leaderboard", icon: Trophy },
+      { title: "Analytics", url: "/app/analytics", icon: BarChart3 },
+      { title: "Notifications", url: "/app/notifications", icon: Bell },
+      { title: "Settings", url: "/app/settings", icon: Settings },
+    ],
+  },
+]
+
+function StudentMark() {
+  return <span className="student-app-mark" aria-hidden="true"><i /><i /><i /></span>
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -103,144 +84,112 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { toast } = useToast()
   const { user, profile, logout } = useAuth()
   const canAccessAdmin = isAdminUser(user)
-  const navMain = [
-    ...data.navMain,
-    ...(canAccessAdmin
-      ? [
-          {
-            title: "Admin",
-            url: "/app/admin",
-            icon: BarChart3,
-          },
-        ]
-      : []),
-  ]
 
   const handleLogout = async () => {
     try {
       await logout()
-      toast({
-        title: "Logged out successfully",
-        description: "You have been logged out of your account",
-      })
+      toast({ title: "See you soon", description: "You have been logged out safely." })
       router.push("/login")
     } catch (error) {
       console.error("Logout error:", error)
-      toast({
-        title: "Logout failed",
-        description: "There was an error logging out. Please try again.",
-        variant: "destructive",
-      })
+      toast({ title: "Could not log out", description: "Please try again in a moment.", variant: "destructive" })
     }
   }
 
-  const handleProfile = () => {
-    router.push("/app/profile")
-  }
+  const isRouteActive = (url: string) =>
+    pathname === url || pathname.startsWith(`${url}/`) || (url === "/app/feed" && pathname === "/app")
 
-  // Use profile name as primary source for consistency
-  const displayName = profile?.name || user?.name || ""
-  const userInitials = displayName
-    ? displayName
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-    : "U"
+  const displayName = profile?.name || user?.name || "Student"
+  const userInitials = displayName.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase()
 
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
+    <Sidebar collapsible="icon" variant="floating" {...props}>
+      <SidebarHeader className="student-sidebar-header p-3">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <Link href="/app/feed">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg overflow-hidden">
-                  <Image src="/logo.png" alt="PeerSpark" width={32} height={32} className="object-cover" />
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">PeerSpark</span>
-                  <span className="truncate text-xs">Learning Platform</span>
-                </div>
+            <SidebarMenuButton size="lg" asChild className="student-brand-button h-14 rounded-2xl px-2">
+              <Link href="/app/feed" aria-label="Student.social learning feed">
+                <span className="student-brand-mark-wrap"><StudentMark /></span>
+                <span className="grid flex-1 text-left leading-tight">
+                  <span className="truncate text-[15px] font-semibold tracking-[-0.02em]">Student.social</span>
+                  <span className="truncate text-[10px] uppercase tracking-[0.16em] text-sidebar-foreground/42">Learn together</span>
+                </span>
+                <span className="student-beta">BETA</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Platform</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navMain.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={pathname === item.url}>
-                    <Link href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+
+      <SidebarContent className="px-1">
+        {navigation.map((section) => (
+          <SidebarGroup key={section.label} className="px-2 py-1.5">
+            <SidebarGroupLabel className="px-3 text-[9px] font-bold uppercase tracking-[0.18em] text-sidebar-foreground/35">
+              {section.label}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1">
+                {section.items.map((item) => {
+                  const active = isRouteActive(item.url)
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton asChild isActive={active} tooltip={item.title} className="student-sidebar-link h-10 rounded-xl px-3">
+                        <Link href={item.url} aria-current={active ? "page" : undefined}>
+                          <span className={item.accent ? "student-nav-icon student-nav-icon-ai" : "student-nav-icon"}><item.icon /></span>
+                          <span>{item.title}</span>
+                          {item.accent ? <Sparkles className="ml-auto size-3 text-[#d99a80]" aria-hidden="true" /> : null}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
+                {section.label === "Progress" && canAccessAdmin ? (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={isRouteActive("/app/admin")} tooltip="Admin" className="student-sidebar-link h-10 rounded-xl px-3">
+                      <Link href="/app/admin"><span className="student-nav-icon"><BarChart3 /></span><span>Admin</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ) : null}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
-      <SidebarFooter>
+
+      <SidebarFooter className="gap-2 p-3">
+        <Link href="/app/ai" className="student-focus-card group-data-[collapsible=icon]:hidden">
+          <span><Flame className="size-4" /> Focus companion</span>
+          <strong>Turn “stuck” into a next step.</strong>
+          <small>Ask the tutor →</small>
+        </Link>
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                >
-                  <Avatar className="h-8 w-8 rounded-lg">
-                    <AvatarImage src="/placeholder.svg" alt={user?.name || "User"} />
-                    <AvatarFallback className="rounded-lg">{userInitials}</AvatarFallback>
+                <SidebarMenuButton size="lg" className="student-account-button h-14 rounded-2xl data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground" aria-label="Open account menu">
+                  <Avatar className="h-9 w-9 rounded-xl">
+                    <AvatarImage src={profile?.avatar || "/placeholder.svg"} alt={displayName} />
+                    <AvatarFallback className="rounded-xl bg-[#78815f] text-[#fffaf2]">{userInitials || "S"}</AvatarFallback>
                   </Avatar>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">{displayName || "User"}</span>
-                    <span className="truncate text-xs">{user?.email || "email@example.com"}</span>
-                  </div>
+                  <span className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold">{displayName}</span>
+                    <span className="truncate text-[11px] text-sidebar-foreground/45">{user?.email || "Your learning space"}</span>
+                  </span>
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
-                side="bottom"
-                align="end"
-                sideOffset={4}
-              >
-                <DropdownMenuLabel className="p-0 font-normal">
-                  <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                    <Avatar className="h-8 w-8 rounded-lg">
-                      <AvatarImage src="/placeholder.svg" alt={user?.name || "User"} />
-                      <AvatarFallback className="rounded-lg">{userInitials}</AvatarFallback>
-                    </Avatar>
-                    <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-semibold">{displayName || "User"}</span>
-                      <span className="truncate text-xs">{user?.email || "email@example.com"}</span>
-                    </div>
+              <DropdownMenuContent className="min-w-60" side="right" align="end" sideOffset={10}>
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex items-center gap-3 py-1">
+                    <Avatar className="h-9 w-9 rounded-xl"><AvatarImage src={profile?.avatar || "/placeholder.svg"} alt={displayName} /><AvatarFallback className="rounded-xl">{userInitials || "S"}</AvatarFallback></Avatar>
+                    <div className="min-w-0 flex-1"><p className="truncate font-semibold">{displayName}</p><p className="truncate text-xs text-muted-foreground">{user?.email}</p></div>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleProfile}>
-                  <User />
-                  Profile
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Settings />
-                  Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Bell />
-                  Notifications
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push("/app/profile")}><User />Profile</DropdownMenuItem>
+                <DropdownMenuItem asChild><Link href="/app/settings"><Settings />Settings</Link></DropdownMenuItem>
+                <DropdownMenuItem asChild><Link href="/app/notifications"><Bell />Notifications</Link></DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>
-                  <LogOut />
-                  Log out
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleLogout}><LogOut />Log out</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuItem>

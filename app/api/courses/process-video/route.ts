@@ -21,18 +21,24 @@ import {
 import { getYouTubeVideoId, getTranscript, cleanTranscript, chunkTranscript } from '@/lib/video-utils';
 import { callLLM } from '@/lib/ai';
 import { ChapterContentType } from '@/lib/types/courses';
+import { z } from 'zod';
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireUser } from '@/lib/api-security';
 
 export async function POST(request: NextRequest) {
   try {
-    const { youtubeLink, courseId, instructorId } = await request.json();
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'courses:process-video', max: 3, windowMs: 60_000 });
+    const auth = requireUser(request);
+    const { youtubeLink, courseId } = await parseJsonBody(request, z.object({
+      youtubeLink: z.string().url().max(500),
+      courseId: z.string().min(1).max(255),
+      instructorId: z.string().optional(),
+    }));
 
-    // Validation
-    if (!youtubeLink || !courseId || !instructorId) {
-      return NextResponse.json(
-        { error: 'Missing required fields: youtubeLink, courseId, instructorId' },
-        { status: 400 }
-      );
-    }
+    const db = getCourseDatabase();
+    if (!db) return NextResponse.json({ error: 'Database connection failed' }, { status: 500 });
+    const course = await db.getDocument('peerspark-main-db', 'courses', courseId);
+    if (course.instructorId !== auth.userId) throw new ApiError(403, 'FORBIDDEN', 'Only the course instructor can process videos');
 
     console.log(`🎬 Processing video: ${youtubeLink}`);
 
@@ -113,14 +119,6 @@ Detect 5-15 chapters based on the content structure.
     // Step 6: Calculate timestamps and create chapter documents
     console.log(`📚 Creating ${chapters.length} chapters in database...`);
 
-    const db = getCourseDatabase();
-    if (!db) {
-      return NextResponse.json(
-        { error: 'Database connection failed' },
-        { status: 500 }
-      );
-    }
-
     const createdChapters = [];
 
     for (let i = 0; i < chapters.length; i++) {
@@ -173,6 +171,7 @@ Detect 5-15 chapters based on the content structure.
       },
     });
   } catch (error) {
+    if (error instanceof ApiError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     console.error('Error in process-video endpoint:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error occurred' },

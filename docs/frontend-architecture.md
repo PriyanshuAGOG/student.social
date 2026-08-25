@@ -10,7 +10,7 @@ PeerSpark uses a modern App Router stack with a focus on predictable data flow, 
 - Forms & Validation: `react-hook-form` + `@hookform/resolvers` + `zod`
 - Icons & Charts: `lucide-react`, `recharts`
 - State & Data: Thin client-side service calls to Appwrite helpers in [lib/appwrite.ts](../lib/appwrite.ts); local state via hooks in [hooks](../hooks)
-- PWA: `next-pwa` with installer prompts in [components/pwa-install-prompt.tsx](../components/pwa-install-prompt.tsx) and service worker bootstrap in [components/pwa-index.ts](../components/pwa-index.ts)
+- PWA: a project-owned service worker in `public/sw.js`, registered by `components/sw-register.tsx`.
 
 ## Routing Map (App Router)
 - Global layout: [app/layout.tsx](../app/layout.tsx) wires fonts, theme provider, metadata, and shared shells.
@@ -43,7 +43,7 @@ PeerSpark uses a modern App Router stack with a focus on predictable data flow, 
 - Animations rely on `tailwindcss-animate` and motion-safe variants. Avoid ad-hoc keyframes inside components.
 
 ## PWA & Performance
-- PWA: Service worker registration via `next-pwa`; install prompt component in [components/pwa-install-prompt.tsx](../components/pwa-install-prompt.tsx). Keep payloads small and avoid non-serializable objects in caches.
+- PWA: service worker registration is explicit; API responses containing authenticated data are never cached.
 - Images: Prefer `next/image` with static imports where possible; bucket-based avatars/resources are delivered via Appwrite URLs.
 - Bundles: Tree-shake Lucide icons; lazy-load heavy charts and modal content when feasible.
 

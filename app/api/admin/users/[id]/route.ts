@@ -1,5 +1,5 @@
 import { adminJson, redactUser, withAdminApi } from '@/lib/admin-server'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 
 export const GET = withAdminApi('users.read', async ({ request, admin, correlationId }) => {
   const id = request.nextUrl.pathname.split('/').pop() || ''

@@ -1,5 +1,5 @@
 import "dotenv/config"
-import { Client, Databases, IndexType, Permission, Role, Storage } from "node-appwrite"
+import { Client, Databases, IndexType, Permission, Query, Role, Storage } from "node-appwrite"
 
 const endpoint = process.env.APPWRITE_ENDPOINT || process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || "https://fra.cloud.appwrite.io/v1"
 const project = process.env.APPWRITE_PROJECT_ID || process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || ""
@@ -14,6 +14,7 @@ if (!project || !apiKey) {
 const client = new Client().setEndpoint(endpoint).setProject(project).setKey(apiKey)
 const databases = new Databases(client)
 const storage = new Storage(client)
+const failures: string[] = []
 
 type Field =
   | ["string", string, number, boolean, string?, boolean?]
@@ -71,7 +72,7 @@ const collections: CollectionDef[] = [
   {
     id: "pod_task_submissions",
     name: "Pod Task Submissions",
-    fields: [["string", "podId", 80, true], ["string", "taskId", 80, true], ["string", "userId", 80, true], ["enum", "status", ["draft", "submitted", "reviewed", "needs_changes", "accepted", "rejected"], true], ["string", "text", 10000, false], ["string", "link", 1000, false], ["string", "fileIds", 80, false, undefined, true], ["string", "feedback", 5000, false], ["string", "reviewedBy", 80, false], ["datetime", "reviewedAt", false], ["datetime", "submittedAt", false], ["integer", "pointsAwarded", false, 0, 100000, 0], ["boolean", "late", false, false], ["datetime", "createdAt", false], ["datetime", "updatedAt", false]],
+    fields: [["string", "podId", 80, true], ["string", "taskId", 80, true], ["string", "userId", 80, true], ["enum", "status", ["draft", "submitted", "reviewed", "needs_changes", "accepted", "rejected"], true], ["string", "text", 10000, false], ["string", "link", 1000, false], ["string", "fileIds", 80, false, undefined, true], ["string", "feedback", 3000, false], ["string", "reviewedBy", 80, false], ["datetime", "reviewedAt", false], ["datetime", "submittedAt", false], ["integer", "pointsAwarded", false, 0, 100000, 0], ["boolean", "late", false, false], ["datetime", "createdAt", false], ["datetime", "updatedAt", false]],
     indexes: [["podId", ["podId"], "key"], ["taskId", ["taskId"], "key"], ["userId", ["userId"], "key"], ["status", ["status"], "key"], ["submittedAt", ["submittedAt"], "key"], ["reviewedBy", ["reviewedBy"], "key"]],
   },
   {
@@ -89,7 +90,7 @@ const collections: CollectionDef[] = [
   {
     id: "pod_resources",
     name: "Pod Resources",
-    fields: [["string", "podId", 80, true], ["string", "uploaderId", 80, true], ["string", "title", 180, true], ["string", "description", 5000, false], ["enum", "type", ["note", "pdf", "video", "link", "image", "code", "flashcard", "template", "assignment", "recording"], true], ["string", "storageFileId", 80, false], ["string", "url", 1000, false], ["string", "content", 15000, false], ["string", "tags", 80, false, undefined, true], ["enum", "visibility", ["private", "pod", "public"], false, "pod"], ["enum", "attachedToType", ["none", "roadmap_item", "task", "session", "message"], false, "none"], ["string", "attachedToId", 80, false], ["integer", "views", false, 0, 1000000, 0], ["integer", "downloads", false, 0, 1000000, 0], ["integer", "bookmarks", false, 0, 1000000, 0], ["integer", "usefulCount", false, 0, 1000000, 0], ["datetime", "createdAt", false], ["datetime", "updatedAt", false]],
+    fields: [["string", "podId", 80, true], ["string", "uploaderId", 80, true], ["string", "title", 180, true], ["string", "description", 5000, false], ["enum", "type", ["note", "pdf", "video", "link", "image", "code", "flashcard", "template", "assignment", "recording"], true], ["string", "storageFileId", 80, false], ["string", "url", 1000, false], ["string", "content", 7000, false], ["string", "tags", 80, false, undefined, true], ["enum", "visibility", ["private", "pod", "public"], false, "pod"], ["enum", "attachedToType", ["none", "roadmap_item", "task", "session", "message"], false, "none"], ["string", "attachedToId", 80, false], ["integer", "views", false, 0, 1000000, 0], ["integer", "downloads", false, 0, 1000000, 0], ["integer", "bookmarks", false, 0, 1000000, 0], ["integer", "usefulCount", false, 0, 1000000, 0], ["datetime", "createdAt", false], ["datetime", "updatedAt", false]],
     indexes: [["podId", ["podId"], "key"], ["uploaderId", ["uploaderId"], "key"], ["type", ["type"], "key"], ["visibility", ["visibility"], "key"], ["attachedToType", ["attachedToType"], "key"], ["attachedToId", ["attachedToId"], "key"], ["createdAt", ["createdAt"], "key"]],
   },
   {
@@ -148,8 +149,20 @@ async function ignoreConflict<T>(label: string, run: () => Promise<T>) {
       return null
     }
     console.error(`failed  ${label}: ${message}`)
+    failures.push(`${label}: ${message}`)
     return null
   }
+}
+
+async function waitForFields(collection: CollectionDef) {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const response = await databases.listAttributes(databaseId, collection.id, [Query.limit(100)])
+    const byKey = new Map(response.attributes.map((attribute: any) => [attribute.key, attribute]))
+    const ready = collection.fields.every((field) => byKey.get(field[1])?.status === "available")
+    if (ready) return
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  throw new Error(`Timed out waiting for ${collection.id} attributes`)
 }
 
 async function createField(collectionId: string, field: Field) {
@@ -166,14 +179,25 @@ async function main() {
   await ignoreConflict(`database ${databaseId}`, () => databases.create(databaseId, "PeerSpark Main"))
 
   for (const collection of collections) {
-    await ignoreConflict(`collection ${collection.id}`, () => databases.createCollection(databaseId, collection.id, collection.name, [
-      Permission.read(Role.users()),
-      Permission.create(Role.users()),
-    ]))
+    await ignoreConflict(`collection ${collection.id}`, () => databases.createCollection(databaseId, collection.id, collection.name, [], true))
+    const existingAttributes = await databases.listAttributes(databaseId, collection.id, [Query.limit(100)])
+    const attributeKeys = new Set(existingAttributes.attributes.map((attribute: any) => attribute.key))
     for (const field of collection.fields) {
-      await ignoreConflict(`${collection.id}.${field[1]}`, () => createField(collection.id, field))
+      if (attributeKeys.has(field[1])) {
+        console.log(`exists  ${collection.id}.${field[1]}`)
+        continue
+      }
+      const created = await ignoreConflict(`${collection.id}.${field[1]}`, () => createField(collection.id, field))
+      if (created) attributeKeys.add(field[1])
     }
+    await waitForFields(collection)
+    const existingIndexes = await databases.listIndexes(databaseId, collection.id, [Query.limit(100)])
+    const indexKeys = new Set(existingIndexes.indexes.map((index: any) => index.key))
     for (const [name, attrs, type] of collection.indexes) {
+      if (indexKeys.has(name)) {
+        console.log(`exists  ${collection.id}.index.${name}`)
+        continue
+      }
       await ignoreConflict(`${collection.id}.index.${name}`, () => databases.createIndex(databaseId, collection.id, name, type as IndexType, attrs))
     }
   }
@@ -186,9 +210,10 @@ async function main() {
   ] as const
 
   for (const [id, name, maxSize, extensions] of buckets) {
-    await ignoreConflict(`bucket ${id}`, () => storage.createBucket(id, name, [Permission.read(Role.users())], false, true, maxSize, extensions as unknown as string[]))
+    await ignoreConflict(`bucket ${id}`, () => storage.createBucket(id, name, [], true, true, maxSize, extensions as unknown as string[]))
   }
 
+  if (failures.length > 0) throw new Error(`Pod 2.0 setup completed with ${failures.length} failure(s).`)
   console.log("Pod 2.0 setup complete.")
 }
 

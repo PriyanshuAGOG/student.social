@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 const STORAGE_KEY = "student.social.chat.outbox.v1"
 
@@ -123,19 +123,30 @@ export function mergeChatMessages<T extends { $id?: string; id?: string; clientM
 
 export function useChatOutbox(roomId: string) {
   const [outboxMessages, setOutboxMessages] = useState<ChatOutboxMessage[]>([])
+  const persistedRoomRef = useRef("")
 
   useEffect(() => {
+    persistedRoomRef.current = ""
     if (!roomId) {
       setOutboxMessages([])
       return
     }
 
     const store = readStore()
-    setOutboxMessages(Array.isArray(store[roomId]) ? store[roomId] : [])
+    setOutboxMessages(Array.isArray(store[roomId])
+      ? store[roomId].map((message) => ["sending", "failed"].includes(message.deliveryState) ? { ...message, deliveryState: "queued" as const } : message)
+      : [])
   }, [roomId])
 
   useEffect(() => {
     if (!roomId) return
+
+    // A room change renders once with the previous room's state. Skip that
+    // persistence pass so one conversation can never contaminate another.
+    if (persistedRoomRef.current !== roomId) {
+      persistedRoomRef.current = roomId
+      return
+    }
 
     const store = readStore()
     store[roomId] = outboxMessages
@@ -179,6 +190,14 @@ export function useChatOutbox(roomId: string) {
     setOutboxMessages([])
   }
 
+  const retryFailedMessages = () => {
+    setOutboxMessages((prev) => prev.map((entry) =>
+      entry.deliveryState === "failed"
+        ? { ...entry, deliveryState: "queued", errorMessage: null }
+        : entry,
+    ))
+  }
+
   const sendingCount = useMemo(
     () => outboxMessages.filter((entry) => entry.deliveryState === "sending" || entry.deliveryState === "queued").length,
     [outboxMessages],
@@ -191,6 +210,7 @@ export function useChatOutbox(roomId: string) {
     markMessageFailed,
     removeMessage,
     clearOutbox,
+    retryFailedMessages,
     sendingCount,
   }
 }

@@ -1,22 +1,23 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useCallContext } from "@/components/call/CallProvider";
-import { LiveKitCallStage } from "@/components/call/LiveKitCallStage";
-import { callService, chatService, profileService } from "@/lib/appwrite";
+import { chatService, profileService } from "@/lib/appwrite";
 import {
   normalizeMessage,
   type StandardizedMessage,
 } from "@/lib/message-normalizer";
-import { LeftRail } from "@/components/chat/premium/LeftRail";
 import { ConversationList } from "@/components/chat/premium/ConversationList";
 import { ChatHeader } from "@/components/chat/premium/ChatHeader";
 import { MessageGroup } from "@/components/chat/premium/MessageGroup";
 import { ChatComposer } from "@/components/chat/premium/ChatComposer";
 import { TypingIndicator } from "@/components/chat/premium/TypingIndicator";
+import { createOutboxMessage, useChatOutbox } from "@/hooks/use-chat-outbox";
+import { useChatPresence } from "@/hooks/use-chat-presence";
+import { Check, MessageCircleMore, Plus, UserRound, UsersRound, X } from "lucide-react";
 
 interface ChatRoom {
   $id: string;
@@ -29,6 +30,21 @@ interface ChatRoom {
   isOnline?: boolean;
   participants?: string[];
   podId?: string | null;
+}
+
+function roomParticipants(room: any): string[] {
+  for (const value of [room?.members, room?.participants, room?.memberIds]) {
+    if (Array.isArray(value)) return value.filter(Boolean);
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed.filter(Boolean);
+      } catch {
+        // Continue to the next canonical or legacy member field.
+      }
+    }
+  }
+  return [];
 }
 
 interface ConversationItem {
@@ -67,10 +83,8 @@ export default function PremiumChatPage() {
   const [replyingTo, setReplyingTo] = useState<StandardizedMessage | null>(
     null,
   );
-  const [leftRailExpanded, setLeftRailExpanded] = useState(false);
   const [showMobileChatList, setShowMobileChatList] = useState(true);
   const [isListening, setIsListening] = useState(false);
-  const [typingUsers] = useState<string[]>([]);
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
   const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -80,11 +94,6 @@ export default function PremiumChatPage() {
   const [chatDetailsOpen, setChatDetailsOpen] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
-  const [activeCallStage, setActiveCallStage] = useState<{
-    sessionId: string;
-    mediaType: "voice" | "video";
-    title: string;
-  } | null>(null);
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [newChatMode, setNewChatMode] = useState<"direct" | "group">("direct");
   const [groupName, setGroupName] = useState("");
@@ -95,19 +104,177 @@ export default function PremiumChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const activeRoomIdRef = useRef<string>("");
+  const deepLinkedUserRef = useRef<string>("");
+  const deepLinkedPodRef = useRef<string>("");
+  const deepLinkedPodRequestRef = useRef<string>("");
+  const deepLinkRequestRef = useRef<{ targetUserId: string; promise: Promise<[any, any]> } | null>(null);
+  activeRoomIdRef.current = selectedRoom?.$id || "";
+  const outbox = useChatOutbox(selectedRoom?.$id || "");
+  const chatPresence = useChatPresence(selectedRoom?.$id || "", user?.$id);
+  const typingUsers = chatPresence.otherTypingEntries.map((entry) => entry.userId || "Someone");
 
   useEffect(() => {
-    const updateViewport = () => setIsDesktop(window.innerWidth >= 1024);
+    const queued = outbox.outboxMessages.find((message) => message.deliveryState === "queued");
+    if (!queued || !user?.$id || typeof navigator === "undefined" || !navigator.onLine) return;
+    outbox.markMessageSending(queued.clientMessageId);
+    setMessages((prev) => prev.map((message: any) =>
+      message.clientMessageId === queued.clientMessageId || message.$id === queued.clientMessageId
+        ? { ...message, deliveryState: "sending" }
+        : message,
+    ));
+    void chatService.sendMessage(queued.roomId, user.$id, queued.content, queued.type as any, {
+      replyTo: queued.replyTo,
+      fileUrl: queued.fileUrl || undefined,
+      fileName: queued.fileName || undefined,
+      fileSize: queued.fileSize || undefined,
+      clientMessageId: queued.clientMessageId,
+    }).then((response) => {
+      const normalized = normalizeMessage(response, user.$id);
+      if (activeRoomIdRef.current === queued.roomId) {
+        setMessages((prev) => {
+          const withoutOptimistic = prev.filter((message: any) => message.clientMessageId !== queued.clientMessageId && message.$id !== queued.clientMessageId);
+          return withoutOptimistic.some((message) => message.$id === normalized.$id) ? withoutOptimistic : [...withoutOptimistic, normalized];
+        });
+      }
+      outbox.removeMessage(queued.clientMessageId);
+    }).catch((error: any) => {
+      outbox.markMessageFailed(queued.clientMessageId, error?.message);
+      if (activeRoomIdRef.current === queued.roomId) {
+        setMessages((prev) => prev.map((message: any) =>
+          message.clientMessageId === queued.clientMessageId || message.$id === queued.clientMessageId
+            ? { ...message, deliveryState: "failed" }
+            : message,
+        ));
+      }
+    });
+  }, [outbox.outboxMessages, selectedRoom?.$id, user?.$id]);
+
+  useEffect(() => {
+    const retry = () => outbox.retryFailedMessages();
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [selectedRoom?.$id]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)");
+    const updateViewport = () => setIsDesktop(media.matches);
     updateViewport();
-    window.addEventListener("resize", updateViewport);
-    return () => window.removeEventListener("resize", updateViewport);
+    media.addEventListener("change", updateViewport);
+    return () => media.removeEventListener("change", updateViewport);
   }, []);
+
+  useEffect(() => {
+    const focused = !isDesktop && Boolean(selectedRoom) && !showMobileChatList;
+    window.dispatchEvent(new CustomEvent("student:chat-focus", { detail: { focused } }));
+    return () => {
+      window.dispatchEvent(new CustomEvent("student:chat-focus", { detail: { focused: false } }));
+    };
+  }, [isDesktop, selectedRoom?.$id, showMobileChatList]);
 
   // Load rooms on mount
   useEffect(() => {
     if (!user?.$id) return;
     loadRooms();
   }, [user?.$id]);
+
+  // Canonical entry point for profile -> message links. Resolve the user to a
+  // direct room here so every DM uses this page's realtime/outbox/call stack.
+  useEffect(() => {
+    const targetUserId = searchParams.get("user");
+    if (!user?.$id || !targetUserId || targetUserId === user.$id || deepLinkedUserRef.current === targetUserId) return;
+    let cancelled = false;
+
+    const existingRequest = deepLinkRequestRef.current;
+    const request = existingRequest?.targetUserId === targetUserId
+      ? existingRequest
+      : {
+          targetUserId,
+          promise: Promise.all([
+            chatService.getOrCreateDirectRoom(user.$id, targetUserId),
+            profileService.getProfile(targetUserId).catch(() => null),
+          ]) as Promise<[any, any]>,
+        };
+    deepLinkRequestRef.current = request;
+
+    void request.promise.then(([room, targetProfile]) => {
+      if (cancelled) return;
+      deepLinkedUserRef.current = targetUserId;
+      const normalizedRoom: ChatRoom = {
+        $id: room.$id,
+        name: targetProfile?.name || targetProfile?.username || room.name || "Direct message",
+        type: "direct",
+        avatar: targetProfile?.avatar || room.avatar,
+        lastMessage: room.lastMessage || "",
+        lastMessageTime: room.lastMessageTime || "",
+        unreadCount: room.unreadCount || 0,
+        isOnline: room.isOnline || false,
+        participants: roomParticipants(room).length > 0 ? roomParticipants(room) : [user.$id, targetUserId],
+      };
+      setRooms((current) => current.some((entry) => entry.$id === normalizedRoom.$id) ? current : [normalizedRoom, ...current]);
+      setSelectedRoom(normalizedRoom);
+      setShowMobileChatList(false);
+      const next = new URLSearchParams(searchParams.toString());
+      next.set("room", normalizedRoom.$id);
+      router.replace(`/app/chat?${next.toString()}`, { scroll: false });
+    }).catch((error: any) => {
+      if (cancelled) return;
+      if (deepLinkRequestRef.current === request) deepLinkRequestRef.current = null;
+      toast({ title: "Failed to open conversation", description: error?.message || "Please try again.", variant: "destructive" });
+    });
+
+    return () => { cancelled = true; };
+  }, [router, searchParams, toast, user?.$id]);
+
+  // Pod links resolve to the same canonical room shown under the Pods chat filter.
+  useEffect(() => {
+    const podId = searchParams.get("pod");
+    const podName = searchParams.get("name") || "Pod";
+    if (!user?.$id || !podId || deepLinkedPodRef.current === podId || deepLinkedPodRequestRef.current === podId) return;
+    let cancelled = false;
+
+    const existingRoom = rooms.find((room) => room.type === "pod" && room.podId === podId);
+    if (existingRoom) {
+      const namedRoom = { ...existingRoom, name: podName || existingRoom.name || "Pod chat" };
+      deepLinkedPodRef.current = podId;
+      setRooms((current) => current.map((room) => room.$id === namedRoom.$id ? namedRoom : room));
+      setSelectedRoom(namedRoom);
+      setShowMobileChatList(false);
+      const next = new URLSearchParams(searchParams.toString());
+      next.set("room", namedRoom.$id);
+      router.replace(`/app/chat?${next.toString()}`, { scroll: false });
+      return;
+    }
+
+    deepLinkedPodRequestRef.current = podId;
+    void chatService.getOrCreatePodRoom(podId, podName).then((room: any) => {
+      if (deepLinkedPodRequestRef.current === podId) deepLinkedPodRequestRef.current = "";
+      if (cancelled) return;
+      const normalizedRoom: ChatRoom = {
+        $id: room.$id,
+        name: podName,
+        type: "pod",
+        avatar: room.avatar,
+        lastMessage: room.lastMessage || "",
+        lastMessageTime: room.lastMessageTime || "",
+        unreadCount: room.unreadCount || 0,
+        participants: roomParticipants(room),
+        podId,
+      };
+      deepLinkedPodRef.current = podId;
+      setRooms((current) => current.some((entry) => entry.$id === normalizedRoom.$id) ? current.map((entry) => entry.$id === normalizedRoom.$id ? normalizedRoom : entry) : [normalizedRoom, ...current]);
+      setSelectedRoom(normalizedRoom);
+      setShowMobileChatList(false);
+      const next = new URLSearchParams(searchParams.toString());
+      next.set("room", normalizedRoom.$id);
+      router.replace(`/app/chat?${next.toString()}`, { scroll: false });
+    }).catch((error: any) => {
+      deepLinkedPodRequestRef.current = "";
+      if (!cancelled) toast({ title: "Could not open pod chat", description: error?.message || "Please try again.", variant: "destructive" });
+    });
+
+    return () => { cancelled = true; };
+  }, [rooms, router, searchParams, toast, user?.$id]);
 
   useEffect(() => {
     if (!isNewChatOpen || !user?.$id) return;
@@ -139,13 +306,14 @@ export default function PremiumChatPage() {
   useEffect(() => {
     const roomId = searchParams.get("room");
     if (roomId && rooms.length > 0) {
+      if (selectedRoom?.$id === roomId) return;
       const room = rooms.find((r) => r.$id === roomId);
       if (room) {
         setSelectedRoom(room);
         setShowMobileChatList(false);
       }
     }
-  }, [searchParams, rooms]);
+  }, [searchParams, rooms, selectedRoom?.$id]);
 
   // Load messages when room changes
   useEffect(() => {
@@ -160,10 +328,25 @@ export default function PremiumChatPage() {
           const exists = prev.some((m) => m.$id === normalized.$id);
           return exists ? prev : [...prev, normalized];
         });
+        if (user?.$id && normalized.authorId !== user.$id) {
+          void chatService.markRoomMessages(selectedRoom.$id, [normalized.$id], "read");
+        }
       },
     );
 
-    return () => unsubscribe?.();
+    const unsubscribeReceipts = chatService.subscribeToReceipts(selectedRoom.$id, (receipt: any) => {
+      if (!receipt?.readAt || !receipt?.messageId || !receipt?.userId) return;
+      setMessages((prev) => prev.map((message) =>
+        message.$id === receipt.messageId
+          ? { ...message, readBy: Array.from(new Set([...(message.readBy || []), receipt.userId])) }
+          : message,
+      ));
+    });
+
+    return () => {
+      unsubscribe?.();
+      unsubscribeReceipts?.();
+    };
   }, [selectedRoom?.$id, user?.$id]);
 
   // Auto-scroll to bottom
@@ -175,21 +358,36 @@ export default function PremiumChatPage() {
     if (!user?.$id) return;
     setIsLoadingRooms(true);
     try {
-      const res = await chatService.getUserChatRooms(user.$id);
+      const [res, podsResponse] = await Promise.all([
+        chatService.getUserChatRooms(user.$id),
+        fetch("/api/pods2").then((response) => response.ok ? response.json() : {}).catch(() => ({})),
+      ]);
+      const podsPayload = podsResponse as any;
+      const podDocuments = podsPayload.data?.pods || podsPayload.pods || [];
+      const podNames = new Map(podDocuments.map((pod: any) => [String(pod.$id || pod.id), String(pod.name || "Pod")]));
       // Combine direct and pod rooms
       const allRooms = [...(res.directRooms || []), ...(res.podRooms || [])];
-      const normalizedRooms = allRooms.map((room: any) => ({
-        $id: room.$id,
-        name: room.name || "Unknown",
-        type: room.type || "direct",
-        avatar: room.avatar,
-        lastMessage: room.lastMessage || "",
-        lastMessageTime: room.lastMessageTime || "",
-        unreadCount: room.unreadCount || 0,
-        isOnline: room.isOnline || false,
-        participants: room.participants,
-        podId: room.podId,
-      }));
+      const normalizedRooms = allRooms.map((room: any) => {
+        const type = room.type === "dm" ? "direct" : room.type || "direct";
+        const directPeer = room.otherUser || room.peer || room.recipient;
+        const roomName = String(room.name || "");
+        const genericDirectName = !roomName || /^(direct message|direct messages|dm|unknown)$/i.test(roomName.trim());
+        const resolvedPodName = type === "pod" ? podNames.get(String(room.podId || "")) : "";
+        return {
+          $id: room.$id,
+          name: type === "direct" && (directPeer?.name || directPeer?.username)
+            ? directPeer.name || directPeer.username
+            : genericDirectName && type === "direct" ? "Student" : resolvedPodName || roomName || "Study chat",
+          type,
+          avatar: type === "direct" ? directPeer?.avatar || room.avatar : room.avatar,
+          lastMessage: room.lastMessage || "",
+          lastMessageTime: room.lastMessageTime || "",
+          unreadCount: room.unreadCount || 0,
+          isOnline: type === "direct" ? directPeer?.isOnline || room.isOnline || false : room.isOnline || false,
+          participants: roomParticipants(room),
+          podId: room.podId,
+        } as ChatRoom;
+      });
       setRooms(normalizedRooms);
     } catch (error: any) {
       toast({
@@ -214,6 +412,10 @@ export default function PremiumChatPage() {
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
         );
       setMessages(normalized);
+      const unreadIds = normalized
+        .filter((message: any) => message.authorId !== user?.$id && !(message.readBy || []).includes(user?.$id))
+        .map((message: any) => message.$id);
+      if (unreadIds.length > 0) void chatService.markRoomMessages(selectedRoom.$id, unreadIds, "read");
     } catch (error: any) {
       toast({
         title: "Failed to load messages",
@@ -227,30 +429,19 @@ export default function PremiumChatPage() {
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !selectedRoom || !user?.$id) return;
-
-    setIsLoading(true);
-    try {
-      const response = await chatService.sendMessage(
-        selectedRoom.$id,
-        user.$id,
-        inputValue.trim(),
-        "text",
-        { replyTo: replyingTo?.$id },
-      );
-
-      const normalized = normalizeMessage(response, user.$id);
-      setMessages((prev) => [...prev, normalized]);
-      setInputValue("");
-      setReplyingTo(null);
-    } catch (error: any) {
-      toast({
-        title: "Failed to send message",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    const optimistic = createOutboxMessage({
+      roomId: selectedRoom.$id,
+      authorId: user.$id,
+      authorName: user.name || "You",
+      content: inputValue.trim(),
+      replyTo: replyingTo?.$id,
+      replyToMessage: replyingTo,
+      deliveryState: navigator.onLine ? "queued" : "queued",
+    });
+    outbox.queueMessage(optimistic);
+    setMessages((prev) => [...prev, normalizeMessage(optimistic, user.$id)]);
+    setInputValue("");
+    setReplyingTo(null);
   };
 
   const handleDeleteMessage = async (messageId: string) => {
@@ -436,33 +627,19 @@ export default function PremiumChatPage() {
         ? getDirectCallReceiverId(selectedRoom)
         : null;
     try {
-      if (receiverId) {
-        await callContext.startCall(
-          receiverId,
-          selectedRoom.$id,
-          mediaType === "voice" ? "audio" : "video",
-        );
-      } else {
-        const session = await callService.startRoomCall(
-          selectedRoom.$id,
-          mediaType,
-        );
-        const sessionId = session?.$id || session?.sessionId || session?.id;
-        if (sessionId) {
-          setActiveCallStage({
-            sessionId,
-            mediaType,
-            title: selectedRoom.name || "PeerSpark call",
-          });
-        } else if (session?.joinUrl) {
-          window.open(session.joinUrl, "_blank", "noopener,noreferrer");
-        }
-        toast({
-          title: `${mediaType === "video" ? "Video" : "Voice"} room ready`,
-          description:
-            session?.participantMessage || "Participants were invited to join.",
-        });
-      }
+      // All direct, group, pod, and classroom calls are owned by CallProvider.
+      // Keeping one stage prevents duplicate LiveKit clients joining a room with
+      // the same identity when the durable active-call poll catches up.
+      await callContext.startCall(
+        receiverId || "room",
+        selectedRoom.$id,
+        mediaType === "voice" ? "audio" : "video",
+        { title: selectedRoom.name || (selectedRoom.type === "pod" ? "Pod study call" : "Student.social call") },
+      );
+      toast({
+        title: `${mediaType === "video" ? "Video" : "Voice"} room ready`,
+        description: "Participants were invited to join.",
+      });
     } catch (error: any) {
       toast({
         title: `Failed to start ${mediaType} call`,
@@ -541,9 +718,11 @@ export default function PremiumChatPage() {
 
       const normalizedRoom: ChatRoom = {
         $id: room.$id,
-        name: room.name || (newChatMode === "direct" ? "Direct message" : groupName.trim() || "New group"),
+        name: newChatMode === "direct"
+          ? availableProfiles.find((profile) => profile.$id === selectedProfileIds[0])?.name || availableProfiles.find((profile) => profile.$id === selectedProfileIds[0])?.username || room.otherUser?.name || "Student"
+          : room.name || groupName.trim() || "New group",
         type: room.type || newChatMode,
-        avatar: room.avatar,
+        avatar: newChatMode === "direct" ? room.otherUser?.avatar || room.avatar : room.avatar,
         lastMessage: room.lastMessage || "",
         lastMessageTime: room.lastMessageTime || "",
         unreadCount: room.unreadCount || 0,
@@ -573,53 +752,6 @@ export default function PremiumChatPage() {
     }
   };
 
-  const leftRailItems = [
-    {
-      id: "all",
-      label: "All chats",
-      icon: (
-        <svg fill="currentColor" viewBox="0 0 24 24">
-          <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
-        </svg>
-      ),
-      isActive: conversationFilter === "all",
-      onClick: () => setConversationFilter("all"),
-    },
-    {
-      id: "direct",
-      label: "DMs",
-      icon: (
-        <svg fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-        </svg>
-      ),
-      isActive: conversationFilter === "direct",
-      onClick: () => setConversationFilter("direct"),
-    },
-    {
-      id: "groups",
-      label: "Groups",
-      icon: (
-        <svg fill="currentColor" viewBox="0 0 24 24">
-          <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
-        </svg>
-      ),
-      isActive: conversationFilter === "group",
-      onClick: () => setConversationFilter("group"),
-    },
-    {
-      id: "pods",
-      label: "Pods",
-      icon: (
-        <svg fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 3l9 4.5-9 4.5-9-4.5L12 3zm-7 8.18l7 3.5 7-3.5V16l-7 3.5L5 16v-4.82z" />
-        </svg>
-      ),
-      isActive: conversationFilter === "pod",
-      onClick: () => setConversationFilter("pod"),
-    },
-  ];
-
   const filteredRooms =
     conversationFilter === "all"
       ? rooms
@@ -638,17 +770,7 @@ export default function PremiumChatPage() {
   }));
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-background via-muted/20 to-background text-foreground">
-      {/* Left Rail - Navigation */}
-      <LeftRail
-        isExpanded={leftRailExpanded}
-        onToggle={() => setLeftRailExpanded(!leftRailExpanded)}
-        items={leftRailItems}
-        userAvatar={user?.email?.[0]?.toUpperCase() || "U"}
-        onSettings={() => router.push("/app/settings")}
-        onProfile={() => router.push("/app/profile")}
-      />
-
+    <div className="peer-chat-shell flex overflow-hidden bg-background text-foreground">
       {/* Conversation List - Desktop visible, Mobile hidden when chat selected */}
       {(showMobileChatList || isDesktop) && (
         <ConversationList
@@ -664,12 +786,14 @@ export default function PremiumChatPage() {
           isLoading={isLoadingRooms}
           showSearchBox={true}
           onNewChat={openNewChat}
+          activeFilter={conversationFilter}
+          onFilterChange={setConversationFilter}
         />
       )}
 
       {/* Chat Area */}
-      {selectedRoom && (
-        <div className="flex-1 flex flex-col overflow-hidden bg-background/80">
+      {selectedRoom && (!showMobileChatList || isDesktop) && (
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
           {/* Header */}
           <ChatHeader
             title={selectedRoom.name || "Unknown"}
@@ -686,7 +810,7 @@ export default function PremiumChatPage() {
           />
 
           {isMessageSearchOpen && (
-            <div className="border-b border-border bg-card/90 px-6 py-3">
+            <div className="border-b border-border/45 bg-card/92 px-3 py-3 backdrop-blur-xl md:px-5">
               <div className="relative">
                 <input
                   id="chat-message-search"
@@ -702,7 +826,7 @@ export default function PremiumChatPage() {
                   }}
                   placeholder="Search messages in this conversation..."
                   aria-label="Search messages in this conversation"
-                  className="w-full rounded-xl border border-border bg-background px-3 py-2 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="h-10 w-full rounded-full border border-border/55 bg-background px-4 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/35 focus:outline-none focus:ring-2 focus:ring-primary/10"
                 />
                 {messageSearchQuery && (
                   <button
@@ -725,7 +849,7 @@ export default function PremiumChatPage() {
           )}
 
           {chatDetailsOpen && selectedRoom && (
-            <div className="border-b border-border bg-card/90 px-6 py-4 text-sm text-foreground">
+            <div className="border-b border-border/45 bg-card/92 px-4 py-4 text-sm text-foreground backdrop-blur-xl md:px-6">
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="rounded-xl border border-border bg-background p-3">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -745,14 +869,14 @@ export default function PremiumChatPage() {
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     Calls
                   </p>
-                  <p className="font-medium">LiveKit voice/video enabled</p>
+                  <p className="font-medium">Encrypted voice & video</p>
                 </div>
               </div>
             </div>
           )}
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.08),transparent_30%),radial-gradient(circle_at_bottom_right,hsl(var(--muted)),transparent_35%)] px-4 py-6 md:px-6 space-y-2">
+          <div className="peer-chat-canvas flex-1 space-y-2 overflow-y-auto px-2.5 py-4 sm:px-4 md:px-7 md:py-5">
             {isLoading && messages.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-muted-foreground text-sm">
@@ -810,7 +934,10 @@ export default function PremiumChatPage() {
           {/* Composer */}
           <ChatComposer
             value={inputValue}
-            onChange={setInputValue}
+            onChange={(value) => {
+              setInputValue(value);
+              chatPresence.setTyping(Boolean(value.trim()));
+            }}
             onSend={handleSendMessage}
             onAttachFile={sendAttachmentMessage}
             onEmoji={(emoji) => setInputValue((prev) => `${prev}${emoji}`)}
@@ -824,58 +951,38 @@ export default function PremiumChatPage() {
         </div>
       )}
 
-      {activeCallStage && (
-        <LiveKitCallStage
-          sessionId={activeCallStage.sessionId}
-          mediaType={activeCallStage.mediaType}
-          roomTitle={activeCallStage.title}
-          onClose={() => {
-            setActiveCallStage(null);
-            const params = new URLSearchParams(searchParams.toString());
-            params.delete("call");
-            params.delete("callType");
-            const nextQuery = params.toString();
-            router.replace(nextQuery ? `/app/chat?${nextQuery}` : "/app/chat", { scroll: false });
-          }}
-        />
-      )}
-
       {isNewChatOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 backdrop-blur-sm sm:items-center sm:p-4"
           role="dialog"
           aria-modal="true"
           aria-label="Start a new chat"
         >
-          <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
+          <div className="w-full max-w-lg rounded-t-[28px] border border-border/60 bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[28px] sm:p-6">
+            <div className="mb-5 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-foreground">
-                  Start a new chat
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  Create a DM or group chat outside pods.
-                </p>
+                <h2 className="text-xl font-semibold tracking-[-0.025em] text-foreground">New conversation</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Message a peer or bring a study group together.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsNewChatOpen(false)}
-                className="rounded-full p-2 hover:bg-muted"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
                 aria-label="Close new chat dialog"
               >
-                ×
+                <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="mb-4 flex gap-2">
+            <div className="mb-4 grid grid-cols-2 gap-1 rounded-full bg-muted/65 p-1">
               <button
                 type="button"
                 onClick={() => {
                   setNewChatMode("direct");
                   setSelectedProfileIds([]);
                 }}
-                className={`rounded-full border px-3 py-1 text-sm ${newChatMode === "direct" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
+                className={newChatMode === "direct" ? "flex items-center justify-center gap-2 rounded-full bg-background px-3 py-2 text-sm font-medium text-foreground shadow-sm" : "flex items-center justify-center gap-2 rounded-full px-3 py-2 text-sm text-muted-foreground hover:text-foreground"}
               >
-                DM
+                <UserRound className="h-4 w-4" /> Direct
               </button>
               <button
                 type="button"
@@ -883,57 +990,52 @@ export default function PremiumChatPage() {
                   setNewChatMode("group");
                   setSelectedProfileIds([]);
                 }}
-                className={`rounded-full border px-3 py-1 text-sm ${newChatMode === "group" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
+                className={newChatMode === "group" ? "flex items-center justify-center gap-2 rounded-full bg-background px-3 py-2 text-sm font-medium text-foreground shadow-sm" : "flex items-center justify-center gap-2 rounded-full px-3 py-2 text-sm text-muted-foreground hover:text-foreground"}
               >
-                Group
+                <UsersRound className="h-4 w-4" /> Group
               </button>
             </div>
             {newChatMode === "group" && (
               <input
                 value={groupName}
                 onChange={(event) => setGroupName(event.target.value)}
-                placeholder="Group name"
-                className="mb-4 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                placeholder="Study group name"
+                className="mb-4 h-11 w-full rounded-full border border-border/60 bg-background px-4 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
               />
             )}
-            <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl border border-border bg-background p-2">
+            <div className="max-h-[42dvh] space-y-1 overflow-y-auto rounded-2xl border border-border/55 bg-background p-1.5 sm:max-h-72">
               {availableProfiles.length === 0 ? (
-                <p className="p-4 text-center text-sm text-muted-foreground">
-                  No people found.
-                </p>
+                <div className="grid place-items-center px-6 py-10 text-center"><MessageCircleMore className="h-6 w-6 text-muted-foreground" /><p className="mt-3 text-sm font-medium text-foreground">No peers found</p><p className="mt-1 text-xs text-muted-foreground">Invite someone to Student.social to start learning together.</p></div>
               ) : (
                 availableProfiles.map((profile) => {
                   const selected = selectedProfileIds.includes(profile.$id);
+                  const profileName = profile.name || profile.username || "Student.social learner";
                   return (
                     <button
                       key={profile.$id}
                       type="button"
                       onClick={() => toggleSelectedProfile(profile.$id)}
-                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition ${selected ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
+                      className={selected ? "flex w-full items-center justify-between rounded-xl bg-[#76556d]/10 px-3 py-2.5 text-left text-sm text-[#76556d] transition dark:text-[#d9b8d0]" : "flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-muted"}
                       aria-pressed={selected}
                     >
-                      <span>
-                        <span className="block font-medium">
-                          {profile.name ||
-                            profile.username ||
-                            profile.email ||
-                            "PeerSpark user"}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {profile.email || profile.username || profile.$id}
+                      <span className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#76556d]/15 text-xs font-semibold text-[#76556d] dark:text-[#d9b8d0]">{profileName.charAt(0).toUpperCase()}</span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{profileName}</span>
+                          <span className="block truncate text-xs text-muted-foreground">{profile.username || "Student.social learner"}</span>
                         </span>
                       </span>
-                      <span>{selected ? "✓" : "+"}</span>
+                      <span className={selected ? "flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground" : "flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground"}>{selected ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}</span>
                     </button>
                   );
                 })
               )}
             </div>
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setIsNewChatOpen(false)}
-                className="rounded-xl border border-border bg-background px-4 py-2 text-sm hover:bg-muted"
+                className="h-11 rounded-full px-5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 Cancel
               </button>
@@ -941,7 +1043,7 @@ export default function PremiumChatPage() {
                 type="button"
                 onClick={createNewChat}
                 disabled={isCreatingChat || selectedProfileIds.length === 0}
-                className="rounded-xl bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                className="h-11 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
                 {isCreatingChat ? "Creating…" : "Create chat"}
               </button>
@@ -952,21 +1054,10 @@ export default function PremiumChatPage() {
 
       {/* Empty state for desktop without room selected */}
       {!selectedRoom && isDesktop && (
-        <div className="flex-1 flex flex-col items-center justify-center bg-background text-muted-foreground">
-          <svg
-            className="w-20 h-20 mb-4 opacity-30"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-            />
-          </svg>
-          <p className="text-lg font-medium">Select a conversation to start</p>
+        <div className="peer-chat-canvas flex flex-1 flex-col items-center justify-center px-8 text-center text-muted-foreground">
+          <span className="flex h-16 w-16 items-center justify-center rounded-full border border-border/45 bg-card/80 text-[#76556d] shadow-sm backdrop-blur dark:text-[#d9b8d0]"><MessageCircleMore className="h-7 w-7" /></span>
+          <p className="mt-5 text-xl font-semibold tracking-[-0.025em] text-foreground">Choose a conversation</p>
+          <p className="mt-2 max-w-sm text-sm leading-6">Message a peer, plan with your group, or jump into a Pod study session.</p>
         </div>
       )}
     </div>

@@ -28,7 +28,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, ChevronLeft, ChevronRight, Clock, MapPin, Users, Video, Bell, MoreVertical, Edit, Trash2, Copy, ExternalLink, ArrowLeft, CalendarIcon } from 'lucide-react'
 import { toast } from "@/hooks/use-toast"
-import { jitsiService, calendarService } from "@/lib/appwrite"
+import { calendarService } from "@/lib/appwrite"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { PEERSPARK_SETTINGS_PREF_KEY, normalizePeerSparkSettings, resolvePeerSparkTimeZone } from "@/lib/settings"
@@ -51,11 +51,11 @@ interface CalendarEvent {
 }
 
 const eventTypes = [
-  { value: "study", label: "Study Session", color: "bg-blue-500" },
-  { value: "meeting", label: "Meeting", color: "bg-green-500" },
-  { value: "deadline", label: "Deadline", color: "bg-red-500" },
-  { value: "exam", label: "Exam", color: "bg-purple-500" },
-  { value: "break", label: "Break", color: "bg-yellow-500" },
+  { value: "study", label: "Study Session", color: "student-event-terra" },
+  { value: "meeting", label: "Meeting", color: "student-event-olive" },
+  { value: "deadline", label: "Deadline", color: "student-event-rust" },
+  { value: "exam", label: "Exam", color: "student-event-plum" },
+  { value: "break", label: "Break", color: "student-event-sand" },
 ]
 
 const mockEvents: CalendarEvent[] = [
@@ -72,7 +72,7 @@ const mockEvents: CalendarEvent[] = [
     attendees: ["user1", "user2", "user3"],
     isRecurring: false,
     reminders: [15, 60],
-    color: "bg-blue-500",
+    color: "student-event-terra",
   },
   {
     id: "2",
@@ -87,7 +87,7 @@ const mockEvents: CalendarEvent[] = [
     attendees: ["user1", "user4", "user5"],
     isRecurring: false,
     reminders: [15],
-    color: "bg-green-500",
+    color: "student-event-olive",
   },
   {
     id: "3",
@@ -99,7 +99,7 @@ const mockEvents: CalendarEvent[] = [
     attendees: [],
     isRecurring: false,
     reminders: [60, 1440], // 1 hour and 1 day
-    color: "bg-red-500",
+    color: "student-event-rust",
   },
 ]
 
@@ -109,9 +109,18 @@ function CalendarContent() {
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [viewMode, setViewMode] = useState<"month" | "week" | "day">("month")
   const [showMobileSidebar, setShowMobileSidebar] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)")
+    const syncViewport = () => setIsMobileViewport(media.matches)
+    syncViewport()
+    media.addEventListener("change", syncViewport)
+    return () => media.removeEventListener("change", syncViewport)
+  }, [])
   const [isMobile, setIsMobile] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
@@ -152,7 +161,7 @@ function CalendarContent() {
           attendees: ev.attendees || [],
           isRecurring: ev.isRecurring || false,
           reminders: ev.reminders || [15],
-          color: eventTypes.find((t) => t.value === ev.type)?.color || "bg-blue-500",
+          color: eventTypes.find((t) => t.value === ev.type)?.color || "student-event-terra",
         }))
         setEvents(loaded)
       } catch (error) {
@@ -300,17 +309,20 @@ function CalendarContent() {
         color: eventTypes.find((t) => t.value === formData.type)?.color || "bg-blue-500",
       }
 
-      // If it's a meeting, create Jitsi room
+      // Scheduled pod meetings enter the pod chat; LiveKit starts from its call control.
       if (formData.type === "meeting" && formData.podId) {
-        const meeting = await jitsiService.createPodMeeting(formData.podId, user.$id, formData.title, {
-          startTime: startDateTime.toISOString(),
-          endTime: endDateTime.toISOString(),
-          createCalendarEvent: false,
+        const roomResponse = await fetch(`/api/pods/${encodeURIComponent(formData.podId)}/chat-room`, {
+          credentials: "include",
         })
+        const roomPayload = await roomResponse.json().catch(() => null)
+        if (!roomResponse.ok || !roomPayload?.data?.$id) {
+          throw new Error(roomPayload?.error || "Unable to prepare the pod meeting room")
+        }
+        const meetingUrl = `/app/chat?room=${encodeURIComponent(roomPayload.data.$id)}`
         await calendarService.updateEvent(created.$id, {
-          meetingUrl: meeting.url,
+          meetingUrl,
         })
-        newEvent.meetingUrl = meeting.url
+        newEvent.meetingUrl = meetingUrl
       }
 
       setEvents((prev) => [...prev, newEvent])
@@ -465,31 +477,31 @@ function CalendarContent() {
     .slice(0, 5)
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="student-calendar-page flex h-screen flex-col bg-background">
       {/* Mobile Header */}
-      <div className="md:hidden sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border p-4">
+      <div className="student-calendar-mobile-head md:hidden sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border p-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => router.back()}>
+            <Button variant="ghost" size="sm" onClick={() => router.back()} aria-label="Go back" title="Go back">
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm" onClick={() => navigateMonth("prev")}>
+            <Button variant="outline" size="sm" onClick={() => navigateMonth("prev")} aria-label="Previous month" title="Previous month">
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <h2 className="text-sm font-semibold min-w-[120px] text-center">
               {currentDate.toLocaleDateString([], { month: "short", year: "numeric" })}
             </h2>
-            <Button variant="outline" size="sm" onClick={() => navigateMonth("next")}>
+            <Button variant="outline" size="sm" onClick={() => navigateMonth("next")} aria-label="Next month" title="Next month">
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setShowMobileSidebar(true)}>
+            <Button variant="ghost" size="sm" onClick={() => setShowMobileSidebar(true)} aria-label="Open selected day details" title="Day details">
               <CalendarIcon className="h-4 w-4" />
             </Button>
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <Dialog open={isCreateDialogOpen && isMobileViewport} onOpenChange={setIsCreateDialogOpen}>
               <DialogTrigger asChild>
-                <Button size="sm">
+                <Button size="sm" aria-label="Create a new event" title="Create event">
                   <Plus className="h-4 w-4" />
                 </Button>
               </DialogTrigger>
@@ -606,18 +618,18 @@ function CalendarContent() {
       </div>
 
       {/* Desktop Header */}
-      <div className="hidden md:block border-b bg-card p-4">
+      <div className="student-calendar-desktop-head hidden border-b bg-card p-4 md:block">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold">Calendar</h1>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => navigateMonth("prev")}>
+              <Button variant="outline" size="sm" onClick={() => navigateMonth("prev")} aria-label="Previous month" title="Previous month">
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <h2 className="text-lg font-semibold min-w-48 text-center">
                 {currentDate.toLocaleDateString([], { month: "long", year: "numeric" })}
               </h2>
-              <Button variant="outline" size="sm" onClick={() => navigateMonth("next")}>
+              <Button variant="outline" size="sm" onClick={() => navigateMonth("next")} aria-label="Next month" title="Next month">
                 <ChevronRight className="h-4 w-4" />
               </Button>
               <Button variant="outline" size="sm" onClick={() => { const today = new Date(); setCurrentDate(today); setSelectedDate(today) }}>
@@ -633,7 +645,7 @@ function CalendarContent() {
                 <TabsTrigger value="day">Day</TabsTrigger>
               </TabsList>
             </Tabs>
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <Dialog open={isCreateDialogOpen && !isMobileViewport} onOpenChange={setIsCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button onClick={resetForm}>
                   <Plus className="h-4 w-4 mr-2" />
@@ -752,13 +764,13 @@ function CalendarContent() {
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="student-calendar-body flex flex-1 overflow-hidden">
         {/* Main Calendar */}
         <div className="flex-1 flex flex-col">
           {/* Calendar Grid */}
-          <div className="flex-1 p-2 md:p-4 overflow-auto">
+          <div className="student-calendar-canvas flex-1 overflow-auto p-2 md:p-4">
             {viewMode === "month" && (
-            <div className="grid grid-cols-7 gap-0.5 md:gap-1 min-h-full">
+            <div className="student-month-grid grid min-h-full grid-cols-7 gap-0.5 md:gap-1">
               {/* Day headers */}
               {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
                 <div key={index} className="p-1 md:p-2 text-center font-medium text-muted-foreground border-b text-xs md:text-sm">
@@ -887,10 +899,14 @@ function CalendarContent() {
               </div>
             )}
           </div>
+          <section className="student-mobile-agenda md:hidden" aria-label="Upcoming sessions">
+            <div><span>Coming up</span><h2>Your next sessions</h2></div>
+            {(upcomingEvents.length ? upcomingEvents : todayEvents).length ? (upcomingEvents.length ? upcomingEvents : todayEvents).slice(0, 4).map((event) => <button type="button" key={event.id} onClick={() => { setSelectedEvent(event); setShowMobileSidebar(true) }}><i className={event.color} /><div><strong>{event.title}</strong><small>{event.startTime.toLocaleDateString([], { month: "short", day: "numeric" })} · {formatTime(event.startTime)}{event.podName ? ` · ${event.podName}` : ""}</small></div><ChevronRight /></button>) : <div className="student-calendar-empty"><CalendarIcon /><strong>Your schedule is clear</strong><p>Create a study block or schedule a pod session when you are ready.</p><Button onClick={() => { resetForm(); setIsCreateDialogOpen(true) }} className="rounded-full">Add an event</Button></div>}
+          </section>
         </div>
 
         {/* Desktop Sidebar */}
-        <div className="hidden md:flex w-80 border-l bg-card flex-col">
+        <div className="student-calendar-rail hidden w-80 flex-col border-l bg-card md:flex">
           {/* Today's Events */}
           <div className="p-4 border-b">
             <h3 className="font-semibold mb-3">Today&apos;s Events</h3>
@@ -958,7 +974,7 @@ function CalendarContent() {
                 <h3 className="font-semibold">Event Details</h3>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="sm" aria-label="Open event actions" title="Event actions">
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -1076,7 +1092,7 @@ function CalendarContent() {
                 <h3 className="font-semibold">
                   {selectedEvent ? "Event Details" : formatDate(selectedDate)}
                 </h3>
-                <Button variant="ghost" size="sm" onClick={() => setShowMobileSidebar(false)}>
+                <Button variant="ghost" size="sm" onClick={() => setShowMobileSidebar(false)} aria-label="Close day details" title="Close">
                   ×
                 </Button>
               </div>

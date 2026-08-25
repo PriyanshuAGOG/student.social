@@ -8,25 +8,26 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Clock, CheckCircle, XCircle, FileText, User } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
 
 export default function GradingQueue() {
+  const { user, loading: authLoading } = useAuth();
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
   const [gradingData, setGradingData] = useState({ score: 0, feedback: '' });
 
   useEffect(() => {
-    fetchSubmissions();
-  }, []);
+    if (user) void fetchSubmissions();
+  }, [user]);
 
   const fetchSubmissions = async () => {
     try {
       setLoading(true);
-      const instructorId = 'current-instructor-id'; // Replace with actual from context
-      const response = await fetch(`/api/instructor/grading?instructorId=${instructorId}`);
+      const response = await fetch('/api/instructor/grading-queue', { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
-        setSubmissions(data.data || []);
+        setSubmissions(data.queue || []);
       }
     } catch (error) {
       console.error('Error fetching submissions:', error);
@@ -39,14 +40,13 @@ export default function GradingQueue() {
     if (!selectedSubmission) return;
 
     try {
-      const response = await fetch('/api/instructor/grade-submission', {
+      const response = await fetch('/api/instructor/grading-queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          submissionId: selectedSubmission.id,
-          score: gradingData.score,
+          submissionId: selectedSubmission.submissionId,
+          grade: gradingData.score,
           feedback: gradingData.feedback,
-          passed: gradingData.score >= 70,
         }),
       });
 
@@ -64,7 +64,7 @@ export default function GradingQueue() {
   const pendingSubmissions = submissions.filter((s) => s.status === 'submitted');
   const gradedSubmissions = submissions.filter((s) => s.status === 'graded');
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="animate-pulse space-y-4">

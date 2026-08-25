@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import { AccessToken, TokenVerifier } from 'livekit-server-sdk'
 
 export interface LiveKitToken {
@@ -14,6 +15,31 @@ export interface CallTokenRequest {
   metadata?: Record<string, string>
 }
 
+export interface CallEncryptionMaterial {
+  algorithm: 'livekit-e2ee-v1'
+  key: string
+  keyVersion: number
+}
+
+/**
+ * Derives a room-scoped key with domain separation. This prevents the LiveKit
+ * SFU from reading media/data, but is not server-blind E2EE because this server
+ * performs the derivation. A Signal/MLS device-key layer can replace this
+ * provider without changing the media room contract.
+ */
+export function deriveCallEncryptionMaterial(roomName: string): CallEncryptionMaterial {
+  const masterKey = process.env.CALL_E2EE_MASTER_KEY || process.env.LIVEKIT_API_SECRET
+  if (!masterKey || masterKey.length < 32) {
+    throw new Error('Call E2EE configuration missing: CALL_E2EE_MASTER_KEY (or a 32+ character LIVEKIT_API_SECRET)')
+  }
+
+  return {
+    algorithm: 'livekit-e2ee-v1',
+    key: crypto.createHmac('sha256', masterKey).update(`student-social:call:e2ee:v1:${roomName}`).digest('base64url'),
+    keyVersion: 1,
+  }
+}
+
 /**
  * Server-side LiveKit token generation
  * This should ONLY be called from API routes, never from frontend
@@ -28,9 +54,11 @@ export async function generateLiveKitToken(request: CallTokenRequest): Promise<L
   }
 
   try {
-    const at = new AccessToken(apiKey, apiSecret)
-    at.identity = request.identity
-    at.name = request.displayName || request.identity
+    const at = new AccessToken(apiKey, apiSecret, {
+      identity: request.identity,
+      name: request.displayName || request.identity,
+      ttl: '10m',
+    })
     at.addGrant({
       room: request.roomName,
       roomJoin: true,

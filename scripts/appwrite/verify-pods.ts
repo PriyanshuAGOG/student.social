@@ -1,5 +1,5 @@
 import "dotenv/config"
-import { Client, Databases, Storage } from "node-appwrite"
+import { Client, Databases, Query, Storage } from "node-appwrite"
 
 const endpoint = process.env.APPWRITE_ENDPOINT || process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || "https://fra.cloud.appwrite.io/v1"
 const project = process.env.APPWRITE_PROJECT_ID || process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || ""
@@ -28,8 +28,16 @@ async function main() {
   if (!project || !apiKey) throw new Error("Missing Appwrite project/api key.")
   let ok = true
   ok = await check(`database ${databaseId}`, () => databases.get(databaseId)) && ok
-  for (const id of collections) ok = await check(`collection ${id}`, () => databases.getCollection(databaseId, id)) && ok
-  for (const id of buckets) ok = await check(`bucket ${id}`, () => storage.getBucket(id)) && ok
+  for (const id of collections) ok = await check(`collection ${id}`, async () => {
+    const collection = await databases.getCollection(databaseId, id)
+    if (!collection.documentSecurity || collection.$permissions.length > 0) throw new Error("collection permissions are not hardened")
+    const documents = await databases.listDocuments(databaseId, id, [Query.limit(100)])
+    if (documents.documents.some((document) => !document.$permissions?.length)) throw new Error("document without explicit permissions")
+  }) && ok
+  for (const id of buckets) ok = await check(`bucket ${id}`, async () => {
+    const bucket = await storage.getBucket(id)
+    if (!bucket.fileSecurity || bucket.$permissions.length > 0) throw new Error("bucket permissions are not hardened")
+  }) && ok
   if (!ok) process.exit(1)
   console.log("Pod 2.0 Appwrite verification passed.")
 }

@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { z } from 'zod'
+import { parseJsonBody } from '@/lib/api-security'
+import { assertCallActionAllowed, canAccessCall, getSessionUpdates, hasRemainingCallParticipants, parseStringList } from '@/lib/calls/domain'
+import { checkDurableRateLimit } from '@/lib/server/rate-limit'
+import { sendCallResolvedPush } from '@/lib/server/web-push'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const CALL_SESSIONS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALL_SESSIONS_COLLECTION_ID || 'call_sessions'
 const CALL_PARTICIPANTS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALL_PARTICIPANTS_COLLECTION_ID || 'call_participants'
-
-function canAccessSession(session: any, userId: string): boolean {
-  const participantIds = Array.isArray(session?.participantIds) ? session.participantIds : []
-  return session?.callerId === userId || participantIds.includes(userId)
-}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
   try {
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sess
     const { databases } = await createAdminClient()
     const session = await databases.getDocument(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, sessionId)
 
-    if (!canAccessSession(session, auth.userId)) {
+    if (!canAccessCall(session, auth.userId)) {
       throw new ApiError(403, 'FORBIDDEN', 'You are not allowed to view this call session')
     }
 
@@ -45,63 +45,70 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ se
     enforceRateLimit(req, { key: 'calls:update-session', max: 60, windowMs: 60 * 1000 })
 
     const auth = requireUser(req)
+    const durableLimit = await checkDurableRateLimit(`calls:update:${auth.userId}`, 90, 60_000)
+    if (!durableLimit.allowed) throw new ApiError(429, 'RATE_LIMITED', 'Too many call updates')
     const { sessionId } = await params
-    const body = await req.json().catch(() => ({}))
-    const action = String(body?.action || '').trim()
+    const body = await parseJsonBody(req, z.object({ action: z.enum(['accept', 'decline', 'end', 'join', 'leave']), reason: z.string().trim().max(255).optional() }))
+    const action = body.action
 
-    if (!action) {
-      throw new ApiError(400, 'INVALID_INPUT', 'action is required')
-    }
-
-    const { databases } = await createAdminClient()
+    const { databases, users } = await createAdminClient()
     const session = await databases.getDocument(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, sessionId)
 
-    if (!canAccessSession(session, auth.userId)) {
+    if (!canAccessCall(session, auth.userId)) {
       throw new ApiError(403, 'FORBIDDEN', 'You are not allowed to update this call session')
     }
 
     const now = new Date().toISOString()
-    const updates: Record<string, any> = {
-      lastActivityAt: now,
-      updatedAt: now,
+    let updates: Record<string, any>
+    try {
+      assertCallActionAllowed(session, auth.userId, action)
+      updates = getSessionUpdates(session, auth.userId, action, now, body.reason)
+    } catch (transitionError: any) {
+      const code = String(transitionError?.message || '')
+      if (code === 'CALL_ACCESS_DENIED') throw new ApiError(403, 'FORBIDDEN', 'You are not allowed to update this call session')
+      if (code === 'CALL_END_REQUIRES_CALLER') throw new ApiError(403, 'FORBIDDEN', 'Only the caller can end the call for everyone')
+      if (code === 'CALL_ALREADY_FINISHED') throw new ApiError(409, 'CALL_ALREADY_FINISHED', 'This call has already finished')
+      throw new ApiError(409, 'INVALID_CALL_TRANSITION', 'That action is not valid for the current call state')
     }
 
-    if (action === 'accept') {
-      updates.state = 'active'
-      updates.acceptedAt = now
-    } else if (action === 'decline') {
-      updates.state = 'declined'
-      updates.declinedAt = now
-      updates.endedAt = now
-      updates.endedReason = 'declined'
-    } else if (action === 'end') {
-      updates.state = 'ended'
-      updates.endedAt = now
-      updates.endedReason = String(body?.reason || 'ended')
-    } else if (action === 'join') {
-      updates.state = session.state === 'ringing' ? 'active' : session.state
-    } else if (action === 'leave') {
-      updates.state = session.state === 'active' ? 'active' : session.state
-    } else {
-      throw new ApiError(400, 'INVALID_INPUT', 'Unsupported action')
-    }
-
-    const updatedSession = await databases.updateDocument(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, sessionId, updates)
-
-    if (action === 'join' || action === 'leave') {
+    if (action === 'join' || action === 'leave' || action === 'accept' || action === 'decline') {
       const participants = await databases.listDocuments(DATABASE_ID, CALL_PARTICIPANTS_COLLECTION_ID, [
         Query.equal('callSessionId', sessionId),
       ])
       const participantRecord = (participants.documents || []).find((participant: any) => participant.userId === auth.userId)
 
-      if (participantRecord) {
-        await databases.updateDocument(DATABASE_ID, CALL_PARTICIPANTS_COLLECTION_ID, participantRecord.$id, {
-          state: action === 'join' ? 'joined' : 'left',
-          joinedAt: action === 'join' ? participantRecord.joinedAt || now : participantRecord.joinedAt,
-          leftAt: action === 'leave' ? now : participantRecord.leftAt || null,
+      if (!participantRecord) throw new ApiError(409, 'PARTICIPANT_STATE_MISSING', 'Call participant state is missing')
+      const joined = action === 'join' || action === 'accept'
+      await databases.updateDocument(DATABASE_ID, CALL_PARTICIPANTS_COLLECTION_ID, participantRecord.$id, {
+          state: joined ? 'joined' : action === 'decline' ? 'declined' : 'left',
+          joinedAt: joined ? participantRecord.joinedAt || now : participantRecord.joinedAt,
+          leftAt: action === 'leave' ? now : participantRecord.leftAt,
+          connectionState: joined ? 'connected' : 'disconnected',
           updatedAt: now,
-        })
+      })
+
+      if (action === 'leave') {
+        if (!hasRemainingCallParticipants(participants.documents || [], auth.userId)) {
+          updates = { ...updates, state: 'ended', endedAt: now, endedReason: 'last_participant_left' }
+        }
       }
+
+      if (action === 'decline' && parseStringList(session.participantIds).length > 1) {
+        const remaining = (participants.documents || []).filter((participant: any) =>
+          participant.userId !== auth.userId && ['invited', 'joined'].includes(participant.state),
+        )
+        if (remaining.length === 0) {
+          updates = { ...updates, state: 'declined', declinedAt: now, endedAt: now, endedReason: 'all_declined' }
+        }
+      }
+    }
+
+    const updatedSession = await databases.updateDocument(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, sessionId, updates)
+
+    if (action === 'end') {
+      await Promise.allSettled(parseStringList(session.participantIds).map((participantId) =>
+        sendCallResolvedPush(users, participantId, { sessionId, roomTitle: session.roomTitle }),
+      ))
     }
 
     return NextResponse.json({ success: true, session: updatedSession })

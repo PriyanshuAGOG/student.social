@@ -11,10 +11,10 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Eye, EyeOff, Github, Mail } from "lucide-react"
-import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
+import { AuthShell } from "@/components/public/AuthShell"
 import { authService } from "@/lib/appwrite"
 import { signInWithGoogle, signInWithGitHub } from "@/lib/server/oauth"
 
@@ -118,7 +118,7 @@ function LoginPageContent() {
         } else {
           toast({
             title: "Email verification required",
-            description: "Please verify your email before using PeerSpark.",
+            description: "Please verify your email before using Student.social.",
             variant: "destructive",
           })
           router.replace("/verify-email?required=1")
@@ -201,16 +201,8 @@ function LoginPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-6 sm:py-10">
-      <div className="w-full max-w-md">
-        <div className="flex items-center justify-center mb-8">
-          <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center mr-3">
-            <Image src="/logo.png" alt="PeerSpark" width={40} height={40} className="object-cover" />
-          </div>
-          <span className="text-2xl font-bold">PeerSpark</span>
-        </div>
-
-        <Card className="border-0 shadow-lg sm:rounded-2xl">
+    <AuthShell>
+        <Card className="ss-auth-inner border-0 shadow-none">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
             <CardDescription>Sign in to your account to continue learning</CardDescription>
@@ -269,7 +261,7 @@ function LoginPageContent() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="auth-oauth grid grid-cols-2 gap-4">
               <form action={signInWithGoogle}>
                 <Button variant="outline" type="submit" className="w-full">
                   <Mail className="mr-2 h-4 w-4" />
@@ -293,8 +285,7 @@ function LoginPageContent() {
             </p>
           </CardFooter>
         </Card>
-      </div>
-    </div>
+    </AuthShell>
   )
 }
 

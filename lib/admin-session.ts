@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { Account, Client } from 'node-appwrite'
-import { createSessionClient } from '@/lib/server/appwrite'
+import { createAdminClient, createSessionClient } from '@/lib/server/appwrite'
 import { getSessionCookieSecret, normalizeAppwriteEndpoint } from '@/lib/env'
 import { isAdminUser } from '@/lib/admin-access'
 
@@ -47,7 +47,7 @@ function verifySignedSession(raw: string): SessionCookie | null {
 
 async function getUserFromSignedSession(raw: string): Promise<any | null> {
   const sessionCookie = verifySignedSession(raw)
-  if (!sessionCookie?.secret || isExpired(sessionCookie.expire)) {
+  if (!sessionCookie?.userId || (!sessionCookie.secret && !sessionCookie.sessionId) || isExpired(sessionCookie.expire)) {
     return null
   }
 
@@ -57,9 +57,24 @@ async function getUserFromSignedSession(raw: string): Promise<any | null> {
     return null
   }
 
-  const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(sessionCookie.secret)
-  const account = new Account(sessionClient)
-  return account.get().catch(() => null)
+  if (sessionCookie.secret) {
+    const sessionClient = new Client().setEndpoint(endpoint).setProject(project).setSession(sessionCookie.secret)
+    const account = new Account(sessionClient)
+    const user = await account.get().catch(() => null)
+    if (user) return user
+  }
+
+  // Some Appwrite session types cannot be replayed through Account.get even
+  // though their server-side session ID is still valid. Match the same
+  // canonical fallback used by requireAdmin and /api/auth/session.
+  if (sessionCookie.sessionId) {
+    const { users } = createAdminClient()
+    const sessions = await users.listSessions(sessionCookie.userId, false).catch(() => null)
+    const active = sessions?.sessions?.some((session: any) => session.$id === sessionCookie.sessionId)
+    if (active) return users.get(sessionCookie.userId).catch(() => null)
+  }
+
+  return null
 }
 
 export async function getAdminUserFromCookies(cookieStore: CookieStore) {

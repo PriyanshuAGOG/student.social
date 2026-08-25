@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Permission, Role } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
+import { z } from 'zod'
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireUser } from '@/lib/api-security'
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'
 
 const PROFILE_FIELDS = new Set([
@@ -51,41 +52,46 @@ function profilePermissions(userId: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
-    const defaults = typeof body.defaults === 'object' && body.defaults !== null ? body.defaults : {}
-    const updates = typeof body.updates === 'object' && body.updates !== null ? body.updates : null
+    enforceSameOrigin(request)
+    const { userId } = requireUser(request)
+    const body = await parseJsonBody(request, z.object({
+      userId: z.string().min(1).optional(),
+      defaults: z.record(z.unknown()).default({}),
+      updates: z.record(z.unknown()).nullable().default(null),
+    }))
+    if (body.userId && body.userId !== userId) throw new ApiError(403, 'FORBIDDEN', 'Cannot modify another user profile')
+    const defaults = body.defaults || {}
+    const updates = body.updates || null
 
-    if (!userId) {
-      return NextResponse.json({ success: false, error: 'User ID is required' }, { status: 400 })
+    const { databases, config } = await createAdminClient()
+
+    let existing = null
+    try {
+      existing = await databases.getDocument(config.databaseId, PROFILES_COLLECTION_ID, userId)
+    } catch (error: any) {
+      if (error?.code !== 404 && !error?.message?.includes('not found')) throw error
     }
 
-    const { databases } = await createAdminClient()
-
-    try {
-      const existing = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, userId)
-      const nextData = sanitizeProfileData({ ...(updates || {}), updatedAt: new Date().toISOString() })
-      if (Object.keys(nextData).length === 1 && Object.prototype.hasOwnProperty.call(nextData, 'updatedAt')) {
+    if (existing) {
+      const { userId: _ignoredUserId, ...sanitizedUpdates } = sanitizeProfileData(updates || {})
+      if (Object.keys(sanitizedUpdates).length === 0) {
         return NextResponse.json({ success: true, profile: existing, created: false })
       }
 
+      enforceRateLimit(request, { key: 'profiles:ensure:update', max: 20, windowMs: 60_000 })
       const updatedProfile = await databases.updateDocument(
-        DATABASE_ID,
+        config.databaseId,
         PROFILES_COLLECTION_ID,
         userId,
-        nextData,
+        { ...sanitizedUpdates, updatedAt: new Date().toISOString() },
       )
 
       return NextResponse.json({ success: true, profile: updatedProfile, created: false })
-    } catch (error: any) {
-      if (error?.code !== 404 && !error?.message?.includes('not found')) {
-        console.error('Ensure profile read/update error:', error)
-      }
     }
 
+    enforceRateLimit(request, { key: 'profiles:ensure:create', max: 5, windowMs: 60_000 })
     const now = new Date().toISOString()
     const baseProfile = sanitizeProfileData({
-      userId,
       name: typeof defaults.name === 'string' && defaults.name.trim() ? defaults.name.trim() : `User_${userId.slice(0, 6)}`,
       username: typeof defaults.username === 'string' && defaults.username.trim() ? defaults.username.trim() : `user_${userId.slice(0, 6)}`,
       email: typeof defaults.email === 'string' ? defaults.email : '',
@@ -108,11 +114,12 @@ export async function POST(request: NextRequest) {
       availability: [],
       currentFocusAreas: [],
       ...(updates ? sanitizeProfileData(updates) : {}),
+      userId,
     })
 
     try {
       const profile = await databases.createDocument(
-        DATABASE_ID,
+        config.databaseId,
         PROFILES_COLLECTION_ID,
         userId,
         baseProfile,
@@ -121,6 +128,11 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({ success: true, profile, created: true }, { status: 201 })
     } catch (createError: any) {
+      if (createError?.code === 409 || String(createError?.message || '').includes('already exists')) {
+        const profile = await databases.getDocument(config.databaseId, PROFILES_COLLECTION_ID, userId)
+        return NextResponse.json({ success: true, profile, created: false })
+      }
+
       const isUnknownAttribute = String(createError?.message || '').includes('Unknown attribute: "username"')
 
       if (!isUnknownAttribute) {
@@ -132,17 +144,28 @@ export async function POST(request: NextRequest) {
         username: undefined,
       })
 
-      const profile = await databases.createDocument(
-        DATABASE_ID,
-        PROFILES_COLLECTION_ID,
-        userId,
-        fallbackProfile,
-        profilePermissions(userId)
-      )
+      let profile
+      try {
+        profile = await databases.createDocument(
+          config.databaseId,
+          PROFILES_COLLECTION_ID,
+          userId,
+          fallbackProfile,
+          profilePermissions(userId)
+        )
+      } catch (fallbackError: any) {
+        if (fallbackError?.code !== 409 && !String(fallbackError?.message || '').includes('already exists')) {
+          throw fallbackError
+        }
+        profile = await databases.getDocument(config.databaseId, PROFILES_COLLECTION_ID, userId)
+      }
 
       return NextResponse.json({ success: true, profile, created: true, schemaFallback: true }, { status: 201 })
     }
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
+    }
     console.error('Ensure profile API error:', error)
     return NextResponse.json(
       { success: false, error: error?.message || 'Failed to ensure profile' },

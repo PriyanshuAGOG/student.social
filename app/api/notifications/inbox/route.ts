@@ -5,21 +5,20 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
-import { getEnv } from '@/lib/env'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { ApiError, requireUser } from '@/lib/api-security'
 
-const env = getEnv()
-const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
-const NOTIFICATIONS_COLLECTION_ID = env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications'
+const NOTIFICATIONS_COLLECTION_ID = process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications'
 
 export async function GET(req: NextRequest) {
   try {
-    const { databases } = await createAdminClient()
+    const { databases, config } = await createAdminClient()
     const { userId } = requireUser(req)
 
-    const limit = parseInt(req.nextUrl.searchParams.get('limit') || '20')
-    const offset = parseInt(req.nextUrl.searchParams.get('offset') || '0')
+    const requestedLimit = Number.parseInt(req.nextUrl.searchParams.get('limit') || '20', 10)
+    const requestedOffset = Number.parseInt(req.nextUrl.searchParams.get('offset') || '0', 10)
+    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 20
+    const offset = Number.isFinite(requestedOffset) ? Math.max(requestedOffset, 0) : 0
     const unreadOnly = req.nextUrl.searchParams.get('unreadOnly') === 'true'
 
     const queries: string[] = [Query.equal('userId', userId)]
@@ -28,11 +27,13 @@ export async function GET(req: NextRequest) {
       queries.push(Query.equal('isRead', false))
     }
 
-    queries.push(Query.orderDesc('createdAt'))
-    queries.push(Query.limit(Math.min(limit, 100)))
-    queries.push(Query.offset(Math.max(offset, 0)))
+    // `timestamp` is the canonical notification time field and is covered by
+    // idx_notifications_user_time. `createdAt` is not part of this schema.
+    queries.push(Query.orderDesc('timestamp'))
+    queries.push(Query.limit(limit))
+    queries.push(Query.offset(offset))
 
-    const response = await databases.listDocuments(DATABASE_ID, NOTIFICATIONS_COLLECTION_ID, queries)
+    const response = await databases.listDocuments(config.databaseId, NOTIFICATIONS_COLLECTION_ID, queries)
 
     const data = response.documents.map((doc: any) => ({
       $id: doc.$id,

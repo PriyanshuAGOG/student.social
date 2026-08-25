@@ -10,18 +10,20 @@
 
 import { EnrollmentStatus } from '@/lib/types/courses';
 import { courseService, enrollInCourse, getUserEnrollments } from '@/lib/course-service';
+import { z } from 'zod';
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireUser } from '@/lib/api-security';
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { userId, courseId, enrollmentType = 'individual', podId } = body;
-
-    if (!userId || !courseId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required fields: userId, courseId' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'courses:enroll', max: 15, windowMs: 60_000 });
+    const { userId } = requireUser(request);
+    const { courseId, enrollmentType, podId } = await parseJsonBody(request, z.object({
+      userId: z.string().optional(),
+      courseId: z.string().min(1).max(255),
+      enrollmentType: z.enum(['individual', 'pod']).default('individual'),
+      podId: z.string().max(255).optional(),
+    }));
 
     const db = courseService.getCourseDatabase();
     if (!db) {
@@ -48,6 +50,7 @@ export async function POST(request: Request) {
       { status: 201, headers: { 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {
+    if (error instanceof ApiError) return Response.json({ error: error.message, code: error.code }, { status: error.status });
     console.error('Error enrolling in course:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Failed to enroll in course' }),
@@ -58,13 +61,13 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
+    const { userId } = requireUser(request);
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
     const courseId = searchParams.get('courseId');
 
-    if (!userId || !courseId) {
+    if (!courseId) {
       return new Response(
-        JSON.stringify({ error: 'Missing required query params: userId, courseId' }),
+        JSON.stringify({ error: 'Missing required query param: courseId' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -89,6 +92,7 @@ export async function GET(request: Request) {
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {
+    if (error instanceof ApiError) return Response.json({ error: error.message, code: error.code }, { status: error.status });
     console.error('Error checking course enrollment:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Failed to check enrollment' }),

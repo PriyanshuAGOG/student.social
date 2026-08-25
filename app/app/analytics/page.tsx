@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import { Clock, Target, Trophy, Download, Share2, Brain, Flame, Loader2 } from "lucide-react"
@@ -11,8 +10,9 @@ import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import { useAuth } from "@/lib/auth-context"
 import { calendarService, feedService, podService, profileService, resourceService } from "@/lib/appwrite"
 import { buildAnalyticsSnapshot } from "@/lib/engagement-scoring"
+import { AppPageHeader } from "@/components/internal/AppPageHeader"
 
-const COLORS = ["#3B82F6", "#10B981", "#8B5CF6", "#F59E0B", "#6B7280"]
+const COLORS = ["#3f6f6b", "#78815f", "#76556d", "#c79043", "#5d716b"]
 
 export default function AnalyticsPage() {
   const { user } = useAuth()
@@ -64,10 +64,10 @@ export default function AnalyticsPage() {
     color: COLORS[index % COLORS.length],
   }))
   const metrics = [
-    { ...snapshot.metrics[0], icon: Flame, color: "text-accent" },
-    { ...snapshot.metrics[1], icon: Clock, color: "text-blue-500" },
-    { ...snapshot.metrics[2], icon: Target, color: "text-green-500" },
-    { ...snapshot.metrics[3], icon: Brain, color: "text-purple-500" },
+    { ...snapshot.metrics[0], icon: Flame, color: "text-[#3f6f6b]" },
+    { ...snapshot.metrics[1], icon: Clock, color: "text-[#78815f]" },
+    { ...snapshot.metrics[2], icon: Target, color: "text-[#c79043]" },
+    { ...snapshot.metrics[3], icon: Brain, color: "text-[#76556d]" },
   ]
   const goals = snapshot.goals
   const achievements = snapshot.achievements
@@ -83,19 +83,11 @@ export default function AnalyticsPage() {
   return (
     <div className="flex-1 p-4 md:p-8 pt-6">
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-4">
-            <SidebarTrigger className="-ml-1" />
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight">Analytics</h2>
-              <p className="text-muted-foreground">Built from actual profile, pod, resource, and calendar activity</p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Button variant="outline"><Download className="mr-2 h-4 w-4" />Export</Button>
-            <Button variant="outline"><Share2 className="mr-2 h-4 w-4" />Share</Button>
-          </div>
-        </div>
+        <AppPageHeader
+          title="Analytics"
+          meta={<span>{snapshot.metrics[0]?.value || "—"} {snapshot.metrics[0]?.title || "learning activity"}</span>}
+          actions={<><Button><Download />Export</Button><Button variant="outline"><Share2 />Share</Button></>}
+        />
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
           {metrics.map((metric) => (
@@ -138,7 +130,7 @@ export default function AnalyticsPage() {
                         <XAxis dataKey="name" />
                         <YAxis />
                         <Tooltip />
-                        <Area type="monotone" dataKey="hours" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.25} />
+                        <Area type="monotone" dataKey="hours" stroke="#3f6f6b" fill="#3f6f6b" fillOpacity={0.2} />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
@@ -180,8 +172,8 @@ export default function AnalyticsPage() {
                       <XAxis dataKey="name" />
                       <YAxis />
                       <Tooltip />
-                      <Bar dataKey="sessions" fill="#8B5CF6" />
-                      <Bar dataKey="focus" fill="#10B981" />
+                      <Bar dataKey="sessions" fill="#76556d" radius={[8, 8, 0, 0]} />
+                      <Bar dataKey="focus" fill="#78815f" radius={[8, 8, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

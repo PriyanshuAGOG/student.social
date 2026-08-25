@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { getEnv } from '@/lib/env'
 import { ApiError, requireUser } from '@/lib/api-security'
 

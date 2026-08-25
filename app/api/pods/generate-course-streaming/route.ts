@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Query } from "node-appwrite"
 import { runAIChat } from "@/lib/ai"
-import { createAdminClient } from "@/lib/appwrite-comprehensive-fixes"
+import { createAdminClient } from "@/lib/server/appwrite"
 import { DATABASE_ID, COLLECTIONS } from "@/lib/appwrite-server"
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from "@/lib/api-security"
 

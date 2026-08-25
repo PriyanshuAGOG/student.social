@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { getSessionCookieSecret } from '@/lib/env'
 import { createSessionClient } from '@/lib/server/appwrite'
 import crypto from 'crypto'

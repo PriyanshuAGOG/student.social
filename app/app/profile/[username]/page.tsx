@@ -247,8 +247,8 @@ export default function UserProfilePage() {
     try {
       if (navigator.share) {
         await navigator.share({
-          title: post?.title || `${userProfile?.name || "PeerSpark"} post`,
-          text: post?.content?.slice(0, 160) || "Check out this PeerSpark post",
+          title: post?.title || `${userProfile?.name || "Student.social"} post`,
+          text: post?.content?.slice(0, 160) || "Check out this Student.social post",
           url: shareUrl,
         })
       } else {
@@ -295,157 +295,47 @@ export default function UserProfilePage() {
 
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-8">
-      {/* Mobile Header */}
-      <div className="md:hidden sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border p-4">
-        <div className="flex items-center justify-between">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <h1 className="text-lg font-semibold">{userProfile.name}</h1>
-          <div></div>
-        </div>
-      </div>
-
-      <div className="max-w-6xl mx-auto px-4 md:px-8">
-        {/* Profile Header */}
-        <Card className="mb-4 md:mb-8">
-          <CardContent className="p-4 md:p-6 lg:p-8">
-            <div className="flex flex-col space-y-4">
-              {/* Mobile Profile Layout */}
-              <div className="md:hidden space-y-4">
-                <div className="flex items-center space-x-4">
-                  <Avatar className="w-20 h-20">
-                    <AvatarImage src={userProfile.avatar || "/placeholder.svg"} alt={userProfile.name} />
-                    <AvatarFallback className="text-xl">
-                      {userProfile.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <h1 className="text-xl font-bold">{userProfile.name}</h1>
-                    <p className="text-muted-foreground">{userProfile.username}</p>
-                    <div className="flex items-center space-x-4 text-sm mt-2">
-                      <div>
-                        <span className="font-semibold">{userProfile.following.toLocaleString()}</span>
-                        <span className="text-muted-foreground ml-1">Following</span>
-                      </div>
-                      <div>
-                        <span className="font-semibold">{userProfile.followers.toLocaleString()}</span>
-                        <span className="text-muted-foreground ml-1">Followers</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {userProfile.bio && <p className="text-muted-foreground text-sm">{userProfile.bio}</p>}
-
-                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  {userProfile.location && (
-                    <div className="flex items-center space-x-1">
-                      <MapPin className="w-3 h-3" />
-                      <span>{userProfile.location}</span>
-                    </div>
-                  )}
-                  {userProfile.website && (
-                    <div className="flex items-center space-x-1">
-                      <LinkIcon className="w-3 h-3" />
-                      <span className="text-primary">{userProfile.website}</span>
-                    </div>
-                  )}
-                  {userProfile.joinedDate && (
-                    <div className="flex items-center space-x-1">
-                      <Calendar className="w-3 h-3" />
-                      <span>Joined {userProfile.joinedDate}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Profile Actions */}
-                <div className="flex space-x-2">
-                  <Button onClick={handleMessage} variant="outline" size="sm" className="flex-1">
-                    <MessageSquare className="w-3 h-3 mr-2" />
-                    Message
-                  </Button>
-                  <Button
-                    onClick={handleFollow}
-                    size="sm"
-                    className={`flex-1 ${isFollowing ? "bg-muted hover:bg-muted/80 text-muted-foreground" : ""}`}
-                  >
-                    <UserPlus className="w-3 h-3 mr-2" />
-                    {isFollowing ? "Following" : "Follow"}
-                  </Button>
+      <div className="max-w-6xl mx-auto px-4 pt-3 md:px-8 md:pt-6">
+        <Card className="student-profile-card mb-4 overflow-hidden md:mb-8">
+          <div className="student-profile-cover">
+            <div>
+              <span>LEARNING PROFILE</span>
+              <p>See what {userProfile.name} is exploring, contributing, and building with the community.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => router.back()}><ArrowLeft />Back</Button>
+          </div>
+          <CardContent className="student-profile-content">
+            <div className="student-profile-identity">
+              <Avatar className="student-profile-avatar">
+                <AvatarImage src={userProfile.avatar || "/placeholder.svg"} alt={userProfile.name} />
+                <AvatarFallback>{userProfile.name.split(" ").map((n) => n[0]).join("")}</AvatarFallback>
+              </Avatar>
+              <div className="student-profile-copy">
+                <div><h1>{userProfile.name}</h1><p>{userProfile.username}</p></div>
+                {userProfile.bio ? <p className="student-profile-bio">{userProfile.bio}</p> : null}
+                <div className="student-profile-meta">
+                  {userProfile.location ? <span><MapPin />{userProfile.location}</span> : null}
+                  {userProfile.website ? <span><LinkIcon />{userProfile.website}</span> : null}
+                  {userProfile.joinedDate ? <span><Calendar />Joined {userProfile.joinedDate}</span> : null}
                 </div>
               </div>
-
-              {/* Desktop Profile Layout */}
-              <div className="hidden md:flex items-start space-x-6">
-                <Avatar className="w-24 h-24 lg:w-32 lg:h-32">
-                  <AvatarImage src={userProfile.avatar || "/placeholder.svg"} alt={userProfile.name} />
-                  <AvatarFallback className="text-2xl">
-                    {userProfile.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")}
-                  </AvatarFallback>
-                </Avatar>
-
-                <div className="flex-1 space-y-4">
-                  <div>
-                    <h1 className="text-3xl font-bold">{userProfile.name}</h1>
-                    <p className="text-muted-foreground text-lg">{userProfile.username}</p>
-                  </div>
-
-                  <p className="text-muted-foreground max-w-2xl">{userProfile.bio}</p>
-
-                  <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                    <div className="flex items-center space-x-1">
-                      <MapPin className="w-4 h-4" />
-                      <span>{userProfile.location}</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <LinkIcon className="w-4 h-4" />
-                      <span className="text-primary cursor-pointer hover:underline">{userProfile.website}</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <Calendar className="w-4 h-4" />
-                      <span>Joined {userProfile.joinedDate}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-6 text-sm">
-                    <div className="cursor-pointer hover:underline">
-                      <span className="font-semibold">{userProfile.following.toLocaleString()}</span>
-                      <span className="text-muted-foreground ml-1">Following</span>
-                    </div>
-                    <div className="cursor-pointer hover:underline">
-                      <span className="font-semibold">{userProfile.followers.toLocaleString()}</span>
-                      <span className="text-muted-foreground ml-1">Followers</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Button onClick={handleMessage} variant="outline">
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    Message
-                  </Button>
-                  <Button
-                    onClick={handleFollow}
-                    className={isFollowing ? "bg-muted hover:bg-muted/80 text-muted-foreground" : ""}
-                  >
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    {isFollowing ? "Following" : "Follow"}
-                  </Button>
-                </div>
+              <div className="student-profile-actions">
+                <Button onClick={handleMessage} variant="outline"><MessageSquare />Message</Button>
+                <Button onClick={handleFollow} className={isFollowing ? "bg-muted hover:bg-muted/80 text-muted-foreground" : ""}>
+                  <UserPlus />{isFollowing ? "Following" : "Follow"}
+                </Button>
               </div>
+            </div>
+            <div className="student-profile-network">
+              <button type="button"><strong>{userProfile.following.toLocaleString()}</strong><span>Following</span></button>
+              <button type="button"><strong>{userProfile.followers.toLocaleString()}</strong><span>Followers</span></button>
+              <div><strong>{userPosts.length}</strong><span>Shared posts</span></div>
             </div>
           </CardContent>
         </Card>
 
         {/* Stats Cards */}
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-4 mb-4 md:mb-8">
+        <div className="student-profile-stats grid gap-3 grid-cols-2 md:grid-cols-4 mb-4 md:mb-8">
           <Card>
             <CardContent className="p-3 md:p-4 text-center">
               <div className="flex items-center justify-center mb-2">
@@ -498,7 +388,7 @@ export default function UserProfilePage() {
         {/* Main Content */}
         <Tabs defaultValue={activeTab} onValueChange={setActiveTab}>
           {/* Tab navigation */}
-          <div className="mb-6">
+          <div className="student-profile-tabs mb-6">
             <div className="border-b border-border">
               <div className="flex space-x-0">
                 {[
@@ -532,7 +422,7 @@ export default function UserProfilePage() {
 
           <TabsContent value="posts" className="space-y-4">
             {userPosts.map((post) => (
-              <Card key={post.id} className="hover:shadow-md transition-shadow">
+              <Card key={post.id} className="student-feed-post hover:shadow-md transition-shadow">
                 <CardContent className="p-4 md:p-6">
                   <div className="flex items-start space-x-3 mb-3">
                     <Avatar className="w-8 h-8">

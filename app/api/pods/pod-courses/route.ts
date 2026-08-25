@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Pod Courses API
  * 
@@ -7,8 +6,8 @@
  * Returns all courses assigned to a pod with progress tracking
  */
 
-import { Databases } from 'node-appwrite';
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
+import { Query } from 'node-appwrite';
+import { createAdminClient } from '@/lib/server/appwrite';
 
 interface CourseProgress {
   $id: string;
@@ -30,6 +29,18 @@ interface CourseProgress {
   lastActivity: string;
 }
 
+function parseChapters(value: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(value)) return value as Array<Record<string, unknown>>
+  if (typeof value !== 'string' || !value.trim()) return []
+
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 /**
  * GET /api/pods/pod-courses?podId=xxx
  * 
@@ -47,126 +58,48 @@ export async function GET(request: Request) {
       );
     }
 
-    const { databases } = createAdminClient();
-    const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db';
+    const { databases, config } = await createAdminClient();
 
     // Get pod courses for this pod
     const podCoursesResponse = await databases.listDocuments(
-      databaseId!,
+      config.databaseId,
       'pod_courses',
-      [
-        {
-          method: 'equal',
-          attribute: 'podId',
-          value: podId,
-        },
-      ]
+      [Query.equal('podId', podId), Query.orderDesc('createdAt')]
     );
 
-    const courses: CourseProgress[] = [];
+    // A pod course is the course document itself. Older code treated it as a
+    // relation to `courses` and queried attributes that do not exist in the
+    // provisioned schemas (`courseId`, `chapterId`, and `completed`).
+    const courses: CourseProgress[] = podCoursesResponse.documents.map((podCourse: any) => {
+      const rawChapters = parseChapters(podCourse.chapters)
+      const completedChapters = Math.max(Number(podCourse.completedChapters) || 0, 0)
+      const totalChapters = Math.max(Number(podCourse.totalChapters) || rawChapters.length, 0)
+      const progress = Number.isFinite(Number(podCourse.progress))
+        ? Math.min(Math.max(Number(podCourse.progress), 0), 100)
+        : totalChapters > 0
+          ? Math.round((completedChapters / totalChapters) * 100)
+          : 0
 
-    // Process each pod course
-    for (const podCourse of podCoursesResponse.documents) {
-      try {
-        // Get course details
-        const course = await databases.getDocument(
-          databaseId!,
-          'courses',
-          podCourse.courseId
-        );
-
-        // Get pod members
-        const podResponse = await databases.getDocument(
-          databaseId!,
-          'pods',
-          podId
-        );
-        const podMembers = (podResponse as any).members || [];
-
-        // Get course chapters
-        const chaptersResponse = await databases.listDocuments(
-          databaseId!,
-          'course_chapters',
-          [
-            {
-              method: 'equal',
-              attribute: 'courseId',
-              value: podCourse.courseId,
-            },
-          ]
-        );
-
-        // Calculate progress for each chapter
-        const chapters = await Promise.all(
-          chaptersResponse.documents.map(async (chapter: any) => {
-            // Count members who completed this chapter
-            const progressDocs = await databases.listDocuments(
-              databaseId!,
-              'user_course_progress',
-              [
-                {
-                  method: 'equal',
-                  attribute: 'chapterId',
-                  value: chapter.$id,
-                },
-                {
-                  method: 'equal',
-                  attribute: 'completed',
-                  value: true,
-                },
-              ]
-            );
-
-            return {
-              $id: chapter.$id,
-              title: chapter.title,
-              completedBy: progressDocs.documents.length,
-              totalMembers: podMembers.length,
-            };
-          })
-        );
-
-        // Calculate overall group progress
-        const allProgressDocs = await databases.listDocuments(
-          databaseId!,
-          'user_course_progress',
-          [
-            {
-              method: 'equal',
-              attribute: 'courseId',
-              value: podCourse.courseId,
-            },
-            {
-              method: 'equal',
-              attribute: 'completed',
-              value: true,
-            },
-          ]
-        );
-
-        const membersCompleted = new Set(allProgressDocs.documents.map((p: any) => p.userId)).size;
-        const groupCompletionPercent = Math.round(
-          (membersCompleted / podMembers.length) * 100
-        );
-
-        courses.push({
-          $id: podCourse.$id,
-          courseId: podCourse.courseId,
-          courseName: course.title,
-          instructorName: course.instructor || 'Unknown Instructor',
-          startDate: podCourse.createdAt || new Date().toISOString(),
-          progress: {
-            groupCompletionPercent,
-            membersCompleted,
-            totalMembers: podMembers.length,
-          },
-          chapters,
-          lastActivity: podCourse.lastUpdated || podCourse.createdAt || new Date().toISOString(),
-        });
-      } catch (err) {
-        console.log(`Error processing pod course ${podCourse.$id}:`, err);
+      return {
+        $id: podCourse.$id,
+        courseId: podCourse.$id,
+        courseName: podCourse.courseTitle || 'Untitled course',
+        instructorName: podCourse.createdBy || 'PeerSpark',
+        startDate: podCourse.createdAt || podCourse.$createdAt,
+        progress: {
+          groupCompletionPercent: progress,
+          membersCompleted: completedChapters,
+          totalMembers: totalChapters,
+        },
+        chapters: rawChapters.map((chapter, index) => ({
+          $id: String(chapter.id || chapter.$id || `chapter-${index + 1}`),
+          title: String(chapter.title || `Chapter ${index + 1}`),
+          completedBy: chapter.contentGenerated === true ? 1 : 0,
+          totalMembers: 1,
+        })),
+        lastActivity: podCourse.updatedAt || podCourse.createdAt || podCourse.$updatedAt,
       }
-    }
+    });
 
     return Response.json({ courses });
   } catch (error) {

@@ -6,10 +6,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { Query } from 'node-appwrite';
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
+import { ID, Permission, Query, Role } from 'node-appwrite';
+import { z } from 'zod';
+import { createAdminClient } from '@/lib/server/appwrite';
 import { withErrorHandling, validateInput } from '@/lib/error-handler';
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireOwnership, requireUser } from '@/lib/api-security';
+import { checkDurableRateLimit } from '@/lib/server/rate-limit';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const CHAT_ROOMS_COLLECTION_ID = (process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms');
@@ -35,39 +37,21 @@ function isNotFound(error: any): boolean {
   return error?.code === 404 || message.includes('not found') || message.includes('could not be found')
 }
 
-function getUnknownAttribute(error: any): string | null {
-  const message = String(error?.message || '')
-  return message.match(/Unknown attribute:\s*"([^"]+)"/)?.[1] || null
-}
-
-function isSchemaCompatibilityError(error: any): boolean {
-  const message = String(error?.message || '').toLowerCase()
-  return Boolean(getUnknownAttribute(error)) || message.includes('attribute') || message.includes('index')
-}
-
-async function createDocumentWithSchemaRetry(
-  databases: any,
-  collectionId: string,
-  payload: Record<string, unknown>,
-  maxAttempts = 12,
-) {
-  const data = { ...payload }
-  const removed = new Set<string>()
-
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    try {
-      return await databases.createDocument(DATABASE_ID, collectionId, 'unique()', data)
-    } catch (error: any) {
-      const unknownAttribute = getUnknownAttribute(error)
-      if (!unknownAttribute || removed.has(unknownAttribute)) throw error
-
-      removed.add(unknownAttribute)
-      delete data[unknownAttribute]
-    }
-  }
-
-  throw new Error(`Unable to create ${collectionId} after schema compatibility retries`)
-}
+const sendMessageSchema = z.object({
+  senderId: z.string().trim().min(1).max(255),
+  recipientId: z.string().trim().min(1).max(255).optional(),
+  roomId: z.string().trim().min(1).max(255).optional(),
+  content: z.string().trim().min(1).max(5000),
+  type: z.enum(['text', 'image', 'file', 'voice', 'system', 'call_event']).default('text'),
+  clientMessageId: z.string().trim().min(1).max(255),
+  metadata: z.object({
+    replyTo: z.string().trim().max(255).nullable().optional(),
+    fileUrl: z.string().trim().max(500).nullable().optional(),
+    attachmentUrl: z.string().trim().max(500).nullable().optional(),
+    fileName: z.string().trim().max(180).nullable().optional(),
+    fileSize: z.number().int().min(0).max(100 * 1024 * 1024).nullable().optional(),
+  }).default({}),
+})
 
 function internalError(message: string, error: any) {
   return NextResponse.json(
@@ -88,7 +72,9 @@ export async function POST(request: NextRequest) {
     enforceRateLimit(request, { key: 'messages:send', max: 60, windowMs: 60 * 1000 })
 
     const auth = requireUser(request)
-    const body = await request.json().catch(() => ({}))
+    const durableLimit = await checkDurableRateLimit(`messages:send:${auth.userId}`, 60, 60_000)
+    if (!durableLimit.allowed) throw new ApiError(429, 'RATE_LIMITED', 'Too many messages sent; wait before trying again')
+    const body = await parseJsonBody(request, sendMessageSchema, 16 * 1024)
     const { senderId, recipientId, roomId, content, type = 'text', metadata = {}, clientMessageId } = body
 
     validateInput(
@@ -115,7 +101,7 @@ export async function POST(request: NextRequest) {
       }
 
       const roomMembers = parseMembers(room)
-      if (!['direct', 'dm'].includes(room.type) && room.type !== 'pod') {
+      if (!['direct', 'dm', 'group', 'pod', 'support'].includes(room.type)) {
         throw new ApiError(400, 'INVALID_ROOM_TYPE', 'Unsupported chat room type')
       }
 
@@ -143,13 +129,14 @@ export async function POST(request: NextRequest) {
 
       if (!room) {
         const now = new Date().toISOString()
-        room = await createDocumentWithSchemaRetry(databases, CHAT_ROOMS_COLLECTION_ID, {
+        const directMembers = [senderId, recipientId]
+        room = await databases.createDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, ID.unique(), {
           type: 'direct',
-          members: [senderId, recipientId],
+          members: directMembers,
           createdAt: now,
           isActive: true,
           lastMessageTime: now,
-        })
+        }, directMembers.map((memberId) => Permission.read(Role.user(memberId))))
       }
     }
 
@@ -174,8 +161,7 @@ export async function POST(request: NextRequest) {
           })
         }
       } catch (dedupeError: any) {
-        if (!isSchemaCompatibilityError(dedupeError)) throw dedupeError
-        console.warn('[messages/send] clientMessageId dedupe unavailable; continuing without dedupe:', dedupeError?.message || dedupeError)
+        throw dedupeError
       }
     }
 
@@ -185,13 +171,15 @@ export async function POST(request: NextRequest) {
       const profile = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, senderId)
       senderName = profile.name || senderName
       senderAvatar = profile.avatar || ''
-    } catch (profileError) {
+    } catch (_profileError) {
       console.debug('[messages/send] Profile fetch failed for sender, using defaults:', senderId)
     }
 
     let message
     try {
-      message = await createDocumentWithSchemaRetry(databases, MESSAGES_COLLECTION_ID, {
+      const roomMembers = parseMembers(room)
+      const safeDocumentId = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,35}$/.test(clientMessageId) ? clientMessageId : ID.unique()
+      message = await databases.createDocument(DATABASE_ID, MESSAGES_COLLECTION_ID, safeDocumentId, {
         roomId: room.$id,
         senderId,
         authorId: senderId,
@@ -209,8 +197,16 @@ export async function POST(request: NextRequest) {
         ...(metadata.fileSize ? { fileSize: Number(metadata.fileSize) } : {}),
         metadata: JSON.stringify(metadata || {}).slice(0, 5000),
         timestamp: new Date().toISOString(),
-      })
+      }, roomMembers.map((memberId) => Permission.read(Role.user(memberId))))
     } catch (error: any) {
+      if (error?.code === 409) {
+        const duplicate = await databases.listDocuments(DATABASE_ID, MESSAGES_COLLECTION_ID, [
+          Query.equal('roomId', room.$id), Query.equal('clientMessageId', clientMessageId), Query.limit(1),
+        ])
+        if (duplicate.documents?.[0]) {
+          return NextResponse.json({ success: true, message: duplicate.documents[0], roomId: room.$id, deduplicated: true })
+        }
+      }
       console.error('[messages/send] Failed to insert message:', error)
       return internalError('Failed to send message', error)
     }
@@ -230,14 +226,15 @@ export async function POST(request: NextRequest) {
       console.error('[messages/send] Failed to update room last message metadata:', roomUpdateError)
     }
 
-    if (recipientId) {
+    const notificationRecipients = parseMembers(room).filter((memberId) => memberId !== senderId)
+    for (const notificationRecipientId of notificationRecipients) {
       try {
         await databases.createDocument(
           DATABASE_ID,
           NOTIFICATIONS_COLLECTION_ID,
           'unique()',
           {
-            userId: recipientId,
+            userId: notificationRecipientId,
             type: 'message',
             title: 'New message',
             actorId: senderId,
@@ -246,7 +243,7 @@ export async function POST(request: NextRequest) {
             message: `${senderName} sent you a message`,
             isRead: false,
             timestamp: new Date().toISOString(),
-            actionUrl: `/app/messages/${senderId}`,
+            actionUrl: `/app/chat?room=${encodeURIComponent(room.$id)}`,
           }
         )
       } catch (notifError) {

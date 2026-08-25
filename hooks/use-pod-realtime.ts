@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { POD_COLLECTION_IDS } from "@/lib/appwrite/pod-types"
-import { subscribeToPodCollections } from "@/lib/appwrite/pods"
+import { subscribeToPodCollections } from "@/lib/pods/realtime"
 import { useAuth } from "@/lib/auth-context"
 
 export function usePodRealtime(podId: string, collectionIds: string[], onEvent?: (event: unknown) => void) {

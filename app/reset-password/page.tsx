@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { authService } from "@/lib/appwrite"
+import { AuthShell } from "@/components/public/AuthShell"
 
 function ResetPasswordContent() {
   const searchParams = useSearchParams()
@@ -38,9 +39,8 @@ function ResetPasswordContent() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <Card className="border-0 shadow-lg">
+    <AuthShell>
+        <Card className="ss-auth-inner border-0 shadow-none">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold">Reset Password</CardTitle>
             <CardDescription>Choose a new password for your account</CardDescription>
@@ -66,8 +66,7 @@ function ResetPasswordContent() {
             <Button variant="ghost" onClick={() => router.push('/login')}>Back to login</Button>
           </CardFooter>
         </Card>
-      </div>
-    </div>
+    </AuthShell>
   )
 }
 

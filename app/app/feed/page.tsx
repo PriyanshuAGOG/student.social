@@ -1,10 +1,9 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -14,18 +13,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Heart, MessageCircle, Share2, Bookmark, Search, Users, Filter, MoreHorizontal, User, Flag, Sparkles, Flame, Clock, Trophy } from 'lucide-react'
-import { CreatePostModal } from "@/components/create-post-modal"
+import { Heart, MessageCircle, Share2, Bookmark, Search, Users, MoreHorizontal, User, Flag, Sparkles, Flame, Clock, Trophy } from 'lucide-react'
 import { CommentsSection } from "@/components/comments-section"
-import { MobileHeader } from "@/components/mobile-header"
-import { FloatingActionButton } from "@/components/floating-action-button"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { feedService, podService, profileService } from "@/lib/appwrite"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { buildSearchSuggestions, fuzzyIncludes } from "@/lib/search-utils"
 
 interface PostAttachment {
   fileId?: string
@@ -91,9 +86,7 @@ interface StudyingNowUser {
 
 export default function FeedPage() {
   const [posts, setPosts] = useState<Post[]>(INITIAL_POSTS)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
-  const searchContainerRef = useRef<HTMLDivElement>(null)
+  const [expandedPostIds, setExpandedPostIds] = useState<Set<string>>(() => new Set())
   const [activeTab, setActiveTab] = useState("all")
   const { toast } = useToast()
   const router = useRouter()
@@ -105,31 +98,6 @@ export default function FeedPage() {
   const [celebrationPod, setCelebrationPod] = useState<string>("public")
   const [isCelebrating, setIsCelebrating] = useState(false)
   const [pods, setPods] = useState<any[]>([])
-
-
-  useEffect(() => {
-    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      if (!searchContainerRef.current?.contains(event.target as Node)) {
-        setShowSearchSuggestions(false)
-      }
-    }
-    document.addEventListener("mousedown", handlePointerDown)
-    document.addEventListener("touchstart", handlePointerDown)
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown)
-      document.removeEventListener("touchstart", handlePointerDown)
-    }
-  }, [])
-
-  const handleSearchInputChange = (value: string) => {
-    setSearchQuery(value)
-    setShowSearchSuggestions(Boolean(value.trim()))
-  }
-
-  const applySearchSuggestion = (suggestion: string) => {
-    setSearchQuery(suggestion.replace(/^#/, ""))
-    setShowSearchSuggestions(false)
-  }
 
   const formatUsername = (name?: string) =>
     name && name.trim().length > 0
@@ -330,7 +298,7 @@ export default function FeedPage() {
       try {
         if (navigator.share) {
           await navigator.share({
-            title: post.title || "PeerSpark post",
+            title: post.title || "Student.social post",
             text: post.content.slice(0, 160),
             url: shareUrl,
           })
@@ -390,15 +358,29 @@ export default function FeedPage() {
       }
       toast({
         title: "Report received",
-        description: "Thanks for helping keep PeerSpark safe. Our team will review it.",
+        description: "Thanks for helping keep Student.social safe. Our team will review it.",
       })
     } catch (error: any) {
       toast({ title: "Report failed", description: error?.message || "Please try again.", variant: "destructive" })
     }
   }
 
-  const handlePostCreated = (newPost: Post) => {
-    setPosts((prev) => [newPost, ...prev])
+  useEffect(() => {
+    const receiveCreatedPost = (event: Event) => {
+      const newPost = (event as CustomEvent<Post>).detail
+      if (newPost?.id) setPosts((prev) => prev.some((post) => post.id === newPost.id) ? prev : [newPost, ...prev])
+    }
+    window.addEventListener("student:post-created", receiveCreatedPost)
+    return () => window.removeEventListener("student:post-created", receiveCreatedPost)
+  }, [])
+
+  const togglePostExpansion = (postId: string) => {
+    setExpandedPostIds((current) => {
+      const next = new Set(current)
+      if (next.has(postId)) next.delete(postId)
+      else next.add(postId)
+      return next
+    })
   }
 
   const handleCelebrate = async () => {
@@ -461,73 +443,21 @@ export default function FeedPage() {
   }
 
   const followingIds = new Set(Array.isArray(profile?.following) ? profile.following : [])
-  const searchSuggestions = buildSearchSuggestions(
-    posts.flatMap((post) => [post.title || "", post.content, post.author.name, ...post.tags.map((tag) => `#${tag}`)]),
-    searchQuery,
-    6,
-  )
   const filteredPosts = posts.filter((post) => {
-    const searchableText = [post.title, post.content, post.author.name, post.author.username, ...post.tags].filter(Boolean).join(" ")
-    const matchesSearch = fuzzyIncludes(searchableText, searchQuery)
-
     const matchesTab =
       activeTab === "all" ||
       (activeTab === "following" && Boolean(post.authorId && followingIds.has(post.authorId))) ||
       (activeTab === "pods" && post.pod)
 
-    return matchesSearch && matchesTab
+    return matchesTab
   })
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Mobile Header */}
-      <MobileHeader searchQuery={searchQuery} onSearchChange={handleSearchInputChange} />
-
-      {/* Desktop Header */}
-      <div className="hidden md:block p-4 md:p-8 pt-6">
-        <div className="max-w-4xl mx-auto">
+      {/* Desktop Filters */}
+      <div className="hidden md:block p-4 md:p-8 pb-2 pt-6">
+        <div className="max-w-6xl mx-auto">
           <div className="mb-6">
-            <h1 className="text-3xl font-bold mb-2">Feed</h1>
-            <p className="text-muted-foreground">Stay updated with your learning community</p>
-          </div>
-
-          {/* Desktop Search and Filters */}
-          <div className="mb-6 space-y-4">
-            <div className="flex items-center space-x-4">
-              <div className="flex-1 relative" ref={searchContainerRef}>
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input
-                  placeholder="Search posts, people, or topics..."
-                  value={searchQuery}
-                  onChange={(e) => handleSearchInputChange(e.target.value)}
-                  onFocus={() => setShowSearchSuggestions(Boolean(searchQuery.trim()))}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") setShowSearchSuggestions(false)
-                    if (event.key === "Enter") setShowSearchSuggestions(false)
-                  }}
-                  className="pl-10"
-                  aria-label="Search posts with fuzzy matching"
-                />
-                {searchSuggestions.length > 0 && (
-                  <div className="absolute z-20 mt-2 w-full rounded-md border bg-background p-2 shadow-lg" role="listbox" aria-label="Post search suggestions">
-                    {searchSuggestions.map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        type="button"
-                        className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
-                        onClick={() => setSearchQuery(suggestion.replace(/^#/, ""))}
-                      >
-                        {suggestion.length > 80 ? `${suggestion.slice(0, 80)}…` : suggestion}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <Button variant="outline" size="icon">
-                <Filter className="w-4 h-4" />
-              </Button>
-            </div>
-
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="all">All Posts</TabsTrigger>
@@ -540,7 +470,7 @@ export default function FeedPage() {
       </div>
 
       {/* Mobile Tabs */}
-      <div className="md:hidden px-4 py-2 border-b border-border">
+      <div className="student-feed-mobile-controls md:hidden px-4 py-3 border-b border-border">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3 h-9">
             <TabsTrigger value="all" className="text-xs">
@@ -556,7 +486,7 @@ export default function FeedPage() {
         </Tabs>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 md:px-8 pb-20 md:pb-8">
+      <div className="max-w-6xl mx-auto px-4 md:px-8 pb-20 md:pb-8">
         <div className="grid gap-6 lg:grid-cols-4">
           {/* Main Feed */}
           <div className="lg:col-span-3 space-y-4 md:space-y-6">
@@ -592,7 +522,7 @@ export default function FeedPage() {
               </Card>
             ) : (
               filteredPosts.map((post) => (
-                <Card key={post.id} className="hover:shadow-md transition-shadow border-0 md:border shadow-sm">
+                <Card key={post.id} className="student-feed-post hover:shadow-md transition-shadow border-0 md:border shadow-sm">
                   <CardHeader className="pb-3 px-4 md:px-6">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center space-x-3">
@@ -644,12 +574,13 @@ export default function FeedPage() {
                           size="icon"
                           onClick={() => handleBookmark(post.id)}
                           className={`h-8 w-8 ${post.isBookmarked ? "text-yellow-500" : ""}`}
+                          aria-label={post.isBookmarked ? "Remove bookmark" : "Bookmark this post"}
                         >
                           <Bookmark className={`w-4 h-4 ${post.isBookmarked ? "fill-current" : ""}`} />
                         </Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Open post actions">
                               <MoreHorizontal className="w-4 h-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -681,7 +612,12 @@ export default function FeedPage() {
                   </CardHeader>
                   <CardContent className="pt-0 px-4 md:px-6">
                     {post.title && <h3 className="font-semibold text-lg mb-2">{post.title}</h3>}
-                    <div className="text-sm mb-4 whitespace-pre-wrap leading-relaxed">{post.content}</div>
+                    <div className={`student-post-copy whitespace-pre-wrap ${expandedPostIds.has(post.id) ? "is-expanded" : ""}`}>{post.content}</div>
+                    {post.content.length > 520 ? (
+                      <button type="button" className="student-post-more" onClick={() => togglePostExpansion(post.id)}>
+                        {expandedPostIds.has(post.id) ? "Show less" : "Continue reading"}
+                      </button>
+                    ) : null}
 
                     {post.attachments && post.attachments.length > 0 && (
                       <div className="mb-4 grid gap-2 sm:grid-cols-2">
@@ -717,12 +653,13 @@ export default function FeedPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleLike(post.id)}
-                          className={`${post.isLiked ? "text-red-500" : ""} hover:text-red-500 h-8 px-2 md:px-3`}
+                          className={`student-post-action ${post.isLiked ? "is-active" : ""}`}
+                          aria-label={`${post.isLiked ? "Unlike" : "Like"} this post`}
                         >
                           <Heart className={`w-4 h-4 mr-1 md:mr-2 ${post.isLiked ? "fill-current" : ""}`} />
                           <span className="text-xs md:text-sm">{post.likes}</span>
                         </Button>
-                        <div className="flex items-center text-muted-foreground h-8 px-2 md:px-3">
+                        <div className="student-post-action" aria-label={`${post.comments} comments`}>
                           <MessageCircle className="w-4 h-4 mr-1 md:mr-2" />
                           <span className="text-xs md:text-sm">{post.comments}</span>
                         </div>
@@ -730,7 +667,8 @@ export default function FeedPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleShare(post.id)}
-                          className="hover:text-green-500 h-8 px-2 md:px-3"
+                          className="student-post-action"
+                          aria-label="Share this post"
                         >
                           <Share2 className="w-4 h-4 mr-1 md:mr-2" />
                           <span className="text-xs md:text-sm hidden md:inline">{post.shares}</span>
@@ -854,11 +792,6 @@ export default function FeedPage() {
         </div>
       </div>
 
-      {/* Floating Action Button */}
-      <FloatingActionButton />
-
-      {/* Create Post Modal */}
-      <CreatePostModal onPostCreated={handlePostCreated} />
     </div>
   )
 }

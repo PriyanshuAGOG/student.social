@@ -1,13 +1,14 @@
 {
-  "name": "PeerSpark - Collaborative Learning Platform",
-  "short_name": "PeerSpark",
-  "description": "Connect, learn, and grow with peers through collaborative study sessions and AI-powered insights.",
-  "start_url": "/",
+  "id": "/",
+  "name": "Student.social",
+  "short_name": "Student.social",
+  "description": "Study with people, build shared momentum, and get thoughtful AI support.",
+  "start_url": "/app/feed",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "theme_color": "#000000",
-  "background_color": "#ffffff",
+  "theme_color": "#272521",
+  "background_color": "#f2ece2",
   "screenshots": [
     {
       "src": "/logo.png",
@@ -44,10 +45,10 @@
   "categories": ["education", "productivity"],
   "shortcuts": [
     {
-      "name": "Dashboard",
-      "short_name": "Dashboard",
-      "description": "Go to your dashboard",
-      "url": "/app/dashboard",
+      "name": "Learning feed",
+      "short_name": "Feed",
+      "description": "Open your learning feed",
+      "url": "/app/feed",
       "icons": [
         {
           "src": "/logo.png",
@@ -60,7 +61,7 @@
       "name": "Create Pod",
       "short_name": "Pod",
       "description": "Create a new study pod",
-      "url": "/app/pods",
+      "url": "/app/pods/create",
       "icons": [
         {
           "src": "/logo.png",

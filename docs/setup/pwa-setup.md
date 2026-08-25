@@ -17,14 +17,13 @@ This document outlines the PWA setup for PeerSpark, enabling installation as a m
 - Push notification handling
 - Asset caching for faster load times
 
-### 3. **Service Worker Registration** (`public/sw-register.js`)
+### 3. **Service Worker Registration** (`components/sw-register.tsx`)
 - Automatically registers the service worker
 - Handles registration errors gracefully
 
-### 4. **Next.js PWA Configuration** (`next.config.mjs`)
-- Integrated next-pwa plugin
-- Runtime caching for API calls and fonts
-- Optimized cache strategies
+### 4. **Next.js Configuration** (`next.config.mjs`)
+- Uses the standard Next.js configuration without a PWA wrapper
+- Keeps service-worker behavior explicit and reviewable in `public/sw.js`
 
 ### 5. **Meta Tags** (`app/layout.tsx`)
 - Apple Web App meta tags
@@ -83,7 +82,7 @@ This document outlines the PWA setup for PeerSpark, enabling installation as a m
 ### Caching Strategy
 
 - **Cache First**: Static assets (JS, CSS, images)
-- **Network First**: API calls (with fallback to cache)
+- **Network Only**: API calls are never cached, preventing stale private data
 - **Stale While Revalidate**: Fonts and stylesheets
 - **Runtime Cache**: Dynamic API responses
 
@@ -91,12 +90,12 @@ This document outlines the PWA setup for PeerSpark, enabling installation as a m
 
 - ✅ `public/manifest.json` - Web app manifest
 - ✅ `public/sw.js` - Service worker
-- ✅ `public/sw-register.js` - Service worker registration
+- ✅ `components/sw-register.tsx` - Service worker registration
 - ✅ `public/browserconfig.xml` - Windows tile config
 - ✅ `app/layout.tsx` - PWA meta tags and viewport
-- ✅ `next.config.mjs` - next-pwa configuration
+- ✅ `next.config.mjs` - standard Next.js configuration
 - ✅ `components/pwa-install-prompt.tsx` - Install prompt UI
-- ✅ Dependencies: `next-pwa`, `workbox-window`
+- ✅ No Workbox or `next-pwa` runtime dependency
 
 ### Mobile App Icons
 
@@ -120,7 +119,7 @@ For production, replace these with your branded icons.
 Consider adding:
 1. Custom app splash screens for iOS
 2. Enhanced notification handling
-3. Workbox strategies for more granular control
+3. More granular cache rules in `public/sw.js` if an offline product requirement is approved
 4. Analytics for installation tracking
 5. Update notification when new version available
 

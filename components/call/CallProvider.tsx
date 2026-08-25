@@ -1,20 +1,31 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
-import { useCall, defaultCallContext, type CallContextType, type Call } from '@/hooks/use-call'
+import dynamic from 'next/dynamic'
+import { useCall, defaultCallContext, type CallContextType } from '@/hooks/use-call'
 import { IncomingCallOverlay } from './IncomingCallOverlay'
-import { OutgoingCallScreen } from './OutgoingCallScreen'
-import { ActiveCallScreen } from './ActiveCallScreen'
+import { subscribeToCallSessions } from '@/lib/appwrite/call-realtime'
+import { closeCallNotification } from '@/lib/pwa/call-notifications'
+import { CallAlertsPrompt } from './CallAlertsPrompt'
+import { useIncomingCallAlerts } from './use-incoming-call-alerts'
+
+const LiveKitCallStage = dynamic(
+  () => import('./LiveKitCallStage').then((module) => module.LiveKitCallStage),
+  {
+    ssr: false,
+    loading: () => <div className="fixed inset-0 z-[80] grid place-items-center bg-[#242724] text-sm text-white/55">Preparing your call…</div>,
+  },
+)
 
 export const CallContext = createContext<CallContextType>(defaultCallContext)
 
 export function CallProvider({ children }: { children: React.ReactNode }) {
   const callHook = useCall()
-  const [isInitializing, setIsInitializing] = useState(true)
   const activeFetchFailuresRef = useRef(0)
   const [acceptingCallId, setAcceptingCallId] = useState<string | null>(null)
   const [rejectingCallId, setRejectingCallId] = useState<string | null>(null)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  useIncomingCallAlerts(Boolean(callHook.incomingCall && callHook.callState === 'incoming_ringing'))
 
   // Fetch active calls on mount
   useEffect(() => {
@@ -45,17 +56,30 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         if (activeFetchFailuresRef.current <= 2) {
           console.warn('[CallProvider] Failed to fetch active calls:', error)
         }
-      } finally {
-        setIsInitializing(false)
-      }
+      } finally {}
     }
 
     fetchActiveCalls()
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null
+    const unsubscribeRealtime = subscribeToCallSessions(() => {
+      if (refreshTimer) clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(() => void fetchActiveCalls(), 100)
+    })
 
-    // Start polling for incoming calls every 3 seconds
-    pollingIntervalRef.current = setInterval(fetchActiveCalls, 3000)
+    // Appwrite Realtime is the primary signal. A light, visible-tab-only poll
+    // recovers missed socket events without creating constant background load.
+    pollingIntervalRef.current = setInterval(() => {
+      if (document.visibilityState === 'visible') void fetchActiveCalls()
+    }, 30_000)
+    const refreshOnFocus = () => { if (document.visibilityState === 'visible') void fetchActiveCalls() }
+    document.addEventListener('visibilitychange', refreshOnFocus)
+    window.addEventListener('online', fetchActiveCalls)
 
     return () => {
+      document.removeEventListener('visibilitychange', refreshOnFocus)
+      window.removeEventListener('online', fetchActiveCalls)
+      unsubscribeRealtime()
+      if (refreshTimer) clearTimeout(refreshTimer)
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current)
       }
@@ -68,6 +92,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       setAcceptingCallId(callId)
       try {
         await callHook.acceptCall(callId)
+        await closeCallNotification(callId)
       } catch (error) {
         console.error('[CallProvider] Failed to accept call:', error)
       } finally {
@@ -83,22 +108,11 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       setRejectingCallId(callId)
       try {
         await callHook.rejectCall(callId)
+        await closeCallNotification(callId)
       } catch (error) {
         console.error('[CallProvider] Failed to reject call:', error)
       } finally {
         setRejectingCallId(null)
-      }
-    },
-    [callHook]
-  )
-
-  // Handle end call
-  const handleEndCall = useCallback(
-    async (callId: string) => {
-      try {
-        await callHook.endCall(callId)
-      } catch (error) {
-        console.error('[CallProvider] Failed to end call:', error)
       }
     },
     [callHook]
@@ -111,44 +125,27 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   return (
     <CallContext.Provider value={value}>
       {children}
+      <CallAlertsPrompt />
 
       {/* Incoming call overlay */}
       {callHook.incomingCall && callHook.callState === 'incoming_ringing' && (
         <IncomingCallOverlay
-          callerId={callHook.incomingCall.callerId}
           callerName={callHook.incomingCall.caller?.name || 'User'}
           callerAvatar={callHook.incomingCall.caller?.avatar}
           callType={callHook.incomingCall.callType}
           onAccept={() => handleAcceptCall(callHook.incomingCall!.id)}
           onReject={() => handleRejectCall(callHook.incomingCall!.id)}
-          isLoading={acceptingCallId === callHook.incomingCall.id}
+          isLoading={acceptingCallId === callHook.incomingCall.id || rejectingCallId === callHook.incomingCall.id}
         />
       )}
 
-      {/* Outgoing call screen */}
-      {callHook.activeCall &&
-        callHook.callState === 'outgoing_ringing' &&
-        callHook.activeCall.status === 'ringing' && (
-          <OutgoingCallScreen
-            receiverName="User"
-            callType={callHook.activeCall.callType}
-            onCancel={() => callHook.cancelCall(callHook.activeCall!.id)}
-            isLoading={false}
-          />
-        )}
-
-      {/* Active call screen */}
-      {callHook.activeCall && callHook.callState === 'active' && (
-        <ActiveCallScreen
-          otherPartyName="User"
-          callType={callHook.activeCall.callType}
-          duration={callHook.callDuration}
-          isMuted={callHook.isMuted}
-          isCameraOff={callHook.isCameraOff}
-          onToggleMute={callHook.toggleMute}
-          onToggleCamera={callHook.toggleCamera}
-          onEndCall={() => handleEndCall(callHook.activeCall!.id)}
-          isConnecting={!(['idle', 'active', 'ended'] as const).includes(callHook.callState as any)}
+      {/* One media implementation for direct, group, pod, and classroom calls. */}
+      {callHook.activeCall && ['outgoing_ringing', 'connecting', 'active', 'reconnecting'].includes(callHook.callState) && (
+        <LiveKitCallStage
+          sessionId={callHook.activeCall.id}
+          roomTitle={callHook.activeCall.roomTitle || callHook.activeCall.caller?.name || 'Student.social call'}
+          mediaType={callHook.activeCall.mediaType}
+          onClose={callHook.clearActiveCall}
         />
       )}
     </CallContext.Provider>

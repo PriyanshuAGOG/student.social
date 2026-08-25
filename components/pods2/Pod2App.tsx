@@ -57,28 +57,24 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
+import { useCallContext } from "@/components/call/CallProvider"
+import { chatService } from "@/lib/appwrite"
 import { pod2Api } from "@/lib/pods/client"
 import { calculateLeaderboard } from "@/lib/pods/calculations"
 import type { PodBundle, PodDocument, PodMessage, PodProfile, PodResource, PodTask } from "@/lib/pods/types"
 import { usePodRealtime } from "@/hooks/pods/use-pod-realtime"
 
 const tabs = [
-  ["overview", "Overview", LayoutDashboard],
-  ["roadmap", "Roadmap", BookOpen],
-  ["tasks", "Tasks", ListChecks],
-  ["study-room", "Study Room", Video],
+  ["overview", "Home", LayoutDashboard],
+  ["roadmap", "Plan", BookOpen],
+  ["study-room", "Room", Video],
   ["chat", "Chat", MessageSquare],
-  ["resources", "Resources", FolderOpen],
-  ["members", "Members", Users],
-  ["leaderboard", "Leaderboard", Trophy],
-  ["insights", "Insights", BarChart3],
-  ["settings", "Settings", Settings],
 ] as const
 
 const podTypes = [
@@ -139,7 +135,7 @@ function nextBestTask(bundle: PodBundle) {
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-dvh bg-[#050505] text-white">{children}</div>
+  return <div className="ss-pods-experience min-h-dvh bg-[#050505] text-white">{children}</div>
 }
 
 function Panel({ className, children }: { className?: string; children: React.ReactNode }) {
@@ -179,39 +175,31 @@ function PodCard({ pod, mine }: { pod: PodDocument; mine?: boolean }) {
   const id = pod.$id
   const completion = Math.max(0, Math.min(100, Number(pod.completionRate || 0)))
   return (
-    <article className="group overflow-hidden rounded-[20px] border border-white/10 bg-[#111113] transition duration-200 hover:-translate-y-0.5 hover:border-white/20">
-      <div className="relative h-28 border-b border-white/10 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,.24),transparent_24%),linear-gradient(135deg,#171717,#050505)]">
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:28px_28px] opacity-35" />
-        <div className="absolute bottom-3 left-4 flex gap-2">
-          <Badge className="border-white/10 bg-white text-black hover:bg-white">{pod.category || "General"}</Badge>
-          <Badge variant="outline" className="border-white/15 bg-black/40 text-white">{pod.difficulty || "beginner"}</Badge>
+    <article className="ss-pod-card group rounded-[22px] border border-white/10 bg-[#111113] p-4 transition duration-200 hover:-translate-y-0.5 hover:border-white/20">
+      <div className="flex items-start gap-3">
+        <div className="ss-pod-card-mark" aria-hidden="true"><span /><span /><span /></div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap gap-1.5">
+            <Badge className="border-white/10 bg-white text-black hover:bg-white">{pod.category || "General"}</Badge>
+            <Badge variant="outline" className="border-white/15 text-white">{pod.difficulty || "beginner"}</Badge>
+          </div>
+          <h3 className="mt-3 line-clamp-1 text-[17px] font-semibold text-white">{pod.name}</h3>
+          <p className="mt-1.5 line-clamp-2 min-h-10 text-sm leading-5 text-white/60">{pod.shortOutcome || pod.description}</p>
         </div>
       </div>
-      <div className="space-y-4 p-5">
+      <div className="mt-4 flex items-center gap-4 text-xs text-white/55">
+        <span className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" />{pod.memberCount || 0}</span>
+        <span className="flex items-center gap-1.5"><Activity className="h-3.5 w-3.5" />{pod.weeklyActivityScore || 0} active</span>
+        {pod.nextSessionAt ? <span className="ml-auto flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5" />{formatDate(pod.nextSessionAt)}</span> : null}
+      </div>
+      <div className="mt-4 grid grid-cols-[1fr_auto] items-center gap-3">
         <div>
-          <h3 className="line-clamp-1 text-[17px] font-semibold text-white">{pod.name}</h3>
-          <p className="mt-2 line-clamp-2 min-h-10 text-sm leading-5 text-white/60">{pod.shortOutcome || pod.description}</p>
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-xs text-white/60">
-          <span className="rounded-xl border border-white/10 bg-white/[0.03] p-2"><Users className="mb-1 h-3.5 w-3.5" />{pod.memberCount || 0} members</span>
-          <span className="rounded-xl border border-white/10 bg-white/[0.03] p-2"><Activity className="mb-1 h-3.5 w-3.5" />{pod.weeklyActivityScore || 0} activity</span>
-          <span className="rounded-xl border border-white/10 bg-white/[0.03] p-2"><Gauge className="mb-1 h-3.5 w-3.5" />{pod.healthScore || 0} health</span>
-        </div>
-        <div>
-          <div className="mb-2 flex items-center justify-between text-xs text-white/50">
-            <span>Completion</span>
-            <span>{completion}%</span>
-          </div>
+          <div className="mb-1.5 flex items-center justify-between text-[11px] text-white/45"><span>{mine ? "Your progress" : "Pod progress"}</span><span>{completion}%</span></div>
           <Progress value={completion} className="h-1.5 bg-white/10" />
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <Button asChild className="h-10 flex-1 rounded-xl bg-white text-black hover:bg-white/90">
-            <Link href={`/app/pods/${id}/${mine ? "overview" : "preview"}`}>{mine ? "Continue" : "Preview"}</Link>
-          </Button>
-          <Button asChild variant="outline" className="h-10 rounded-xl border-white/10 bg-transparent text-white hover:bg-white/10">
-            <Link href={`/app/pods/${id}`}>{mine ? "Open" : "Join"}</Link>
-          </Button>
-        </div>
+        <Button asChild className="h-9 rounded-full bg-white px-4 text-black hover:bg-white/90">
+          <Link href={`/app/pods/${id}/${mine ? "overview" : "preview"}`}>{mine ? "Continue" : "Explore"}<ChevronRight className="ml-1 h-3.5 w-3.5" /></Link>
+        </Button>
       </div>
     </article>
   )
@@ -225,6 +213,9 @@ export function PodDiscoveryPage() {
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState("All")
   const [difficulty, setDifficulty] = useState("All")
+  const [discoveryMode, setDiscoveryMode] = useState<"recommended" | "active" | "soon" | "mentor">("recommended")
+  const [collection, setCollection] = useState<"mine" | "discover">("mine")
+  const [filterChoice, setFilterChoice] = useState("")
 
   useEffect(() => {
     let cancelled = false
@@ -243,13 +234,37 @@ export function PodDiscoveryPage() {
   }, [])
 
   const filtered = useMemo(() => {
-    return pods.filter((pod) => {
+    const matchesCoreFilters = (pod: PodDocument) => {
       const haystack = `${pod.name} ${pod.shortOutcome || ""} ${pod.description || ""} ${(pod.tags || []).join(" ")}`.toLowerCase()
       return (!search || haystack.includes(search.toLowerCase()))
         && (category === "All" || pod.category === category)
         && (difficulty === "All" || pod.difficulty === difficulty)
+    }
+    const now = Date.now()
+    const twoWeeks = now + 14 * 24 * 60 * 60 * 1000
+    const result = pods.filter(matchesCoreFilters).filter((pod) => {
+      if (discoveryMode === "mentor") return pod.type === "mentor_led" || Boolean(pod.mentorId)
+      if (discoveryMode === "soon") {
+        const startsAt = pod.nextSessionAt ? new Date(pod.nextSessionAt).getTime() : Number.NaN
+        return Number.isFinite(startsAt) && startsAt >= now && startsAt <= twoWeeks
+      }
+      return true
     })
-  }, [pods, search, category, difficulty])
+    if (discoveryMode === "active") {
+      return [...result].sort((a, b) => Number(b.weeklyActivityScore || 0) - Number(a.weeklyActivityScore || 0))
+    }
+    if (discoveryMode === "soon") {
+      return [...result].sort((a, b) => new Date(a.nextSessionAt || 0).getTime() - new Date(b.nextSessionAt || 0).getTime())
+    }
+    return result
+  }, [pods, search, category, difficulty, discoveryMode])
+
+  const filteredMyPods = useMemo(() => myPods.filter((pod) => {
+    const haystack = `${pod.name} ${pod.shortOutcome || ""} ${pod.description || ""} ${(pod.tags || []).join(" ")}`.toLowerCase()
+    return (!search || haystack.includes(search.toLowerCase()))
+      && (category === "All" || pod.category === category)
+      && (difficulty === "All" || pod.difficulty === difficulty)
+  }), [myPods, search, category, difficulty])
 
   const categories = ["All", ...Array.from(new Set(pods.map((pod) => pod.category || "General")))]
 
@@ -257,70 +272,72 @@ export function PodDiscoveryPage() {
 
   return (
     <Shell>
-      <div className="mx-auto max-w-[1440px] space-y-7 p-5 md:p-8">
-        <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-normal text-white md:text-4xl">Pods</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/60">Join structured learning spaces built around outcomes, accountability, and live collaboration.</p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search pods" className="h-11 rounded-xl border-white/10 bg-[#0B0B0C] pl-9 text-white placeholder:text-white/35 focus-visible:ring-white/20" />
-            </div>
-            <Button asChild className="h-11 rounded-xl bg-white px-5 font-semibold text-black hover:bg-white/90">
-              <Link href="/app/pods/create"><Plus className="mr-2 h-4 w-4" />Create Pod</Link>
-            </Button>
-          </div>
+      <div className="ss-pods-home mx-auto max-w-[1320px] space-y-5 p-4 md:p-8">
+        <header className="ss-pods-page-head">
+          <div><span>Study together</span><h1 className="text-3xl font-bold tracking-normal text-white md:text-4xl">Your learning circles</h1><p>Focused spaces for showing up, making progress, and learning with people.</p></div>
+          <Button asChild className="hidden h-10 rounded-full bg-white px-4 font-semibold text-black hover:bg-white/90 md:inline-flex"><Link href="/app/pods/create"><Plus className="mr-1.5 h-4 w-4" />New pod</Link></Button>
         </header>
 
-        <section className="relative overflow-hidden rounded-[28px] border border-white/10 bg-[#0B0B0C] p-6 md:p-10">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_30%,rgba(255,255,255,.18),transparent_24%)]" />
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[linear-gradient(90deg,rgba(255,255,255,.09)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.09)_1px,transparent_1px)] bg-[size:34px_34px] opacity-30" />
-          <div className="relative max-w-2xl">
-            <Badge className="mb-5 bg-white text-black hover:bg-white">Learning operating system</Badge>
-            <h2 className="text-3xl font-bold tracking-normal md:text-5xl">Learn with people who actually show up.</h2>
-            <p className="mt-4 text-base leading-7 text-white/65">Roadmaps, daily focus, live sessions, resources, progress, and accountability in one calm workspace.</p>
-            <div className="mt-7 flex flex-wrap gap-3">
-              <Button className="h-11 rounded-xl bg-white px-5 text-black hover:bg-white/90">Discover Pods</Button>
-              <Button asChild variant="outline" className="h-11 rounded-xl border-white/15 bg-transparent px-5 text-white hover:bg-white/10">
-                <Link href="/app/pods/create">Create Pod</Link>
-              </Button>
-            </div>
-          </div>
+        <section className="ss-pods-momentum" aria-label="Your pod momentum">
+          <div><span className="ss-pods-kicker">This week</span><h2>Keep your circle moving.</h2><p>{myPods.length ? `${myPods.length} active ${myPods.length === 1 ? "pod" : "pods"} waiting for your next check-in.` : "Find a circle with the same goal, or start one of your own."}</p></div>
+          <div className="ss-pods-momentum-stats"><span><strong>{myPods.length}</strong><small>active pods</small></span><span><strong>{myPods.reduce((sum, pod) => sum + Number(pod.weeklyActivityScore || 0), 0)}</strong><small>weekly activity</small></span><span><strong>{filtered.length}</strong><small>to discover</small></span></div>
         </section>
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger aria-label="Category filter" className="h-10 min-w-40 rounded-xl border-white/10 bg-[#0B0B0C] text-white"><SelectValue /></SelectTrigger>
-            <SelectContent>{categories.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
-          </Select>
-          <Select value={difficulty} onValueChange={setDifficulty}>
-            <SelectTrigger aria-label="Difficulty filter" className="h-10 min-w-40 rounded-xl border-white/10 bg-[#0B0B0C] text-white"><SelectValue /></SelectTrigger>
-            <SelectContent>{["All", "beginner", "intermediate", "advanced", "expert"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
-          </Select>
-          <Button variant="outline" className="h-10 rounded-xl border-white/10 bg-transparent text-white hover:bg-white/10"><Filter className="mr-2 h-4 w-4" />Most active</Button>
-          <Button variant="outline" className="h-10 rounded-xl border-white/10 bg-transparent text-white hover:bg-white/10">Starting soon</Button>
-          <Button variant="outline" className="h-10 rounded-xl border-white/10 bg-transparent text-white hover:bg-white/10">Mentor-led</Button>
+        <div className="ss-pods-switch" role="tablist" aria-label="Pod collection">
+          <button type="button" role="tab" aria-selected={collection === "mine"} onClick={() => setCollection("mine")} className={collection === "mine" ? "is-active" : ""}>My pods <span>{myPods.length}</span></button>
+          <button type="button" role="tab" aria-selected={collection === "discover"} onClick={() => setCollection("discover")} className={collection === "discover" ? "is-active" : ""}>Discover</button>
         </div>
+
+        <div className="ss-pods-tools">
+          <div className="relative flex-1"><Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" /><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={collection === "mine" ? "Search your pods" : "Search topics or outcomes"} className="h-11 rounded-full border-white/10 bg-[#0B0B0C] pl-10 text-white placeholder:text-white/35 focus-visible:ring-white/20" /></div>
+          <Button type="button" variant="outline" className="h-11 rounded-full border-white/10 bg-transparent px-4 text-white hover:bg-white/10" onClick={() => { setCategory("All"); setDifficulty("All"); setDiscoveryMode("recommended"); setFilterChoice("") }}><Filter className="mr-1.5 h-4 w-4" />Reset</Button>
+        </div>
+
+        {collection === "discover" ? <div className="ss-pods-filter-row">
+          <Select value={filterChoice} onValueChange={(value) => {
+            setFilterChoice(value)
+            const [group, choice] = value.split(":")
+            if (group === "category") setCategory(choice)
+            if (group === "difficulty") setDifficulty(choice)
+            if (group === "mode") setDiscoveryMode(choice as typeof discoveryMode)
+          }}>
+            <SelectTrigger aria-label="Filter discoverable pods" className="h-10 w-full rounded-full border-white/10 bg-[#0B0B0C] text-white sm:w-64"><Filter className="h-4 w-4" /><SelectValue placeholder="Filter pods" /></SelectTrigger>
+            <SelectContent>
+              <SelectGroup><SelectLabel>Category</SelectLabel>{categories.map((item) => <SelectItem key={item} value={`category:${item}`}>{item}</SelectItem>)}</SelectGroup>
+              <SelectSeparator />
+              <SelectGroup><SelectLabel>Difficulty</SelectLabel>{["All", "beginner", "intermediate", "advanced", "expert"].map((item) => <SelectItem key={item} value={`difficulty:${item}`}>{item}</SelectItem>)}</SelectGroup>
+              <SelectSeparator />
+              <SelectGroup><SelectLabel>Discovery</SelectLabel><SelectItem value="mode:recommended">Recommended</SelectItem><SelectItem value="mode:active">Most active</SelectItem><SelectItem value="mode:soon">Starting soon</SelectItem><SelectItem value="mode:mentor">Mentor-led</SelectItem></SelectGroup>
+            </SelectContent>
+          </Select>
+          <span>{category !== "All" ? category : "All topics"} · {difficulty !== "All" ? difficulty : "Any level"} · {discoveryMode === "recommended" ? "Recommended" : discoveryMode === "active" ? "Most active" : discoveryMode === "soon" ? "Starting soon" : "Mentor-led"}</span>
+        </div> : null}
 
         {error ? <EmptyState icon={RefreshCw} title="Could not load pods" body={error} action={<Button onClick={() => location.reload()} className="rounded-xl bg-white text-black">Retry</Button>} /> : null}
 
-        <section className="space-y-4">
+        {collection === "mine" ? <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">My Active Pods</h2>
             <Button asChild variant="ghost" className="text-white/70 hover:bg-white/10 hover:text-white"><Link href="/app/pods?filter=mine">View all</Link></Button>
           </div>
-          {myPods.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{myPods.map((pod) => <PodCard key={pod.$id} pod={pod} mine />)}</div> : <EmptyState icon={Compass} title="No active pods yet" body="Join a pod or create your own learning workspace to start seeing daily focus and progress here." action={<Button asChild className="rounded-xl bg-white text-black"><Link href="/app/pods/create">Create Pod</Link></Button>} />}
-        </section>
+          {filteredMyPods.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{filteredMyPods.map((pod) => <PodCard key={pod.$id} pod={pod} mine />)}</div> : myPods.length ? <EmptyState icon={Search} title="No active pods match" body="Adjust your search or filters to see your learning spaces." /> : <EmptyState icon={Compass} title="No active pods yet" body="Join a pod or create your own learning workspace to start seeing daily focus and progress here." action={<Button asChild className="rounded-xl bg-white text-black"><Link href="/app/pods/create">Create Pod</Link></Button>} />}
+        </section> : null}
 
-        <section className="space-y-4">
-          <h2 className="text-xl font-semibold">Recommended Pods</h2>
-          {filtered.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{filtered.map((pod) => <PodCard key={pod.$id} pod={pod} />)}</div> : <EmptyState icon={Search} title="No pods found" body="Reset filters or create a new pod for this outcome." action={<Button onClick={() => { setSearch(""); setCategory("All"); setDifficulty("All") }} className="rounded-xl bg-white text-black">Reset filters</Button>} />}
-        </section>
+        {collection === "discover" ? <section id="recommended-pods" className="scroll-mt-6 space-y-4">
+          <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold">{discoveryMode === "active" ? "Most Active Pods" : discoveryMode === "soon" ? "Starting Soon" : discoveryMode === "mentor" ? "Mentor-led Pods" : "Recommended Pods"}</h2><span className="text-sm text-white/45">{filtered.length} found</span></div>
+          {filtered.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{filtered.map((pod) => <PodCard key={pod.$id} pod={pod} />)}</div> : <EmptyState icon={Search} title="No pods found" body="Reset filters or create a new pod for this outcome." action={<Button onClick={() => { setSearch(""); setCategory("All"); setDifficulty("All"); setDiscoveryMode("recommended"); setFilterChoice("") }} className="rounded-xl bg-white text-black">Reset filters</Button>} />}
+        </section> : null}
       </div>
     </Shell>
   )
+}
+
+function getPodFieldError(field: 'name' | 'shortOutcome' | 'description', value: string): string | null {
+  const trimmed = value.trim()
+  if (field === 'name' && trimmed.length < 3) return 'Pod name must be at least 3 characters.'
+  if (field === 'shortOutcome' && trimmed.length < 10) return 'Short outcome must be at least 10 characters.'
+  if (field === 'description' && trimmed.length < 20) return 'Description must be at least 20 characters.'
+  return null
 }
 
 export function PodCreateWizard() {
@@ -355,8 +372,11 @@ export function PodCreateWizard() {
   const title = ["Pod Identity", "Audience", "Structure", "Roadmap Setup", "Schedule", "Access", "Launch Preview"][step]
 
   async function launch() {
-    if (!form.name.trim() || !form.shortOutcome.trim()) {
-      toast({ title: "Incomplete pod setup", description: "Pod name and short outcome are required.", variant: "destructive" })
+    const fieldError = getPodFieldError('name', form.name)
+      || getPodFieldError('shortOutcome', form.shortOutcome)
+      || getPodFieldError('description', form.description)
+    if (fieldError) {
+      toast({ title: "Incomplete pod setup", description: fieldError, variant: "destructive" })
       setStep(0)
       return
     }
@@ -394,9 +414,9 @@ export function PodCreateWizard() {
           <Panel className="min-h-[500px]">
             {step === 0 && (
               <div className="grid gap-4">
-                <Field label="Pod name" count={`${form.name.length}/100`}><Input value={form.name} onChange={(e) => update("name", e.target.value)} className="pod-input" placeholder="Frontend Systems Sprint" /></Field>
-                <Field label="Short outcome" count={`${form.shortOutcome.length}/180`}><Input value={form.shortOutcome} onChange={(e) => update("shortOutcome", e.target.value)} className="pod-input" placeholder="Ship a production-ready dashboard in 30 days." /></Field>
-                <Field label="Description"><Textarea value={form.description} onChange={(e) => update("description", e.target.value)} className="pod-textarea min-h-32" placeholder="Describe the transformation, cadence, and collaboration style." /></Field>
+                <Field label="Pod name" count={`${form.name.length}/100`}><Input value={form.name} maxLength={100} onChange={(e) => update("name", e.target.value)} className="pod-input" placeholder="Frontend Systems Sprint" /></Field>
+                <Field label="Short outcome" count={`${form.shortOutcome.length}/180`}><Input value={form.shortOutcome} maxLength={180} onChange={(e) => update("shortOutcome", e.target.value)} className="pod-input" placeholder="Ship a production-ready dashboard in 30 days." /></Field>
+                <Field label="Description" count={`${form.description.length}/500`}><Textarea value={form.description} maxLength={500} onChange={(e) => update("description", e.target.value)} className="pod-textarea min-h-32" placeholder="Describe the transformation, cadence, and collaboration style." /></Field>
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field label="Category"><Input value={form.category} onChange={(e) => update("category", e.target.value)} className="pod-input" /></Field>
                   <Field label="Difficulty"><Select value={form.difficulty} onValueChange={(value) => update("difficulty", value)}><SelectTrigger className="pod-input"><SelectValue /></SelectTrigger><SelectContent>{["beginner", "intermediate", "advanced", "expert"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
@@ -437,7 +457,7 @@ export function PodCreateWizard() {
                 {form.roadmapMode === "topic" && <Field label="Topic"><Input value={form.topic} onChange={(e) => update("topic", e.target.value)} className="pod-input" placeholder="Full-stack Appwrite with Next.js" /></Field>}
                 {form.roadmapMode === "youtube" && <Field label="YouTube URL"><Input value={form.youtubeUrl} onChange={(e) => update("youtubeUrl", e.target.value)} className="pod-input" placeholder="https://youtube.com/watch?v=..." /></Field>}
                 <Field label="Duration days"><Input type="number" value={form.durationDays} onChange={(e) => update("durationDays", e.target.value)} className="pod-input" /></Field>
-                <p className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm leading-6 text-white/60">If AI is not configured, PeerSpark uses a deterministic starter template with phases, lessons, tasks, and first-week focus.</p>
+                <p className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm leading-6 text-white/60">If AI is not configured, Student.social uses a deterministic starter template with phases, lessons, tasks, and first-week focus.</p>
               </div>
             )}
             {step === 4 && (
@@ -542,12 +562,18 @@ export function PodWorkspacePage({ podId, tab = "overview", preview = false }: {
   useEffect(() => { load() }, [podId])
   usePodRealtime(bundle?.pod.$id, Boolean(user?.$id), () => load())
 
+  useEffect(() => {
+    if (!preview && tab === "chat" && bundle?.pod.$id) {
+      router.replace(`/app/chat?pod=${encodeURIComponent(bundle.pod.$id)}&name=${encodeURIComponent(bundle.pod.name || "Pod")}`)
+    }
+  }, [bundle?.pod.$id, bundle?.pod.name, preview, router, tab])
+
   if (loading) return <SkeletonPage />
   if (error || !bundle) return <Shell><div className="mx-auto max-w-[900px] p-8"><EmptyState icon={RefreshCw} title="Pod could not load" body={error || "The pod may be private, archived, or unavailable."} action={<Button asChild className="rounded-xl bg-white text-black"><Link href="/app/pods">Back to Pods</Link></Button>} /></div></Shell>
 
   const role = bundle.membership?.role
   const pod = bundle.pod
-  const activeTab = preview ? "preview" : tab
+  const activeTab = preview ? "preview" : tab === "tasks" ? "roadmap" : tab
   const leaderboard = bundle.leaderboard || calculateLeaderboard(bundle.memberships)
 
   async function join() {
@@ -563,18 +589,18 @@ export function PodWorkspacePage({ podId, tab = "overview", preview = false }: {
 
   return (
     <Shell>
-      <div className="mx-auto max-w-[1440px] p-5 md:p-8">
+      <div className="ss-pod-workspace mx-auto max-w-[1320px] p-3 md:p-8">
         <PodHeader bundle={bundle} role={role} onJoin={join} isMember={Boolean(bundle.membership)} />
         {!preview ? (
           <>
             <GuidedStart bundle={bundle} activeTab={activeTab} />
-            <nav className="mt-4 flex gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-[#0B0B0C] p-1" aria-label="Pod sections">
+            <nav className="ss-pod-tabs mt-3 grid grid-cols-4 gap-1 rounded-2xl border border-white/10 bg-[#0B0B0C] p-1" aria-label="Primary pod sections">
               {tabs.map(([value, label, Icon]) => (
                 <Link
                   key={value}
                   href={`/app/pods/${pod.$id}/${value}`}
                   className={cx(
-                    "flex h-10 items-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+                    "flex h-10 items-center justify-center gap-2 rounded-xl px-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
                     activeTab === value ? "bg-white text-black" : "text-white/55 hover:bg-white/10 hover:text-white",
                   )}
                   aria-current={activeTab === value ? "page" : undefined}
@@ -583,19 +609,19 @@ export function PodWorkspacePage({ podId, tab = "overview", preview = false }: {
                 </Link>
               ))}
             </nav>
+            <PodUtilityBar bundle={bundle} activeTab={activeTab} role={role} />
           </>
         ) : null}
-        <div className="mt-6">
+        <div className="ss-pod-tab-content mt-4 md:mt-6">
           {preview ? <PreviewTab bundle={bundle} onJoin={join} /> : null}
           {activeTab === "overview" ? <OverviewTab bundle={bundle} reload={load} /> : null}
-          {activeTab === "roadmap" ? <RoadmapTab bundle={bundle} reload={load} /> : null}
-          {activeTab === "tasks" ? <TasksTab bundle={bundle} reload={load} /> : null}
+          {activeTab === "roadmap" ? <div className="space-y-8"><RoadmapTab bundle={bundle} reload={load} /><TasksTab bundle={bundle} reload={load} /></div> : null}
           {activeTab === "study-room" ? <StudyRoomTab bundle={bundle} /> : null}
           {activeTab === "chat" ? <ChatTab bundle={bundle} reload={load} /> : null}
           {activeTab === "resources" ? <ResourcesTab bundle={bundle} reload={load} /> : null}
           {activeTab === "members" ? <MembersTab bundle={bundle} /> : null}
           {activeTab === "leaderboard" ? <LeaderboardTab rows={leaderboard} /> : null}
-          {activeTab === "insights" ? <InsightsTab bundle={bundle} /> : null}
+          {activeTab === "insights" ? <div className="space-y-8"><InsightsTab bundle={bundle} /><LeaderboardTab rows={leaderboard} /></div> : null}
           {activeTab === "settings" ? <SettingsTab bundle={bundle} reload={load} /> : null}
         </div>
       </div>
@@ -608,25 +634,29 @@ function PodHeader({ bundle, role, onJoin, isMember }: { bundle: PodBundle; role
   const userProgress = Number(bundle.membership?.progressPercent ?? pod.completionRate ?? 0)
   const helpers = bundle.memberships.filter((member) => member.status === "active").slice(0, 5)
   return (
-    <header className="overflow-hidden rounded-[28px] border border-white/10 bg-[#0B0B0C]">
-      <div className="grid gap-5 p-5 md:grid-cols-[1fr_360px] md:p-6">
+    <header className="ss-pod-header overflow-hidden rounded-[24px] border border-white/10 bg-[#0B0B0C]">
+      <div className="ss-pod-mobile-topbar">
+        <Link href="/app/pods" aria-label="Back to pods"><ArrowLeft aria-hidden="true" /></Link>
+        <span>Pod workspace</span>
+        <Button variant="ghost" aria-label="Share pod" className="h-9 w-9 rounded-full p-0 text-white hover:bg-white/10"><Share2 className="h-4 w-4" aria-hidden="true" /></Button>
+      </div>
+      <div className="grid gap-4 p-4 md:grid-cols-[1fr_320px] md:p-6">
         <div className="min-w-0">
-          <div className="mb-4 h-20 rounded-[22px] border border-white/10 bg-[radial-gradient(circle_at_18%_22%,rgba(255,255,255,.22),transparent_22%),linear-gradient(135deg,#1b1b1b,#050505)]" />
           <div className="mb-3 flex flex-wrap gap-2">
             <Badge className="bg-white text-black hover:bg-white">Week {pod.currentWeek || 1}/{pod.totalWeeks || 4}</Badge>
             <Badge variant="outline" className="border-white/15 text-white">{role || "preview"}</Badge>
             <Badge variant="outline" className="border-white/15 text-white">{pod.visibility}</Badge>
           </div>
-          <h1 className="text-balance text-3xl font-bold tracking-normal md:text-4xl">{pod.name}</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/60">{pod.shortOutcome}</p>
-          <div className="mt-5 flex flex-wrap gap-4 text-sm text-white/55">
+          <h1 className="text-balance text-2xl font-bold tracking-normal md:text-4xl">{pod.name}</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-5 text-white/60 md:leading-6">{pod.shortOutcome}</p>
+          <div className="mt-4 flex flex-wrap gap-3 text-xs text-white/55 md:text-sm">
             <span className="flex items-center gap-2"><Users className="h-4 w-4" aria-hidden="true" />{pod.memberCount || bundle.memberships.length} members</span>
             <span className="flex items-center gap-2"><CircleDot className="h-4 w-4" aria-hidden="true" />{pod.activeMemberCount || helpers.length} active</span>
             <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4" aria-hidden="true" />{formatDate(pod.nextSessionAt)}</span>
           </div>
         </div>
         <div className="flex flex-col justify-end gap-4">
-          <div className="rounded-2xl border border-white/10 bg-[#111113] p-4">
+          <div className="ss-pod-progress-card rounded-2xl border border-white/10 bg-[#111113] p-4">
             <div className="mb-2 flex justify-between text-xs text-white/50"><span>Your progress</span><span>{userProgress}%</span></div>
             <Progress value={userProgress} className="h-1.5 bg-white/10" />
             <div className="mt-4 flex items-center justify-between gap-3">
@@ -638,7 +668,7 @@ function PodHeader({ bundle, role, onJoin, isMember }: { bundle: PodBundle; role
           </div>
           <div className="flex gap-2">
             {!isMember ? <Button onClick={onJoin} className="h-10 flex-1 rounded-xl bg-white text-black hover:bg-white/90">{pod.approvalRequired ? "Request Access" : "Join Pod"}</Button> : <Button asChild className="h-10 flex-1 rounded-xl bg-white text-black hover:bg-white/90"><Link href={`/app/pods/${pod.$id}/overview`}>Continue</Link></Button>}
-            <Button variant="outline" aria-label="Share pod" className="h-10 rounded-xl border-white/10 bg-transparent text-white hover:bg-white/10"><Share2 className="h-4 w-4" aria-hidden="true" /></Button>
+            <Button variant="outline" aria-label="Share pod" className="hidden h-10 rounded-xl border-white/10 bg-transparent text-white hover:bg-white/10 md:inline-flex"><Share2 className="h-4 w-4" aria-hidden="true" /></Button>
             {roleCanManage(role) ? <Button asChild variant="outline" aria-label="Settings" className="h-10 rounded-xl border-white/10 bg-transparent text-white hover:bg-white/10"><Link href={`/app/pods/${pod.$id}/settings`}><Settings className="h-4 w-4" aria-hidden="true" /></Link></Button> : null}
           </div>
         </div>
@@ -647,27 +677,42 @@ function PodHeader({ bundle, role, onJoin, isMember }: { bundle: PodBundle; role
   )
 }
 
+function PodUtilityBar({ bundle, activeTab, role }: { bundle: PodBundle; activeTab: string; role?: string }) {
+  const podId = bundle.pod.$id
+  const items = [
+    { value: "resources", label: "Library", detail: `${bundle.resources.length} resources`, icon: FolderOpen },
+    { value: "members", label: "People", detail: `${bundle.memberships.length} members`, icon: Users },
+    { value: "insights", label: "Progress", detail: "Insights & ranks", icon: BarChart3 },
+    ...(roleCanManage(role) ? [{ value: "settings", label: "Manage", detail: "Pod settings", icon: Settings }] : []),
+  ]
+  return (
+    <nav className="ss-pod-utilities" aria-label="Pod utilities">
+      {items.map((item) => <Link key={item.value} href={`/app/pods/${podId}/${item.value}`} className={activeTab === item.value ? "is-active" : ""}><span><item.icon aria-hidden="true" /></span><div><strong>{item.label}</strong><small>{item.detail}</small></div><ChevronRight aria-hidden="true" /></Link>)}
+    </nav>
+  )
+}
+
 function GuidedStart({ bundle, activeTab }: { bundle: PodBundle; activeTab: string }) {
   const task = nextBestTask(bundle)
   const session = bundle.sessions.find((item) => ["scheduled", "live"].includes(item.status || "scheduled"))
   const steps = [
-    { label: "Next task", value: task?.title || "Open the roadmap", href: task ? `/app/pods/${bundle.pod.$id}/tasks` : `/app/pods/${bundle.pod.$id}/roadmap`, icon: ListChecks },
+    { label: "Next task", value: task?.title || "Open the roadmap", href: `/app/pods/${bundle.pod.$id}/roadmap`, icon: ListChecks },
     { label: "Live session", value: session ? formatDate(session.startsAt) : "No session yet", href: `/app/pods/${bundle.pod.$id}/study-room`, icon: CalendarDays },
     { label: "Ask for help", value: "Use Doubts channel", href: `/app/pods/${bundle.pod.$id}/chat`, icon: MessageSquare },
   ]
   return (
-    <section className="mt-4 rounded-2xl border border-white/10 bg-[#111113] p-3" aria-label="Start here">
-      <div className="grid gap-2 md:grid-cols-3">
+    <section className="ss-pod-guided mt-3 rounded-2xl border border-white/10 bg-[#111113] p-2" aria-label="Start here">
+      <div className="grid grid-cols-3 gap-1.5">
         {steps.map((step) => (
-          <Link key={step.label} href={step.href} className={cx("group flex items-center gap-3 rounded-xl p-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60", activeTab === step.href.split("/").pop() ? "bg-white text-black" : "hover:bg-white/10")}>
-            <div className={cx("flex h-10 w-10 shrink-0 items-center justify-center rounded-full", activeTab === step.href.split("/").pop() ? "bg-black text-white" : "bg-white text-black")}>
+          <Link key={step.label} href={step.href} className={cx("group flex min-w-0 items-center gap-2 rounded-xl p-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 md:gap-3 md:p-3", activeTab === step.href.split("/").pop() ? "bg-white text-black" : "hover:bg-white/10")}>
+            <div className={cx("flex h-8 w-8 shrink-0 items-center justify-center rounded-full md:h-10 md:w-10", activeTab === step.href.split("/").pop() ? "bg-black text-white" : "bg-white text-black")}>
               <step.icon className="h-4 w-4" aria-hidden="true" />
             </div>
             <div className="min-w-0">
               <div className={cx("text-xs", activeTab === step.href.split("/").pop() ? "text-black/55" : "text-white/45")}>{step.label}</div>
-              <div className="truncate text-sm font-semibold">{step.value}</div>
+              <div className="hidden truncate text-sm font-semibold sm:block">{step.value}</div>
             </div>
-            <ChevronRight className="ml-auto h-4 w-4 opacity-45" aria-hidden="true" />
+            <ChevronRight className="ml-auto hidden h-4 w-4 opacity-45 md:block" aria-hidden="true" />
           </Link>
         ))}
       </div>
@@ -953,55 +998,38 @@ function TaskDialog({ task, podId, onClose, onDone }: { task: PodTask | null; po
 
 function StudyRoomTab({ bundle }: { bundle: PodBundle }) {
   const { toast } = useToast()
+  const callContext = useCallContext()
   const [focus, setFocus] = useState(false)
   const [joining, setJoining] = useState(false)
-  const [callInfo, setCallInfo] = useState<{ token: string; url: string; roomName: string } | null>(null)
   const session = bundle.sessions.find((item) => item.status === "live") || bundle.sessions[0]
-  async function joinLiveKit() {
-    if (!session) {
-      toast({ title: "No session scheduled", description: "Create or schedule a pod session first.", variant: "destructive" })
-      return
-    }
+  async function joinCall(mediaType: "voice" | "video") {
     setJoining(true)
     try {
-      const result = await pod2Api.getSessionToken(bundle.pod.$id, session.$id)
-      setCallInfo({ token: result.token.token, url: result.token.url, roomName: result.roomName })
-      toast({ title: "Live room ready", description: "LiveKit credentials were issued for this session." })
+      const room = await chatService.getOrCreatePodRoom(bundle.pod.$id, bundle.pod.name || "Pod study room")
+      await callContext.startCall(
+        "room",
+        room.$id,
+        mediaType === "voice" ? "audio" : "video",
+        { title: session?.title || `${bundle.pod.name || "Pod"} study room` },
+      )
     } catch (err: any) {
-      toast({ title: "Calling is not configured", description: err.message || "Set LiveKit environment variables or use an external meeting URL.", variant: "destructive" })
+      toast({ title: "Could not open the study call", description: err.message || "Please try again.", variant: "destructive" })
     } finally {
       setJoining(false)
     }
   }
   return (
-    <div>
-      <PageIntro title="Study Room" body="A focused place for the next live session: join, follow the agenda, take notes, and run a short focus block." />
-      <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
-        <Panel className="min-h-[520px]">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <Badge variant="outline" className="mb-3 border-white/15 text-white">{session?.status || "ready"}</Badge>
-              <h2 className="text-xl font-semibold">{session?.title || "No session scheduled"}</h2>
-              <p className="mt-1 text-sm text-white/55">{session ? formatDate(session.startsAt) : "Create a session to activate live collaboration."}</p>
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={joinLiveKit} disabled={joining} className="rounded-xl bg-white text-black">{joining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Video className="mr-2 h-4 w-4" aria-hidden="true" />}Join Video</Button>
-              <Button onClick={joinLiveKit} variant="outline" className="rounded-xl border-white/10 bg-transparent text-white"><Mic className="mr-2 h-4 w-4" aria-hidden="true" />Audio</Button>
-            </div>
-          </div>
-          <div className="mt-6 grid min-h-[340px] place-items-center rounded-2xl border border-white/10 bg-[#0B0B0C]">
-            <div className="max-w-lg text-center">
-              <MonitorUp className="mx-auto mb-4 h-10 w-10 text-white/50" aria-hidden="true" />
-              <h3 className="font-semibold">{callInfo ? "Live room ready" : "Live workspace"}</h3>
-              <p className="mt-2 text-sm leading-6 text-white/50">{callInfo ? `Room ${callInfo.roomName} is ready at ${callInfo.url}.` : "Video and audio request a real provider token when LiveKit is configured. Until then, the room gives a clear setup state instead of dead controls."}</p>
-              {callInfo ? <div className="mt-4 rounded-xl border border-white/10 bg-black p-3 text-left text-xs text-white/45">Token issued • {callInfo.token.slice(0, 18)}...</div> : null}
-            </div>
-          </div>
+    <div className="ss-study-room">
+      <PageIntro title="Study room" body="Everything you need for the next working session—context, a clear agenda, and one calm way to join." />
+      <div className="grid gap-4 lg:grid-cols-[1fr_330px]">
+        <Panel className="ss-session-stage overflow-hidden p-0">
+          <div className="ss-session-stage-head"><div><span>{session?.status === "live" ? "Live now" : session ? "Next session" : "Open room"}</span><h2>{session?.title || `${bundle.pod.name} working session`}</h2><p>{session ? formatDate(session.startsAt) : "Start an instant room whenever your pod is ready to work together."}</p></div><div className="flex gap-2"><Button onClick={() => joinCall("video")} disabled={joining} className="h-11 rounded-full bg-primary px-5 text-primary-foreground hover:bg-primary/90">{joining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Video className="mr-2 h-4 w-4" aria-hidden="true" />}Join room</Button><Button onClick={() => joinCall("voice")} disabled={joining} variant="outline" className="h-11 rounded-full border-white/10 bg-transparent px-4 text-white hover:bg-white/10"><Mic className="mr-2 h-4 w-4" aria-hidden="true" />Audio</Button></div></div>
+          <div className="ss-session-lobby"><div className="ss-session-orbit"><span /><span /><span /><MonitorUp aria-hidden="true" /></div><h3>Your pod’s shared focus space</h3><p>Join when you are ready. Your agenda and notes stay alongside the session so everyone leaves with a clear next step.</p><div><span><Users />{bundle.pod.activeMemberCount || 0} active today</span><span><Clock />{session ? formatDate(session.startsAt) : "Open anytime"}</span></div></div>
         </Panel>
-        <aside className="space-y-5">
-          <Panel><h3 className="font-semibold">Agenda</h3><p className="mt-3 text-sm leading-6 text-white/55">{session?.agenda || "Set an agenda before the session starts."}</p></Panel>
-          <Panel><h3 className="font-semibold">Focus Timer</h3><div className="mt-4 text-4xl font-bold">25:00</div><Button onClick={() => setFocus(!focus)} className="mt-4 w-full rounded-xl bg-white text-black"><Timer className="mr-2 h-4 w-4" aria-hidden="true" />{focus ? "Pause" : "Start focus"}</Button></Panel>
-          <Panel><h3 className="font-semibold">Shared Notes</h3><Textarea placeholder="Session notes..." className="pod-textarea mt-4 min-h-40" /><Button className="mt-3 w-full rounded-xl bg-white text-black">Save as resource</Button></Panel>
+        <aside className="space-y-4">
+          <Panel className="ss-room-agenda"><span>Session agenda</span><h3>{session?.agenda ? "What we’re working through" : "Add a simple outcome"}</h3><p>{session?.agenda || "Choose one outcome for the session so everyone knows what success looks like."}</p>{roleCanManage(bundle.membership?.role) ? <Button asChild variant="outline" className="mt-4 rounded-full border-white/10 bg-transparent text-white"><Link href="/app/calendar?mode=schedule">Schedule session</Link></Button> : null}</Panel>
+          <Panel><div className="flex items-center justify-between"><div><span className="text-xs text-white/45">Focus block</span><h3 className="mt-1 font-semibold">25 minutes</h3></div><div className="text-2xl font-semibold">25:00</div></div><Button onClick={() => setFocus(!focus)} className="mt-4 w-full rounded-full bg-white text-black"><Timer className="mr-2 h-4 w-4" aria-hidden="true" />{focus ? "Pause focus" : "Start focus"}</Button></Panel>
+          <Panel><h3 className="font-semibold">Shared notes</h3><Textarea placeholder="Capture decisions, useful links, and next steps…" className="pod-textarea mt-3 min-h-32" /><Button className="mt-3 w-full rounded-full bg-white text-black">Save to pod library</Button></Panel>
         </aside>
       </div>
     </div>
@@ -1121,7 +1149,7 @@ function ResourcesTab({ bundle, reload }: { bundle: PodBundle; reload: () => voi
   const [open, setOpen] = useState(false)
   return (
     <div className="space-y-5">
-      <PageIntro title="Resources" body="A clean knowledge base for files, links, notes, templates, and recordings attached to the pod." action={<Button onClick={() => setOpen(true)} className="rounded-xl bg-white text-black"><Upload className="mr-2 h-4 w-4" aria-hidden="true" />Upload Resource</Button>} />
+      <PageIntro title="Pod library" body="Files, links, notes, templates, and recordings shared specifically with this learning circle." action={<div className="flex flex-wrap gap-2"><Button asChild variant="outline" className="rounded-full border-white/10 bg-transparent text-white"><Link href={`/app/vault?pod=${bundle.pod.$id}`}><FolderOpen className="mr-2 h-4 w-4" />Open in Vault</Link></Button><Button onClick={() => setOpen(true)} className="rounded-full bg-white text-black"><Upload className="mr-2 h-4 w-4" aria-hidden="true" />Upload here</Button></div>} />
       <div className="grid gap-3 md:grid-cols-4">
         <Metric label="All resources" value={bundle.resources.length} />
         <Metric label="Links" value={bundle.resources.filter((resource) => resource.type === "link").length} />

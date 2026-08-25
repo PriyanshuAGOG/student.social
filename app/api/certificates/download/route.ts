@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import PDFDocument from 'pdfkit'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { generateCertificateHTML } from '@/lib/certificates'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || 'peerspark-main-db'
@@ -17,7 +17,6 @@ async function getCertificateBundle(certificateId: string) {
     profile,
   }
 }
-
 function renderCertificatePdf(data: {
   certificate: any
   course: any
@@ -98,59 +97,5 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error('Error downloading certificate:', error)
     return NextResponse.json({ error: error.message || 'Failed to download certificate' }, { status: 500 })
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { certificateId, userId } = body
-
-    if (!certificateId || !userId) {
-      return NextResponse.json({ error: 'Missing required fields: certificateId, userId' }, { status: 400 })
-    }
-
-    const { certificate } = await getCertificateBundle(certificateId)
-    return NextResponse.json({
-      success: true,
-      message: 'Certificate share metadata generated',
-      linkedinUrl: `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME&name=${encodeURIComponent(certificate.certificateId || certificateId)}`,
-      verificationUrl: certificate.verificationUrl,
-    })
-  } catch (error: any) {
-    console.error('Error sharing certificate:', error)
-    return NextResponse.json({ error: error.message || 'Failed to share certificate' }, { status: 500 })
-  }
-}
-
-export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { certificateId } = body
-
-    if (!certificateId) {
-      return NextResponse.json({ error: 'Missing certificateId' }, { status: 400 })
-    }
-
-    const { certificate, course, profile } = await getCertificateBundle(certificateId)
-    return NextResponse.json({
-      success: true,
-      verified: true,
-      message: 'Certificate is authentic',
-      certificateDetails: {
-        certificateId: certificate.certificateId || certificate.$id,
-        userId: certificate.userId,
-        userName: profile.name || 'Learner',
-        courseId: course.$id,
-        courseName: course.title || 'Course',
-        score: certificate.score || 0,
-        completionDate: certificate.completionDate || certificate.createdAt,
-        verificationUrl: certificate.verificationUrl,
-        status: 'valid',
-      },
-    })
-  } catch (error: any) {
-    console.error('Error verifying certificate:', error)
-    return NextResponse.json({ error: error.message || 'Failed to verify certificate' }, { status: 500 })
   }
 }

@@ -55,7 +55,7 @@ export function AIAssistant() {
           content: m.content.substring(0, 2000), // Limit message length
         })),
         system:
-          "You are PeerSpark's study copilot. Give concise, structured help with explanations, steps, and next actions. Prefer bullet points and keep answers under 300 words unless asked.",
+          "You are Student.social's study copilot. Give concise, structured help with explanations, steps, and next actions. Prefer bullet points and keep answers under 300 words unless asked.",
         maxTokens: 2048,
       }
 

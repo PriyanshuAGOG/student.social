@@ -34,6 +34,8 @@ const ENDPOINT = env.NEXT_PUBLIC_APPWRITE_ENDPOINT || env.APPWRITE_ENDPOINT || p
 const PROJECT_ID = env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || env.APPWRITE_PROJECT_ID || process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID
 const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || env.APPWRITE_DATABASE_ID || env.NEXT_PUBLIC_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID
 const API_KEY = env.APPWRITE_API_KEY || process.env.APPWRITE_API_KEY
+const ALLOW_DESTRUCTIVE_SCHEMA_CHANGES = (process.env.ALLOW_DESTRUCTIVE_SCHEMA_CHANGES || env.ALLOW_DESTRUCTIVE_SCHEMA_CHANGES) === 'true'
+const APPLY_COLLECTION_PERMISSIONS = (process.env.APPLY_COLLECTION_PERMISSIONS || env.APPLY_COLLECTION_PERMISSIONS) === 'true'
 
 if (!ENDPOINT || !PROJECT_ID || !DATABASE_ID || !API_KEY) {
   console.error('Missing Appwrite configuration. Set NEXT_PUBLIC_APPWRITE_ENDPOINT, NEXT_PUBLIC_APPWRITE_PROJECT_ID, NEXT_PUBLIC_APPWRITE_DATABASE_ID, APPWRITE_API_KEY.')
@@ -77,6 +79,51 @@ function makeRequest(method, route, body) {
     if (body) req.write(JSON.stringify(body))
     req.end()
   })
+}
+
+function isNotFound(error) {
+  return error && error.status === 404
+}
+
+const notificationCategories = [
+  'study', 'class', 'deadline', 'calendar', 'progress', 'streak', 'goal', 'habit',
+  'social', 'system', 'security', 'admin', 'marketing', 'reengagement', 'digest',
+]
+
+function notificationPreferenceAttributes() {
+  const categoryAttributes = notificationCategories.flatMap((category) =>
+    ['Push', 'Email', 'Sms'].map((channel) => ({
+      key: `${category}${channel}`,
+      type: 'boolean',
+      defaultValue: !(['marketing', 'reengagement'].includes(category) && channel === 'Push'),
+    })),
+  )
+
+  return [
+    { key: 'userId', type: 'string', size: 255, required: true },
+    { key: 'inAppEnabled', type: 'boolean', defaultValue: true },
+    { key: 'pushEnabled', type: 'boolean', defaultValue: false },
+    { key: 'emailEnabled', type: 'boolean', defaultValue: true },
+    { key: 'smsEnabled', type: 'boolean', defaultValue: false },
+    ...categoryAttributes,
+    { key: 'quietHoursEnabled', type: 'boolean', defaultValue: true },
+    { key: 'quietHoursStart', type: 'string', size: 16, defaultValue: '22:00' },
+    { key: 'quietHoursEnd', type: 'string', size: 16, defaultValue: '07:00' },
+    { key: 'timezone', type: 'string', size: 80, defaultValue: 'UTC' },
+    { key: 'dailyDigestEnabled', type: 'boolean', defaultValue: true },
+    { key: 'weeklyDigestEnabled', type: 'boolean', defaultValue: true },
+    { key: 'digestTime', type: 'string', size: 16, defaultValue: '20:00' },
+    { key: 'defaultStudyReminderMinutes', type: 'integer', defaultValue: 15 },
+    { key: 'defaultClassReminderMinutes', type: 'integer', defaultValue: 10 },
+    { key: 'defaultDeadlineReminderHours', type: 'integer', defaultValue: 24 },
+    { key: 'maxPushPerHour', type: 'integer', defaultValue: 3 },
+    { key: 'maxPushPerDay', type: 'integer', defaultValue: 8 },
+    { key: 'maxEmailsPerDay', type: 'integer', defaultValue: 2 },
+    { key: 'maxSmsPerDay', type: 'integer', defaultValue: 1 },
+    { key: 'criticalAlertsAlwaysOn', type: 'boolean', defaultValue: true },
+    { key: 'createdAt', type: 'datetime', required: true },
+    { key: 'updatedAt', type: 'datetime', required: true },
+  ]
 }
 
 const collections = [
@@ -191,7 +238,7 @@ const collections = [
       { key: 'updatedAt', type: 'string', size: 255 },
     ],
     indexes: [
-      { key: 'idx_receipts_message_user', type: 'key', attributes: ['messageId', 'userId'], orders: ['ASC', 'ASC'] },
+      { key: 'idx_receipts_message_user', type: 'unique', attributes: ['messageId', 'userId'], orders: ['ASC', 'ASC'] },
       { key: 'idx_receipts_room_user', type: 'key', attributes: ['roomId', 'userId'], orders: ['ASC', 'ASC'] },
     ],
   },
@@ -209,7 +256,7 @@ const collections = [
       { key: 'createdAt', type: 'string', size: 255, required: true },
     ],
     indexes: [
-      { key: 'idx_presence_room_user', type: 'key', attributes: ['roomId', 'userId'], orders: ['ASC', 'ASC'] },
+      { key: 'idx_presence_room_user', type: 'unique', attributes: ['roomId', 'userId'], orders: ['ASC', 'ASC'] },
       { key: 'idx_presence_room_typing', type: 'key', attributes: ['roomId', 'isTyping'], orders: ['ASC', 'ASC'] },
     ],
   },
@@ -345,6 +392,18 @@ const collections = [
       { key: 'actorName', type: 'string', size: 255 },
       { key: 'actorAvatar', type: 'string', size: 500 },
       { key: 'metadata', type: 'string', size: 5000 },
+    ],
+    indexes: [
+      { key: 'idx_notifications_user_time', type: 'key', attributes: ['userId', 'timestamp'], orders: ['ASC', 'DESC'] },
+      { key: 'idx_notifications_user_read', type: 'key', attributes: ['userId', 'isRead'], orders: ['ASC', 'ASC'] },
+    ],
+  },
+  {
+    id: 'notification_preferences',
+    name: 'Notification Preferences',
+    attrs: notificationPreferenceAttributes(),
+    indexes: [
+      { key: 'idx_notification_preferences_user', type: 'unique', attributes: ['userId'], orders: ['ASC'] },
     ],
   },
   {
@@ -661,11 +720,19 @@ const collections = [
       { key: 'podId', type: 'string', size: 255 },
       { key: 'name', type: 'string', size: 255 },
       { key: 'members', type: 'string', size: 255, array: true },
+      { key: 'participants', type: 'string', size: 255, array: true },
+      { key: 'admins', type: 'string', size: 255, array: true },
+      { key: 'ownerId', type: 'string', size: 255 },
+      { key: 'createdBy', type: 'string', size: 255 },
       { key: 'lastMessage', type: 'string', size: 1000 },
       { key: 'lastMessageTime', type: 'string', size: 255 },
       { key: 'lastMessageSenderId', type: 'string', size: 255 },
       { key: 'createdAt', type: 'string', size: 255, required: true },
       { key: 'isActive', type: 'boolean' },
+    ],
+    indexes: [
+      { key: 'idx_chat_rooms_type_activity', type: 'key', attributes: ['type', 'lastMessageTime'], orders: ['ASC', 'DESC'] },
+      { key: 'idx_chat_rooms_pod', type: 'key', attributes: ['podId'], orders: ['ASC'] },
     ],
   },
   {
@@ -673,6 +740,7 @@ const collections = [
     name: 'Call Sessions',
     attrs: [
       { key: 'roomId', type: 'string', size: 255, required: true },
+      { key: 'roomTitle', type: 'string', size: 120 },
       { key: 'callerId', type: 'string', size: 255, required: true },
       { key: 'participantIds', type: 'string', size: 255, array: true },
       { key: 'mediaType', type: 'string', size: 32, required: true },
@@ -689,6 +757,11 @@ const collections = [
       { key: 'endedReason', type: 'string', size: 255 },
       { key: 'createdAt', type: 'string', size: 255, required: true },
       { key: 'updatedAt', type: 'string', size: 255 },
+    ],
+    indexes: [
+      { key: 'idx_calls_room_started', type: 'key', attributes: ['roomId', 'startedAt'], orders: ['ASC', 'DESC'] },
+      { key: 'idx_calls_caller_state_started', type: 'key', attributes: ['callerId', 'state', 'startedAt'], orders: ['ASC', 'ASC', 'DESC'] },
+      { key: 'idx_calls_provider', type: 'unique', attributes: ['providerSessionId'], orders: ['ASC'] },
     ],
   },
   {
@@ -707,6 +780,26 @@ const collections = [
       { key: 'connectionState', type: 'string', size: 50 },
       { key: 'createdAt', type: 'string', size: 255, required: true },
       { key: 'updatedAt', type: 'string', size: 255 },
+    ],
+    indexes: [
+      { key: 'idx_call_participants_session_user', type: 'unique', attributes: ['callSessionId', 'userId'], orders: ['ASC', 'ASC'] },
+      { key: 'idx_call_participants_user_state', type: 'key', attributes: ['userId', 'state'], orders: ['ASC', 'ASC'] },
+    ],
+  },
+  {
+    id: 'call_diagnostics',
+    name: 'Call Diagnostics',
+    attrs: [
+      { key: 'callSessionId', type: 'string', size: 255, required: true },
+      { key: 'roomId', type: 'string', size: 255, required: true },
+      { key: 'reporterId', type: 'string', size: 255, required: true },
+      { key: 'metrics', type: 'string', size: 30000, required: true },
+      { key: 'logs', type: 'string', size: 100000, required: true },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+    ],
+    indexes: [
+      { key: 'idx_call_diagnostics_session_created', type: 'key', attributes: ['callSessionId', 'createdAt'], orders: ['ASC', 'DESC'] },
+      { key: 'idx_call_diagnostics_room', type: 'key', attributes: ['roomId'], orders: ['ASC'] },
     ],
   },
   {
@@ -933,6 +1026,7 @@ const collections = [
     name: 'Assignment Submissions',
     attrs: [
       { key: 'assignmentId', type: 'string', size: 255, required: true },
+      { key: 'courseId', type: 'string', size: 255 },
       { key: 'userId', type: 'string', size: 255, required: true },
       { key: 'submissionText', type: 'string', size: 5000 },
       { key: 'submissionFile', type: 'string', size: 500 },
@@ -944,6 +1038,7 @@ const collections = [
       { key: 'flaggedForReview', type: 'boolean' },
       { key: 'reviewedBy', type: 'string', size: 255 },
       { key: 'manualScore', type: 'double' },
+      { key: 'gradedAt', type: 'string', size: 255 },
       { key: 'revisionCount', type: 'integer' },
       { key: 'status', type: 'string', size: 50 },
     ],
@@ -1020,6 +1115,7 @@ async function ensureDatabase() {
     await makeRequest('GET', `/databases/${DATABASE_ID}`)
     console.log(`Database exists: ${DATABASE_ID}`)
   } catch (e) {
+    if (!isNotFound(e)) throw e
     console.log(`Creating database: ${DATABASE_ID}`)
     await makeRequest('POST', '/databases', {
       databaseId: DATABASE_ID,
@@ -1035,6 +1131,7 @@ async function ensureCollection(col) {
     console.log(`Collection exists: ${col.id}`)
     exists = true
   } catch (e) {
+    if (!isNotFound(e)) throw e
     console.log(`Creating collection: ${col.id}`)
     await makeRequest('POST', `/databases/${DATABASE_ID}/collections`, {
       collectionId: col.id,
@@ -1044,7 +1141,7 @@ async function ensureCollection(col) {
   }
   
   // Always update permissions if defined (for both new and existing collections)
-  if (col.permissions) {
+  if (col.permissions && (!exists || APPLY_COLLECTION_PERMISSIONS)) {
     try {
       // Appwrite expects flat arrays for permissions
       const perms = []
@@ -1064,6 +1161,34 @@ async function ensureCollection(col) {
       console.warn(`Could not set permissions for ${col.id}:`, permErr.data || permErr)
     }
   }
+}
+
+const collectionEmptyCache = new Map()
+
+async function isCollectionEmpty(colId) {
+  if (collectionEmptyCache.has(colId)) return collectionEmptyCache.get(colId)
+  const result = await makeRequest('GET', `/databases/${DATABASE_ID}/collections/${colId}/documents`)
+  const empty = Number(result.total || 0) === 0
+  collectionEmptyCache.set(colId, empty)
+  return empty
+}
+
+async function waitForAttribute(colId, key) {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    try {
+      const attribute = await makeRequest('GET', `/databases/${DATABASE_ID}/collections/${colId}/attributes/${key}`)
+      if (!attribute.status || attribute.status === 'available') return
+      if (attribute.status === 'failed') throw new Error(`Attribute ${colId}.${key} entered failed state`)
+    } catch (error) {
+      if (!isNotFound(error)) throw error
+    }
+    await sleep(500)
+  }
+  throw new Error(`Timed out waiting for attribute ${colId}.${key}`)
+}
+
+async function waitForAttributes(colId, attrs) {
+  for (const attr of attrs) await waitForAttribute(colId, attr.key)
 }
 
 
@@ -1097,7 +1222,13 @@ async function ensureAttribute(colId, attr) {
     const sizeMismatch = attr.type === 'string' && attr.size && existing.size !== attr.size
     if (!typeMismatch && !arrayMismatch && !sizeMismatch) return
 
-    console.log(`  ~ replacing ${colId}.${attr.key} (schema mismatch)`)
+    const canReplace = ALLOW_DESTRUCTIVE_SCHEMA_CHANGES || await isCollectionEmpty(colId)
+    if (!canReplace) {
+      console.warn(`  ! schema mismatch for ${colId}.${attr.key}; skipped because the collection contains documents`)
+      return
+    }
+
+    console.log(`  ~ replacing ${colId}.${attr.key} (schema mismatch in empty collection)`)
     try {
       await makeRequest('DELETE', `/databases/${DATABASE_ID}/collections/${colId}/attributes/${attr.key}`)
       // Wait for attribute removal to propagate to avoid attribute_limit_exceeded on re-create
@@ -1140,10 +1271,14 @@ async function ensureAttribute(colId, attr) {
     } else if (attr.type === 'boolean') {
       if (attr.defaultValue !== undefined) payload.default = attr.defaultValue
       await makeRequest('POST', `/databases/${DATABASE_ID}/collections/${colId}/attributes/boolean`, payload)
+    } else if (attr.type === 'datetime') {
+      if (attr.defaultValue !== undefined) payload.default = attr.defaultValue
+      await makeRequest('POST', `/databases/${DATABASE_ID}/collections/${colId}/attributes/datetime`, payload)
     } else {
       throw new Error(`Unsupported attribute type: ${attr.type}`)
     }
     console.log(`  + ${colId}.${attr.key}`)
+    await waitForAttribute(colId, attr.key)
   } catch (e) {
     if (e.status === 409) return
     console.error(`Failed to create attribute ${colId}.${attr.key}:`, e.data || e)
@@ -1156,6 +1291,7 @@ async function ensureBucket(bucket) {
     await makeRequest('GET', `/storage/buckets/${bucket.id}`)
     console.log(`Bucket exists: ${bucket.id}`)
   } catch (e) {
+    if (!isNotFound(e)) throw e
     console.log(`Creating bucket: ${bucket.id}`)
     await makeRequest('POST', '/storage/buckets', {
       bucketId: bucket.id,
@@ -1183,6 +1319,10 @@ async function main() {
           console.error(`Error creating attribute ${col.id}.${attr.key}:`, attrErr.message || attrErr)
         }
       }
+      await waitForAttributes(col.id, col.attrs)
+      for (const idx of col.indexes || []) {
+        await ensureIndex(col.id, idx)
+      }
     } catch (colErr) {
       console.error(`Error with collection ${col.id}:`, colErr.message || colErr)
     }
@@ -1199,7 +1339,11 @@ async function main() {
   console.log('Schema update complete.')
 }
 
-main().catch((err) => {
-  console.error('Schema update failed:', err.message || err)
-  process.exit(1)
-})
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('Schema update failed:', err.message || err)
+    process.exit(1)
+  })
+}
+
+module.exports = { collections, buckets }

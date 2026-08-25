@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { runAIChat, ChatMessage } from "@/lib/ai"
+import { z } from 'zod'
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireUser } from '@/lib/api-security'
 
 const REQUEST_TIMEOUT = 45000; // 45 seconds
 
@@ -7,25 +9,16 @@ export async function POST(req: Request) {
   const startTime = Date.now()
   
   try {
-    const body = await req.json()
-    const messages = (body?.messages || []) as ChatMessage[]
-    
-    if (!Array.isArray(messages) || messages.length === 0) {
-      return NextResponse.json(
-        { error: "messages array required" }, 
-        { status: 400 }
-      )
-    }
-
-    // Validate message structure
-    for (const msg of messages) {
-      if (!msg.role || !msg.content) {
-        return NextResponse.json(
-          { error: "Each message must have 'role' and 'content'" }, 
-          { status: 400 }
-        )
-      }
-    }
+    enforceSameOrigin(req)
+    enforceRateLimit(req, { key: 'ai:chat', max: 20, windowMs: 60_000 })
+    requireUser(req)
+    const body = await parseJsonBody(req, z.object({
+      messages: z.array(z.object({ role: z.enum(['user', 'assistant', 'system']), content: z.string().trim().min(1).max(12_000) })).min(1).max(20),
+      system: z.string().max(8_000).optional(),
+      model: z.string().max(120).optional(),
+      maxTokens: z.number().int().min(64).max(4096).optional(),
+    }), 256 * 1024)
+    const messages = body.messages as ChatMessage[]
 
     // Limit message history to last 10 messages to avoid context bloat
     const recentMessages = messages.slice(-10)
@@ -59,6 +52,7 @@ export async function POST(req: Request) {
       }
     })
   } catch (err: unknown) {
+    if (err instanceof ApiError) return NextResponse.json({ error: err.message, code: err.code }, { status: err.status })
     const elapsed = Date.now() - startTime
     const error = err instanceof Error ? err : new Error(String(err))
 

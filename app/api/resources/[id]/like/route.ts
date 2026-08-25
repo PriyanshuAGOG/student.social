@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { getEnv } from '@/lib/env'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
 
 const DATABASE_ID = getEnv().NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db'
 const RESOURCES_COLLECTION_ID = process.env.NEXT_PUBLIC_RESOURCES_COLLECTION_ID || 'resources'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: 'resources:like', max: 60, windowMs: 60_000 })
+    const { userId } = requireUser(request)
     const { databases } = await createAdminClient()
-    const userId = request.headers.get('x-user-id')
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: resourceId } = await params
     const resource = await databases.getDocument(DATABASE_ID, RESOURCES_COLLECTION_ID, resourceId)
@@ -25,6 +27,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({ success: true, isLiked: !isLiked, likes: newLikedBy.length, resource: updated })
   } catch (error: any) {
+    if (error instanceof ApiError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
     console.error('[API] Error toggling resource like:', error)
     return NextResponse.json({ error: 'Failed to toggle like' }, { status: 500 })
   }

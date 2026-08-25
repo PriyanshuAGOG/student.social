@@ -4,7 +4,7 @@ import { ApiError, jsonError, jsonOk, parseJsonBody, requireUser } from '@/lib/a
 import { REMINDER_MINUTES_ALLOWED } from '@/lib/calendar/constants'
 import { getDefaultCalendarSyncSettings, normalizeCalendarSyncSettings } from '@/lib/calendar/settings'
 import { decryptCalendarToken, encryptCalendarToken, generateCalendarToken, hashCalendarToken } from '@/lib/calendar/token'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { Query } from 'node-appwrite'
 
 const secret = process.env.CALENDAR_FEED_SECRET || 'dev-secret'

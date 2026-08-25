@@ -1,6 +1,6 @@
-// Service Worker for PeerSpark PWA
-const CACHE_VERSION = 'peerspark-v2';
-const RUNTIME_CACHE = 'peerspark-runtime';
+// Service Worker for Student.social PWA
+const CACHE_VERSION = 'student-social-v4';
+const RUNTIME_CACHE = 'student-social-runtime';
 
 // Assets to cache on install
 const ASSETS_TO_CACHE = [
@@ -48,13 +48,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle API requests
+  // Development must always see the current Next.js chunks and RSC payloads.
+  // Cache-first responses here otherwise mask HMR changes and produce false
+  // runtime errors from incompatible client/server bundles.
+  if (['localhost', '127.0.0.1'].includes(location.hostname)) {
+    event.respondWith(fetch(request, { cache: 'no-store', credentials: 'include' }));
+    return;
+  }
+
+  // Never cache API responses: most endpoints are user-specific.
   if (url.pathname.startsWith('/api/')) {
-    if (url.pathname.startsWith('/api/admin/') || url.pathname.startsWith('/api/auth/')) {
-      event.respondWith(fetch(request, { cache: 'no-store', credentials: 'include' }));
-      return;
-    }
-    event.respondWith(networkFirst(request));
+    event.respondWith(fetch(request, { cache: 'no-store', credentials: 'include' }));
     return;
   }
 
@@ -94,27 +98,6 @@ async function cacheFirst(request) {
       status: 503,
       statusText: 'Service Unavailable',
     });
-  }
-}
-
-// Network first strategy (for API calls)
-async function networkFirst(request) {
-  try {
-    const response = await fetch(request);
-    if (response.ok && request.method === 'GET') {
-      const cache = await caches.open(RUNTIME_CACHE);
-      cache.put(request, response.clone()).catch((err) => {
-        console.warn('Failed to cache API response:', err);
-      });
-    }
-    return response;
-  } catch {
-    if (request.method !== 'GET') {
-      return new Response('Offline - API unavailable', { status: 503 });
-    }
-
-    const cached = await caches.match(request);
-    return cached || new Response('Offline - API unavailable', { status: 503 });
   }
 }
 
@@ -166,38 +149,75 @@ async function syncPods() {
 
 // Handle push notifications
 self.addEventListener('push', (event) => {
-  if (!event.data) {
-    return;
+  if (!event.data) return;
+
+  let data;
+  try {
+    data = event.data.json();
+  } catch {
+    data = { title: 'Student.social', body: event.data.text() };
   }
 
-  const data = event.data.json();
+  const incomingCall = data.type === 'incoming-call';
   const options = {
-    body: data.body || 'New notification from PeerSpark',
-    icon: '/logo.png',
+    body: data.body || 'New notification from Student.social',
+    icon: data.data?.callerAvatar || '/logo.png',
     badge: '/favicon.ico',
-    tag: data.tag || 'notification',
-    requireInteraction: data.requireInteraction || false,
+    tag: data.tag || 'student-social-notification',
+    data: data.data || {},
+    requireInteraction: incomingCall || Boolean(data.requireInteraction),
+    renotify: incomingCall,
+    silent: false,
+    vibrate: incomingCall ? [420, 180, 420, 180, 720] : [180, 90, 180],
+    timestamp: Date.now(),
+    actions: incomingCall ? [
+      { action: 'accept-call', title: 'Answer' },
+      { action: 'decline-call', title: 'Decline' },
+    ] : [],
   };
 
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'PeerSpark', options)
-  );
+  const tasks = [self.registration.showNotification(data.title || 'Student.social', options)];
+  if (incomingCall && self.navigator?.setAppBadge) tasks.push(self.navigator.setAppBadge(1));
+  event.waitUntil(Promise.all(tasks));
 });
 
 // Handle notification clicks
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
+  event.waitUntil((async () => {
+    const data = event.notification.data || {};
+    const callId = data.callId;
+    const isCall = Boolean(callId);
 
-  event.waitUntil(
-    clients.matchAll({ type: 'window' }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url === '/' && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      if (clients.openWindow) {
-        return clients.openWindow('/');
-      }
-    })
-  );
+    if (isCall && (event.action === 'accept-call' || event.action === 'decline-call')) {
+      const action = event.action === 'accept-call' ? 'accept' : 'decline';
+      await fetch(`/api/calls/sessions/${encodeURIComponent(callId)}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      }).catch(() => undefined);
+    }
+
+    event.notification.close();
+    if (self.navigator?.clearAppBadge) await self.navigator.clearAppBadge().catch(() => undefined);
+    if (event.action === 'decline-call') return;
+
+    const targetUrl = new URL(data.url || (isCall ? `/app/chat?call=${encodeURIComponent(callId)}` : '/app/notifications'), self.location.origin).href;
+    const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const existing = clientList.find((client) => new URL(client.url).origin === self.location.origin);
+    if (existing && 'focus' in existing) {
+      if ('navigate' in existing) await existing.navigate(targetUrl).catch(() => undefined);
+      return existing.focus();
+    }
+    if (clients.openWindow) return clients.openWindow(targetUrl);
+  })());
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type !== 'CALL_RESOLVED' || !event.data.callId) return;
+  event.waitUntil((async () => {
+    const notifications = await self.registration.getNotifications({ tag: `student-call-${event.data.callId}` });
+    notifications.forEach((notification) => notification.close());
+    if (self.navigator?.clearAppBadge) await self.navigator.clearAppBadge().catch(() => undefined);
+  })());
 });

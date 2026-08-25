@@ -1,6 +1,6 @@
 import { ID } from 'node-appwrite'
 import { adminJson, ADMIN_COLLECTIONS, DATABASE_ID, parseAdminAction, statusFromAction, withAdminApi, writeAdminAudit } from '@/lib/admin-server'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 
 export const POST = withAdminApi('reports.review', async ({ request, admin, correlationId }) => {
   const id = request.nextUrl.pathname.split('/').at(-2) || ''

@@ -1,66 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
-import { generateLiveKitToken } from '@/lib/livekit-service'
+import { deriveCallEncryptionMaterial, generateLiveKitToken } from '@/lib/livekit-service'
+import { canAccessCall, isCallExpired, parseStringList, TERMINAL_CALL_STATES } from '@/lib/calls/domain'
+import { checkDurableRateLimit } from '@/lib/server/rate-limit'
+import { z } from 'zod'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const CHAT_ROOMS_COLLECTION_ID = process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms'
 const CALL_SESSIONS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALL_SESSIONS_COLLECTION_ID || 'call_sessions'
 const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'
 
-function parseMembers(room: any): string[] {
-  if (Array.isArray(room?.members)) return room.members.filter(Boolean)
-  if (Array.isArray(room?.participants)) return room.participants.filter(Boolean)
-  if (typeof room?.members === 'string') {
-    try {
-      const parsed = JSON.parse(room.members)
-      return Array.isArray(parsed) ? parsed.filter(Boolean) : []
-    } catch {
-      return []
-    }
-  }
-  if (typeof room?.participants === 'string') {
-    try {
-      const parsed = JSON.parse(room.participants)
-      return Array.isArray(parsed) ? parsed.filter(Boolean) : []
-    } catch {
-      return []
-    }
-  }
-  return []
-}
-
-function parseRoomIdFromProviderSession(sessionId: string): string | null {
-  const prefix = 'student-social-'
-  if (!sessionId.startsWith(prefix)) return null
-  const withoutPrefix = sessionId.slice(prefix.length)
-  const lastDash = withoutPrefix.lastIndexOf('-')
-  if (lastDash <= 0) return null
-  return withoutPrefix.slice(0, lastDash)
-}
-
 async function findSession(databases: any, sessionId: string) {
   try {
     return await databases.getDocument(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, sessionId)
-  } catch {
-    const byProvider = await databases.listDocuments(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, [
-      Query.equal('providerSessionId', sessionId),
-      Query.limit(1),
-    ]).catch(() => ({ documents: [] }))
-    if (byProvider.documents?.[0]) return byProvider.documents[0]
-  }
-
-  const fallbackRoomId = parseRoomIdFromProviderSession(sessionId)
-  if (!fallbackRoomId) return null
-  return {
-    $id: sessionId,
-    roomId: fallbackRoomId,
-    mediaType: 'video',
-    provider: 'livekit',
-    providerSessionId: sessionId,
-    state: 'ringing',
-    degraded: true,
+  } catch (error: any) {
+    if (error?.code === 404) return null
+    throw error
   }
 }
 
@@ -70,21 +26,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ses
     enforceRateLimit(req, { key: 'calls:session-token', max: 60, windowMs: 60 * 1000 })
 
     const auth = requireUser(req)
+    const durableLimit = await checkDurableRateLimit(`calls:token:${auth.userId}`, 30, 60_000)
+    if (!durableLimit.allowed) throw new ApiError(429, 'RATE_LIMITED', 'Too many call join attempts')
     const { sessionId } = await params
-    const cleanSessionId = String(sessionId || '').trim()
-    if (!cleanSessionId) {
-      throw new ApiError(400, 'INVALID_INPUT', 'sessionId is required')
-    }
+    const parsedSessionId = z.string().trim().min(1).max(255).safeParse(sessionId)
+    if (!parsedSessionId.success) throw new ApiError(400, 'INVALID_INPUT', 'sessionId is invalid')
+    const cleanSessionId = parsedSessionId.data
 
     const { databases } = await createAdminClient()
     const session = await findSession(databases, cleanSessionId)
     if (!session?.roomId) {
       throw new ApiError(404, 'CALL_NOT_FOUND', 'Call session not found')
     }
+    if (!canAccessCall(session, auth.userId)) throw new ApiError(403, 'FORBIDDEN', 'You are not invited to this call')
+    if (TERMINAL_CALL_STATES.has(session.state)) throw new ApiError(409, 'CALL_FINISHED', 'This call has finished')
+    if (isCallExpired(session) && session.callerId !== auth.userId) throw new ApiError(410, 'CALL_EXPIRED', 'This call was not answered in time')
 
     const room = await databases.getDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, session.roomId)
-    const members = parseMembers(room)
-    if (!members.includes(auth.userId) && session.callerId !== auth.userId) {
+    const members = parseStringList(room?.members || room?.participants)
+    if (!members.includes(auth.userId) || !canAccessCall(session, auth.userId)) {
       throw new ApiError(403, 'FORBIDDEN', 'You are not a member of this call')
     }
 
@@ -99,6 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ses
     }
 
     const roomName = session.providerSessionId || session.roomName || cleanSessionId
+    const encryption = deriveCallEncryptionMaterial(roomName)
     const token = await generateLiveKitToken({
       roomName,
       identity: auth.userId,
@@ -117,19 +78,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ses
       url: token.url,
       identity: token.identity,
       roomName: token.roomName,
+      encryption,
+      canEndForEveryone: session.callerId === auth.userId,
       session: {
         $id: session.$id || cleanSessionId,
         roomId: session.roomId,
         mediaType: session.mediaType || 'video',
         state: session.state || 'ringing',
       },
-    })
+    }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } })
   } catch (error: any) {
     if (error instanceof ApiError) {
       return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
     }
 
-    if (String(error?.message || '').includes('LiveKit configuration missing')) {
+    if (String(error?.message || '').includes('LiveKit configuration missing') || String(error?.message || '').includes('Call E2EE configuration missing')) {
       return NextResponse.json({ success: false, error: 'Calling is not configured. Set LiveKit environment variables before starting calls.' }, { status: 503 })
     }
 

@@ -51,10 +51,10 @@ export default function PWAInstallPrompt() {
       <div className="flex items-start gap-3">
         <div className="flex-1">
           <h3 className="font-semibold text-sm text-slate-900 dark:text-white">
-            Install PeerSpark
+            Install Student.social
           </h3>
           <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-            Download PeerSpark as an app for quick access and offline support.
+            Add Student.social as an app for quick access and offline support.
           </p>
         </div>
         <button

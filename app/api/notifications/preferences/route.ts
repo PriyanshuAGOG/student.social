@@ -5,13 +5,19 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { ID, Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { getEnv } from '@/lib/env'
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { z } from 'zod'
+import { parseJsonBody } from '@/lib/api-security'
 
 const env = getEnv()
-const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || env.APPWRITE_PROJECT_ID || 'peerspark-main-db'
+const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || 'peerspark-main-db'
 const NOTIFICATION_PREFERENCES_COLLECTION_ID = process.env.NEXT_PUBLIC_NOTIFICATION_PREFERENCES_COLLECTION_ID || 'notification_preferences'
+const preferenceSchema = z.record(z.union([z.boolean(), z.number(), z.string().max(255)])).refine(
+  (value) => Object.keys(value).every((key) => /^(inAppEnabled|pushEnabled|emailEnabled|smsEnabled|quietHoursEnabled|quietHoursStart|quietHoursEnd|timezone|dailyDigestEnabled|weeklyDigestEnabled|digestTime|defaultStudyReminderMinutes|defaultClassReminderMinutes|defaultDeadlineReminderHours|maxPushPerHour|maxPushPerDay|maxEmailsPerDay|[a-zA-Z0-9_]+(Push|Email|Sms|Enabled))$/.test(key)),
+  'Unknown notification preference',
+)
 
 export async function GET(req: NextRequest) {
   try {
@@ -58,7 +64,7 @@ export async function POST(req: NextRequest) {
     const { databases } = await createAdminClient()
     const { userId } = requireUser(req)
 
-    const body = await req.json()
+    const body = await parseJsonBody(req, preferenceSchema)
     const { userId: _ignoredUserId, $id: _ignoredId, ...safeBody } = body || {}
 
     // Get existing preferences

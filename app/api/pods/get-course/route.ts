@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from "next/server"
 import { Query } from "node-appwrite"
-import { createAdminClient } from "@/lib/appwrite-comprehensive-fixes"
+import { createAdminClient } from "@/lib/server/appwrite"
 import { DATABASE_ID, COLLECTIONS } from "@/lib/appwrite-server"
 
 export async function GET(request: NextRequest) {

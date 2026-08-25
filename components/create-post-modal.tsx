@@ -54,7 +54,10 @@ interface Post {
 }
 
 interface CreatePostModalProps {
-  onPostCreated: (post: Post) => void
+  onPostCreated?: (post: Post) => void
+  trigger?: React.ReactNode | false
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 
@@ -87,8 +90,10 @@ const SUGGESTED_TAGS = [
   "Help",
 ]
 
-export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
-  const [isOpen, setIsOpen] = useState(false)
+export function CreatePostModal({ onPostCreated, trigger, open, onOpenChange }: CreatePostModalProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isOpen = open ?? internalOpen
+  const setIsOpen = onOpenChange ?? setInternalOpen
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
   const [selectedPod, setSelectedPod] = useState("public") // Updated default value
@@ -118,6 +123,13 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
     }
     if (isOpen) loadProfileAndPods()
   }, [isOpen, authUser?.$id])
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("student:composer-focus", { detail: { focused: isOpen } }))
+    return () => {
+      window.dispatchEvent(new CustomEvent("student:composer-focus", { detail: { focused: false } }))
+    }
+  }, [isOpen])
 
   const displayName = profile?.name || authUser?.name || ""
   const username = displayName
@@ -232,7 +244,7 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
         isBookmarked: false,
       }
 
-      onPostCreated(newPost)
+      onPostCreated?.(newPost)
 
       toast({
         title: "Post created!",
@@ -258,12 +270,15 @@ export function CreatePostModal({ onPostCreated }: CreatePostModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button className="fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full shadow-lg">
-          <Plus className="h-6 w-6" />
+      {trigger !== false ? (
+        <DialogTrigger asChild>
+          {trigger || <Button className="fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full shadow-lg" aria-label="Create a post"><Plus className="h-6 w-6" /></Button>}
+        </DialogTrigger>
+      ) : null}
+      <DialogContent className="student-create-post-dialog sm:max-w-[680px] max-h-[90vh] overflow-y-auto" showCloseButton={false}>
+        <Button type="button" variant="ghost" size="icon" className="student-create-post-close" onClick={() => setIsOpen(false)} aria-label="Close create post">
+          <X aria-hidden="true" />
         </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create Post</DialogTitle>
           <DialogDescription>Share your thoughts, questions, or achievements with the community</DialogDescription>

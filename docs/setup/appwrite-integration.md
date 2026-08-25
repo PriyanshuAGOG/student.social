@@ -76,7 +76,7 @@ Create `.env.local` file:
 \`\`\`env
 # Appwrite Configuration
 NEXT_PUBLIC_APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
-NEXT_PUBLIC_APPWRITE_PROJECT_ID=peerspark-platform-prod
+NEXT_PUBLIC_APPWRITE_PROJECT_ID=694ed12f003c942317f4
 NEXT_PUBLIC_APPWRITE_DATABASE_ID=peerspark-main-db
 NEXT_PUBLIC_APPWRITE_STORAGE_ID=peerspark-storage
 
@@ -5161,7 +5161,7 @@ Create production environment variables:
 \`\`\`bash
 # Production .env.local
 NEXT_PUBLIC_APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
-NEXT_PUBLIC_APPWRITE_PROJECT_ID=peerspark-platform-prod
+NEXT_PUBLIC_APPWRITE_PROJECT_ID=694ed12f003c942317f4
 NEXT_PUBLIC_APPWRITE_DATABASE_ID=peerspark-main-db
 NEXT_PUBLIC_APPWRITE_STORAGE_ID=peerspark-storage
 

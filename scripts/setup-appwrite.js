@@ -55,6 +55,13 @@ function serializeEnv(env) {
     'NEXT_PUBLIC_SAVED_POSTS_COLLECTION_ID',
     'NEXT_PUBLIC_COURSES_COLLECTION_ID',
     'NEXT_PUBLIC_CHAPTERS_COLLECTION_ID',
+    'NEXT_PUBLIC_MESSAGE_RECEIPTS_COLLECTION_ID',
+    'NEXT_PUBLIC_CHAT_PRESENCE_COLLECTION_ID',
+    'NEXT_PUBLIC_AI_TASKS_COLLECTION_ID',
+    'NEXT_PUBLIC_CALL_SESSIONS_COLLECTION_ID',
+    'NEXT_PUBLIC_CALL_PARTICIPANTS_COLLECTION_ID',
+    'NEXT_PUBLIC_CALL_DIAGNOSTICS_COLLECTION_ID',
+    'NEXT_PUBLIC_NOTIFICATION_PREFERENCES_COLLECTION_ID',
     'ADMIN_ROLES_COLLECTION_ID',
     'ADMIN_AUDIT_LOGS_COLLECTION_ID',
     'ADMIN_SESSIONS_COLLECTION_ID',
@@ -119,6 +126,13 @@ function normalizeEnv() {
     NEXT_PUBLIC_SAVED_POSTS_COLLECTION_ID: fileEnv.NEXT_PUBLIC_SAVED_POSTS_COLLECTION_ID || 'saved_posts',
     NEXT_PUBLIC_COURSES_COLLECTION_ID: fileEnv.NEXT_PUBLIC_COURSES_COLLECTION_ID || 'courses',
     NEXT_PUBLIC_CHAPTERS_COLLECTION_ID: fileEnv.NEXT_PUBLIC_CHAPTERS_COLLECTION_ID || 'course_chapters',
+    NEXT_PUBLIC_MESSAGE_RECEIPTS_COLLECTION_ID: fileEnv.NEXT_PUBLIC_MESSAGE_RECEIPTS_COLLECTION_ID || 'message_receipts',
+    NEXT_PUBLIC_CHAT_PRESENCE_COLLECTION_ID: fileEnv.NEXT_PUBLIC_CHAT_PRESENCE_COLLECTION_ID || 'chat_presence',
+    NEXT_PUBLIC_AI_TASKS_COLLECTION_ID: fileEnv.NEXT_PUBLIC_AI_TASKS_COLLECTION_ID || 'ai_tasks',
+    NEXT_PUBLIC_CALL_SESSIONS_COLLECTION_ID: fileEnv.NEXT_PUBLIC_CALL_SESSIONS_COLLECTION_ID || 'call_sessions',
+    NEXT_PUBLIC_CALL_PARTICIPANTS_COLLECTION_ID: fileEnv.NEXT_PUBLIC_CALL_PARTICIPANTS_COLLECTION_ID || 'call_participants',
+    NEXT_PUBLIC_CALL_DIAGNOSTICS_COLLECTION_ID: fileEnv.NEXT_PUBLIC_CALL_DIAGNOSTICS_COLLECTION_ID || 'call_diagnostics',
+    NEXT_PUBLIC_NOTIFICATION_PREFERENCES_COLLECTION_ID: fileEnv.NEXT_PUBLIC_NOTIFICATION_PREFERENCES_COLLECTION_ID || 'notification_preferences',
     ADMIN_ROLES_COLLECTION_ID: fileEnv.ADMIN_ROLES_COLLECTION_ID || 'admin_roles',
     ADMIN_AUDIT_LOGS_COLLECTION_ID: fileEnv.ADMIN_AUDIT_LOGS_COLLECTION_ID || 'admin_audit_logs',
     ADMIN_SESSIONS_COLLECTION_ID: fileEnv.ADMIN_SESSIONS_COLLECTION_ID || 'admin_sessions',
@@ -149,26 +163,49 @@ function normalizeEnv() {
   return { endpoint, projectId, databaseId, apiKey }
 }
 
+function normalizeAppwriteConfig(projectId) {
+  const configPath = path.join(process.cwd(), 'appwrite.config.json')
+  if (!fs.existsSync(configPath)) return
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
+  if (config.projectId === projectId) return
+  config.projectId = projectId
+  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`)
+  console.log('Appwrite CLI project configuration normalized.')
+}
+
+function runStep(label, args, childEnv) {
+  console.log(`\n${label}...`)
+  const result = spawnSync(process.execPath, args, {
+    stdio: 'inherit',
+    env: childEnv,
+  })
+  if ((result.status ?? 1) !== 0) process.exit(result.status ?? 1)
+}
+
 const normalized = normalizeEnv()
+normalizeAppwriteConfig(normalized.projectId)
 console.log('Appwrite environment normalized:')
 console.log(`  Endpoint: ${normalized.endpoint}`)
 console.log(`  Project: ${normalized.projectId}`)
 console.log(`  Database: ${normalized.databaseId}`)
 console.log('  API key: [redacted]')
 
-const result = spawnSync(process.execPath, ['scripts/update-schema.js'], {
-  stdio: 'inherit',
-  env: {
-    ...process.env,
-    NEXT_PUBLIC_APPWRITE_ENDPOINT: normalized.endpoint,
-    NEXT_PUBLIC_APPWRITE_PROJECT_ID: normalized.projectId,
-    NEXT_PUBLIC_APPWRITE_DATABASE_ID: normalized.databaseId,
-    NEXT_PUBLIC_DATABASE_ID: normalized.databaseId,
-    APPWRITE_ENDPOINT: normalized.endpoint,
-    APPWRITE_PROJECT_ID: normalized.projectId,
-    APPWRITE_DATABASE_ID: normalized.databaseId,
-    APPWRITE_API_KEY: normalized.apiKey,
-  },
-})
+const childEnv = {
+  ...process.env,
+  NEXT_PUBLIC_APPWRITE_ENDPOINT: normalized.endpoint,
+  NEXT_PUBLIC_APPWRITE_PROJECT_ID: normalized.projectId,
+  NEXT_PUBLIC_APPWRITE_DATABASE_ID: normalized.databaseId,
+  NEXT_PUBLIC_DATABASE_ID: normalized.databaseId,
+  APPWRITE_ENDPOINT: normalized.endpoint,
+  APPWRITE_PROJECT_ID: normalized.projectId,
+  APPWRITE_DATABASE_ID: normalized.databaseId,
+  APPWRITE_API_KEY: normalized.apiKey,
+}
 
-process.exit(result.status ?? 1)
+runStep('Synchronizing canonical application schema', ['scripts/update-schema.js'], childEnv)
+runStep('Verifying canonical application schema', ['scripts/verify-appwrite.js'], childEnv)
+runStep('Synchronizing pods2 schema and storage', ['--experimental-strip-types', 'scripts/appwrite/setup-pods.ts'], childEnv)
+runStep('Hardening pods2 document permissions', ['--experimental-strip-types', 'scripts/appwrite/harden-pods-permissions.ts'], childEnv)
+runStep('Verifying pods2 schema and storage', ['--experimental-strip-types', 'scripts/appwrite/verify-pods.ts'], childEnv)
+
+console.log('\nCanonical Appwrite provisioning complete.')

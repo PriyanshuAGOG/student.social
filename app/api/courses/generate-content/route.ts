@@ -19,22 +19,20 @@ import {
 } from '@/lib/course-service';
 import { callLLM } from '@/lib/ai';
 import crypto from 'crypto';
+import { z } from 'zod';
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireUser } from '@/lib/api-security';
 
 export async function POST(request: NextRequest) {
   try {
-    const {
-      courseId,
-      chapterId,
-      contentType, // 'summaries' | 'notes' | 'assignments' | 'all'
-      forceRegenerate = false,
-    } = await request.json();
-
-    if (!courseId || !chapterId) {
-      return NextResponse.json(
-        { error: 'Missing required fields: courseId, chapterId' },
-        { status: 400 }
-      );
-    }
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'courses:generate-content', max: 5, windowMs: 60_000 });
+    const auth = requireUser(request);
+    const { courseId, chapterId, contentType } = await parseJsonBody(request, z.object({
+      courseId: z.string().min(1).max(255),
+      chapterId: z.string().min(1).max(255),
+      contentType: z.enum(['summaries', 'notes', 'assignments', 'all']),
+      forceRegenerate: z.boolean().default(false),
+    }));
 
     const db = getCourseDatabase();
     if (!db) {
@@ -43,6 +41,8 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+    const course = await db.getDocument('peerspark-main-db', 'courses', courseId);
+    if (course.instructorId !== auth.userId) throw new ApiError(403, 'FORBIDDEN', 'Only the course instructor can generate content');
 
     // Get chapter data
     const chapters = await getChapters(db, courseId);
@@ -133,6 +133,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof ApiError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     console.error('Error in generate-content endpoint:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error occurred' },

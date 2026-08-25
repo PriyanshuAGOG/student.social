@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { ID, Permission, Query, Role } from 'node-appwrite'
+import { z } from 'zod'
+import { createAdminClient } from '@/lib/server/appwrite'
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireUser } from '@/lib/api-security'
+import { checkDurableRateLimit } from '@/lib/server/rate-limit'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const CHAT_PRESENCE_COLLECTION_ID = process.env.NEXT_PUBLIC_CHAT_PRESENCE_COLLECTION_ID || 'chat_presence'
@@ -25,41 +27,16 @@ function isNotFound(error: any): boolean {
   return error?.code === 404 || message.includes('not found') || message.includes('could not be found')
 }
 
-function getUnknownAttribute(error: any): string | null {
-  const message = String(error?.message || '')
-  return message.match(/Unknown attribute:\s*"([^"]+)"/)?.[1] || null
-}
-
-function isCollectionUnavailable(error: any): boolean {
-  const message = String(error?.message || '').toLowerCase()
-  return isNotFound(error) || message.includes('collection') || message.includes('attribute')
-}
-
 async function writePresenceDocument(
   databases: any,
   existingId: string | null,
   payload: Record<string, unknown>,
+  permissions: string[],
   createOnlyPayload: Record<string, unknown> = {},
 ) {
-  const data = { ...payload, ...createOnlyPayload }
-  const removed = new Set<string>()
-
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    try {
-      return existingId
-        ? await databases.updateDocument(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, existingId, payload)
-        : await databases.createDocument(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, 'unique()', data)
-    } catch (error: any) {
-      const unknownAttribute = getUnknownAttribute(error)
-      if (!unknownAttribute || removed.has(unknownAttribute)) throw error
-
-      removed.add(unknownAttribute)
-      delete payload[unknownAttribute]
-      delete data[unknownAttribute]
-    }
-  }
-
-  throw new Error('Unable to write chat presence after schema compatibility retries')
+  return existingId
+    ? databases.updateDocument(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, existingId, payload, permissions)
+    : databases.createDocument(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, ID.unique(), { ...payload, ...createOnlyPayload }, permissions)
 }
 
 function internalError(message: string, error: any) {
@@ -88,7 +65,7 @@ async function getRoomForMember(databases: any, roomId: string, userId: string) 
     throw new ApiError(403, 'FORBIDDEN', 'You are not a member of this conversation')
   }
 
-  return room
+  return { room, members }
 }
 
 export async function POST(req: NextRequest) {
@@ -97,37 +74,26 @@ export async function POST(req: NextRequest) {
     enforceRateLimit(req, { key: 'chat:presence', max: 120, windowMs: 60 * 1000 })
 
     const auth = requireUser(req)
-    const body = await req.json().catch(() => ({}))
-    const roomId = String(body?.roomId || '').trim()
-    const isTyping = Boolean(body?.isTyping)
-    const isOnline = body?.isOnline === undefined ? true : Boolean(body?.isOnline)
-
-    if (!roomId) {
-      throw new ApiError(400, 'INVALID_INPUT', 'roomId is required')
-    }
+    const durableLimit = await checkDurableRateLimit(`chat:presence:${auth.userId}`, 120, 60_000)
+    if (!durableLimit.allowed) throw new ApiError(429, 'RATE_LIMITED', 'Too many presence updates')
+    const body = await parseJsonBody(req, z.object({
+      roomId: z.string().trim().min(1).max(255),
+      isTyping: z.boolean().optional(),
+      isOnline: z.boolean().optional(),
+    }), 4096)
+    const { roomId } = body
+    const isTyping = Boolean(body.isTyping)
+    const isOnline = body.isOnline === undefined ? true : body.isOnline
 
     const { databases } = await createAdminClient()
-    await getRoomForMember(databases, roomId, auth.userId)
+    const { members } = await getRoomForMember(databases, roomId, auth.userId)
 
     const now = new Date().toISOString()
-    let existing: any = { documents: [] }
-    try {
-      existing = await databases.listDocuments(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, [
-        Query.equal('roomId', roomId),
-        Query.equal('userId', auth.userId),
-        Query.limit(1),
-      ])
-    } catch (error: any) {
-      if (isCollectionUnavailable(error)) {
-        console.warn('[chat/presence POST] Presence storage unavailable; returning degraded success:', error?.message || error)
-        return NextResponse.json({
-          success: true,
-          degraded: true,
-          presence: { roomId, userId: auth.userId, isOnline, isTyping, lastSeenAt: new Date().toISOString() },
-        })
-      }
-      throw error
-    }
+    const existing = await databases.listDocuments(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, [
+      Query.equal('roomId', roomId),
+      Query.equal('userId', auth.userId),
+      Query.limit(1),
+    ])
 
     const basePayload = {
       roomId,
@@ -143,6 +109,7 @@ export async function POST(req: NextRequest) {
       databases,
       existing.documents.length > 0 ? existing.documents[0].$id : null,
       { ...basePayload },
+      members.map((memberId) => Permission.read(Role.user(memberId))),
       { createdAt: now },
     )
 
@@ -169,19 +136,10 @@ export async function GET(req: NextRequest) {
     const { databases } = await createAdminClient()
     await getRoomForMember(databases, roomId, auth.userId)
 
-    let presence: any = { documents: [] }
-    try {
-      presence = await databases.listDocuments(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, [
-        Query.equal('roomId', roomId),
-        Query.limit(50),
-      ])
-    } catch (error: any) {
-      if (isCollectionUnavailable(error)) {
-        console.warn('[chat/presence GET] Presence storage unavailable; returning empty presence:', error?.message || error)
-        return NextResponse.json({ success: true, degraded: true, presence: [] })
-      }
-      throw error
-    }
+    const presence = await databases.listDocuments(DATABASE_ID, CHAT_PRESENCE_COLLECTION_ID, [
+      Query.equal('roomId', roomId),
+      Query.limit(50),
+    ])
 
     return NextResponse.json({
       success: true,

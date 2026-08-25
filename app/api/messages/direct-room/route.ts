@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { ID, Permission, Query, Role } from 'node-appwrite'
+import { z } from 'zod'
+import { createAdminClient } from '@/lib/server/appwrite'
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireUser } from '@/lib/api-security'
+import { checkDurableRateLimit } from '@/lib/server/rate-limit'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const CHAT_ROOMS_COLLECTION_ID = process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms'
@@ -37,7 +39,12 @@ export async function POST(req: NextRequest) {
     enforceRateLimit(req, { key: 'messages:direct-room', max: 60, windowMs: 60 * 1000 })
 
     const auth = requireUser(req)
-    const body = await req.json().catch(() => ({}))
+    const durableLimit = await checkDurableRateLimit(`messages:direct-room:${auth.userId}`, 30, 60_000)
+    if (!durableLimit.allowed) throw new ApiError(429, 'RATE_LIMITED', 'Too many conversation requests')
+    const body = await parseJsonBody(req, z.object({
+      recipientId: z.string().trim().min(1).max(255).optional(),
+      recipientUsername: z.string().trim().min(1).max(255).optional(),
+    }), 4096)
     const recipientId = String(body?.recipientId || '').trim()
     const recipientUsername = String(body?.recipientUsername || '').trim()
 
@@ -81,6 +88,7 @@ export async function POST(req: NextRequest) {
     }
 
     const sortedMembers = [auth.userId, targetUserId].sort()
+    const readPermissions = sortedMembers.map((memberId) => Permission.read(Role.user(memberId)))
 
     const existingRooms = await databases.listDocuments(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, [
       Query.equal('type', ['direct', 'dm']),
@@ -97,21 +105,21 @@ export async function POST(req: NextRequest) {
         const updated = await databases.updateDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, existingRoom.$id, {
           type: 'direct',
           members: sortedMembers,
-        })
+        }, readPermissions)
         return NextResponse.json({ success: true, room: updated, created: false })
       }
-
-      return NextResponse.json({ success: true, room: existingRoom, created: false })
+      const repairedRoom = await databases.updateDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, existingRoom.$id, {}, readPermissions)
+      return NextResponse.json({ success: true, room: repairedRoom, created: false })
     }
 
-    const createdRoom = await databases.createDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, 'unique()', {
+    const createdRoom = await databases.createDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, ID.unique(), {
       name: 'Direct Messages',
       type: 'direct',
       members: sortedMembers,
       createdAt: new Date().toISOString(),
       lastMessageTime: new Date().toISOString(),
       isActive: true,
-    })
+    }, readPermissions)
 
     return NextResponse.json({ success: true, room: createdRoom, created: true }, { status: 201 })
   } catch (error: any) {

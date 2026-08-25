@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast"
 import { resourceService, profileService } from "@/lib/appwrite"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter, useSearchParams } from "next/navigation"
+import { AppPageHeader } from "@/components/internal/AppPageHeader"
 
 const RESOURCE_TYPES = [
   { id: "all", label: "All", icon: FolderOpen },
@@ -100,6 +101,13 @@ export default function VaultPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const scopedPodId = searchParams.get("pod")
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("student:composer-focus", { detail: { focused: isUploading } }))
+    return () => {
+      window.dispatchEvent(new CustomEvent("student:composer-focus", { detail: { focused: false } }))
+    }
+  }, [isUploading])
 
   // Load resources from database
   const loadResources = useCallback(async () => {
@@ -693,29 +701,15 @@ export default function VaultPage() {
     <div className="min-h-screen bg-background">
       <FileInput />
       
-      {/* Mobile Header */}
-      <div className="md:hidden p-4 border-b border-border">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-xl font-bold">Resource Vault</h1>
-            <p className="text-sm text-muted-foreground">{scopedPodId ? "Pod learning library" : "Your learning library"}</p>
-          </div>
-          <Button 
-            size="sm" 
-            onClick={() => fileInputRef.current?.click()} 
-            className="bg-primary hover:bg-primary/90"
-            disabled={isUploading}
-          >
-            {isUploading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="mr-2 h-4 w-4" />
-            )}
-            Upload
-          </Button>
-        </div>
+      <div className="mx-auto max-w-7xl px-4 pt-4 md:px-8 md:pt-6">
+        <AppPageHeader
+          title={scopedPodId ? "Pod resources" : "Resource vault"}
+          meta={<span>{resources.length} resources</span>}
+          actions={<><Button onClick={() => fileInputRef.current?.click()} disabled={isUploading}>{isUploading ? <Loader2 className="animate-spin" /> : <Upload />}Upload</Button><Button variant="outline" onClick={() => loadResources()}><RefreshCw />Refresh</Button></>}
+        />
+      </div>
 
-        {/* Mobile Search */}
+      <div className="md:hidden px-4 py-4">
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
           <Input
@@ -723,6 +717,7 @@ export default function VaultPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
+            aria-label="Search resources"
           />
         </div>
 
@@ -742,36 +737,6 @@ export default function VaultPage() {
               <span>{type.label}</span>
             </button>
           ))}
-        </div>
-      </div>
-
-      {/* Desktop Header */}
-      <div className="hidden md:block p-4 md:p-8 pt-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold">Resource Vault</h1>
-              <p className="text-muted-foreground">{scopedPodId ? "Resources scoped to this pod plus your uploads" : "Your centralized learning library"}</p>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Button variant="outline" onClick={() => loadResources()}>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Refresh
-              </Button>
-              <Button 
-                onClick={() => fileInputRef.current?.click()} 
-                className="bg-primary hover:bg-primary/90"
-                disabled={isUploading}
-              >
-                {isUploading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Upload className="mr-2 h-4 w-4" />
-                )}
-                Upload Resource
-              </Button>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -889,6 +854,8 @@ export default function VaultPage() {
                     size="sm"
                     onClick={() => setViewMode("grid")}
                     className={viewMode === "grid" ? "bg-primary" : ""}
+                    aria-label="Show resources in a grid"
+                    aria-pressed={viewMode === "grid"}
                   >
                     <Grid3X3 className="w-4 h-4" />
                   </Button>
@@ -897,6 +864,8 @@ export default function VaultPage() {
                     size="sm"
                     onClick={() => setViewMode("list")}
                     className={viewMode === "list" ? "bg-primary" : ""}
+                    aria-label="Show resources in a list"
+                    aria-pressed={viewMode === "list"}
                   >
                     <List className="w-4 h-4" />
                   </Button>
@@ -912,6 +881,8 @@ export default function VaultPage() {
                   size="sm"
                   onClick={() => setViewMode("grid")}
                   className={viewMode === "grid" ? "bg-primary" : ""}
+                  aria-label="Show resources in a grid"
+                  aria-pressed={viewMode === "grid"}
                 >
                   <Grid3X3 className="w-4 h-4" />
                 </Button>
@@ -920,6 +891,8 @@ export default function VaultPage() {
                   size="sm"
                   onClick={() => setViewMode("list")}
                   className={viewMode === "list" ? "bg-primary" : ""}
+                  aria-label="Show resources in a list"
+                  aria-pressed={viewMode === "list"}
                 >
                   <List className="w-4 h-4" />
                 </Button>

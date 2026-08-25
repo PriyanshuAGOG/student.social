@@ -6,21 +6,21 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Award, BookOpen, Trophy, Target, TrendingUp, Calendar } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
 
 export default function StudentProfile() {
+  const { user, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchProfile();
-  }, []);
+    if (user) void fetchProfile();
+  }, [user]);
 
   const fetchProfile = async () => {
     try {
       setLoading(true);
-      // Replace with actual user ID from auth context
-      const userId = 'current-user-id';
-      const response = await fetch(`/api/student/profile?userId=${userId}`);
+      const response = await fetch('/api/student/profile', { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
         setProfile(data.data);
@@ -32,7 +32,7 @@ export default function StudentProfile() {
     }
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="animate-pulse space-y-4">

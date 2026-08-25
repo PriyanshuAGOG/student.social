@@ -7,24 +7,30 @@ import {
   updateSubmission,
 } from '@/lib/course-service';
 import { SubmissionStatus } from '@/lib/types/courses';
+import { z } from 'zod';
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security';
 
 export async function POST(request: NextRequest) {
   try {
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'assignments:submit', max: 20, windowMs: 60_000 });
+    const auth = requireUser(request);
     const formData = await request.formData();
 
-    const assignmentId = formData.get('assignmentId') as string;
-    const userId = formData.get('userId') as string;
-    const courseId = formData.get('courseId') as string;
-    const chapterId = formData.get('chapterId') as string;
-    const submissionText = formData.get('submissionText') as string;
+    const fields = z.object({
+      assignmentId: z.string().min(1).max(255),
+      courseId: z.string().min(1).max(255),
+      chapterId: z.string().max(255).default(''),
+      submissionText: z.string().max(10_000).default(''),
+    }).parse({
+      assignmentId: String(formData.get('assignmentId') || ''),
+      courseId: String(formData.get('courseId') || ''),
+      chapterId: String(formData.get('chapterId') || ''),
+      submissionText: String(formData.get('submissionText') || ''),
+    });
+    const { assignmentId, courseId, chapterId, submissionText } = fields;
+    const userId = auth.userId;
     const submissionFile = formData.get('submissionFile') as File | null;
-
-    if (!assignmentId || !userId || !courseId) {
-      return NextResponse.json(
-        { error: 'Missing required fields: assignmentId, userId, courseId' },
-        { status: 400 },
-      );
-    }
 
     if (!submissionText && !submissionFile) {
       return NextResponse.json(
@@ -40,6 +46,8 @@ export async function POST(request: NextRequest) {
         { status: 500 },
       );
     }
+    const assignment = await db.getDocument('peerspark-main-db', 'course_assignments', assignmentId);
+    if (assignment.courseId && assignment.courseId !== courseId) throw new ApiError(400, 'INVALID_INPUT', 'Assignment does not belong to this course');
 
     let fileUrl: string | null = null;
     if (submissionFile) {
@@ -121,6 +129,8 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof ApiError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid assignment submission', details: error.flatten() }, { status: 400 });
     console.error('Error in submit assignment endpoint:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error occurred' },
@@ -131,6 +141,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = requireUser(request);
     const { searchParams } = new URL(request.url);
     const submissionId = searchParams.get('submissionId');
 
@@ -144,8 +155,10 @@ export async function GET(request: NextRequest) {
     }
 
     const submission = await db.getDocument('peerspark-main-db', 'assignment_submissions', submissionId);
+    if (submission.userId !== auth.userId) throw new ApiError(403, 'FORBIDDEN', 'Submission does not belong to you');
     return NextResponse.json({ success: true, data: submission });
   } catch (error) {
+    if (error instanceof ApiError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     console.error('Error fetching submission:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error occurred' },
@@ -156,6 +169,9 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'assignments:revise', max: 20, windowMs: 60_000 });
+    const auth = requireUser(request);
     const { searchParams } = new URL(request.url);
     const submissionId = searchParams.get('submissionId');
 
@@ -186,6 +202,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const currentSubmission = await db.getDocument('peerspark-main-db', 'assignment_submissions', submissionId);
+    if (currentSubmission.userId !== auth.userId) throw new ApiError(403, 'FORBIDDEN', 'Submission does not belong to you');
     const updated = await db.updateDocument('peerspark-main-db', 'assignment_submissions', submissionId, {
       submissionText: submissionText || currentSubmission.submissionText,
       submissionFile: fileUrl || currentSubmission.submissionFile,
@@ -209,6 +226,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: graded });
   } catch (error) {
+    if (error instanceof ApiError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     console.error('Error revising submission:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error occurred' },

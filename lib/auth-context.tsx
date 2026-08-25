@@ -29,14 +29,19 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+type SessionSnapshot = {
+  user: Models.User<Models.Preferences> | null
+  profile: UserProfile | null
+}
+
 // Session state stored in memory to prevent unnecessary API calls
-let sessionCheckPromise: Promise<Models.User<Models.Preferences> | null> | null = null
+let sessionCheckPromise: Promise<SessionSnapshot> | null = null
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function fetchSessionUser(): Promise<Models.User<Models.Preferences> | null> {
+async function fetchSessionSnapshot(): Promise<SessionSnapshot> {
   try {
     const retryDelays = [0, 150, 400]
 
@@ -51,13 +56,16 @@ async function fetchSessionUser(): Promise<Models.User<Models.Preferences> | nul
       })
       const payload = await response.json().catch(() => null)
       if (response.ok && payload?.authenticated && payload?.user) {
-        return payload.user as Models.User<Models.Preferences>
+        return {
+          user: payload.user as Models.User<Models.Preferences>,
+          profile: (payload.profile as UserProfile | null) || null,
+        }
       }
     }
 
-    return null
+    return { user: null, profile: null }
   } catch {
-    return null
+    return { user: null, profile: null }
   }
 }
 
@@ -78,15 +86,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Check if there's an active session without creating a new one
   const checkSession = useCallback(async (): Promise<boolean> => {
     try {
-      // If already checking, wait for the same promise
+      let snapshot: SessionSnapshot
       if (sessionCheckPromise) {
-        const result = await sessionCheckPromise
-        return !!result
+        snapshot = await sessionCheckPromise
+      } else {
+        const request = fetchSessionSnapshot()
+        sessionCheckPromise = request
+        try {
+          snapshot = await request
+        } finally {
+          if (sessionCheckPromise === request) sessionCheckPromise = null
+        }
       }
 
-      sessionCheckPromise = fetchSessionUser()
-      const currentUser = await sessionCheckPromise
-      sessionCheckPromise = null
+      const currentUser = snapshot.user
 
       if (currentUser) {
         const verified = isAppwriteEmailVerified(currentUser)
@@ -100,12 +113,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return true
         }
 
-        // Load user profile - ensure it exists
+        // The session endpoint already reads the profile. Only bootstrap when
+        // that authenticated read confirms the profile is genuinely missing.
         try {
-          const userProfile = await profileService.ensureProfileExists(currentUser.$id, {
-            name: currentUser.name,
-            email: currentUser.email,
-          })
+          const userProfile = snapshot.profile?.$id === currentUser.$id
+            ? snapshot.profile
+            : await profileService.ensureProfileExists(currentUser.$id, {
+                name: currentUser.name,
+                email: currentUser.email,
+              })
           if (userProfile) {
             setProfile(userProfile as UserProfile)
           }
@@ -156,7 +172,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     try {
-      const currentUser = await fetchSessionUser()
+      const snapshot = await fetchSessionSnapshot()
+      const currentUser = snapshot.user
       if (!currentUser) {
         setUser(null)
         setProfile(null)
@@ -178,10 +195,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Also refresh profile - ensure it exists
       if (currentUser?.$id) {
         try {
-          const userProfile = await profileService.ensureProfileExists(currentUser.$id, {
-            name: currentUser.name,
-            email: currentUser.email,
-          })
+          const userProfile = snapshot.profile?.$id === currentUser.$id
+            ? snapshot.profile
+            : await profileService.ensureProfileExists(currentUser.$id, {
+                name: currentUser.name,
+                email: currentUser.email,
+              })
           if (userProfile) {
             setProfile(userProfile as UserProfile)
           }

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { MessageCircleMore, Search, SquarePen, X } from "lucide-react";
 import { ConversationItem } from "./ConversationItem";
 
 interface Conversation {
@@ -15,6 +16,8 @@ interface Conversation {
   participants?: string[];
 }
 
+type ConversationFilter = "all" | "direct" | "group" | "pod";
+
 interface ConversationListProps {
   conversations: Conversation[];
   selectedId?: string;
@@ -24,6 +27,31 @@ interface ConversationListProps {
   isLoading?: boolean;
   showSearchBox?: boolean;
   onNewChat?: () => void;
+  activeFilter?: ConversationFilter;
+  onFilterChange?: (filter: ConversationFilter) => void;
+}
+
+const FILTERS: Array<{ value: ConversationFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "direct", label: "DMs" },
+  { value: "group", label: "Groups" },
+  { value: "pod", label: "Pods" },
+];
+
+function ConversationSkeleton() {
+  return (
+    <div className="space-y-2 px-3 py-3" aria-label="Loading conversations">
+      {Array.from({ length: 6 }, (_, index) => (
+        <div key={index} className="flex animate-pulse items-center gap-3 rounded-2xl px-2 py-3">
+          <div className="h-12 w-12 rounded-full bg-muted" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-2/5 rounded-full bg-muted" />
+            <div className="h-3 w-4/5 rounded-full bg-muted/70" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function ConversationList({
@@ -35,110 +63,84 @@ export function ConversationList({
   isLoading = false,
   showSearchBox = true,
   onNewChat,
+  activeFilter = "all",
+  onFilterChange,
 }: ConversationListProps) {
   const [localQuery, setLocalQuery] = useState(searchQuery);
 
   const filteredConversations = useMemo(() => {
     if (!localQuery.trim()) return conversations;
-
-    const query = localQuery.toLowerCase();
+    const query = localQuery.trim().toLowerCase();
     return conversations.filter(
-      (conv) =>
-        conv.name.toLowerCase().includes(query) ||
-        conv.lastMessage?.toLowerCase().includes(query) ||
-        conv.participants?.some((participant) =>
-          participant.toLowerCase().includes(query),
-        ),
+      (conversation) =>
+        conversation.name.toLowerCase().includes(query) ||
+        conversation.lastMessage?.toLowerCase().includes(query) ||
+        conversation.participants?.some((participant) => participant.toLowerCase().includes(query)),
     );
   }, [conversations, localQuery]);
 
-  const handleSearchChange = (newQuery: string) => {
-    setLocalQuery(newQuery);
-    onSearchChange?.(newQuery);
+  const handleSearchChange = (query: string) => {
+    setLocalQuery(query);
+    onSearchChange?.(query);
   };
 
   return (
-    <div className="h-full w-[340px] flex flex-col border-r border-border/70 bg-card/95 shadow-sm backdrop-blur-xl">
-      {/* Header */}
-      <div className="border-b border-border/70 px-4 py-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-foreground">Messages</h2>
-          {onNewChat && (
-            <button
-              type="button"
-              onClick={onNewChat}
-              className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              New
+    <aside className="flex h-full w-full shrink-0 flex-col border-r border-border/60 bg-card/96 backdrop-blur-xl lg:w-[360px]" aria-label="Conversations">
+      <div className="student-chat-list-header shrink-0 border-b border-border/45 px-4 pb-3 pt-3 md:pt-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h1 className="student-chat-list-title font-semibold tracking-[-0.035em] text-foreground">Chats</h1>
+            <p className="mt-0.5 text-[10px] text-muted-foreground md:text-xs">Messages and study groups</p>
+          </div>
+          {onNewChat ? (
+            <button type="button" onClick={onNewChat} className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_8px_24px_rgba(63,111,107,0.2)] transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" aria-label="Start a new chat">
+              <SquarePen className="h-4.5 w-4.5" />
             </button>
-          )}
+          ) : null}
         </div>
 
-        {/* Search box */}
-        {showSearchBox && (
-          <div className="relative">
+        {showSearchBox ? (
+          <div className="relative mt-3 md:mt-4">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
-              type="text"
-              placeholder="Search conversations..."
+              type="search"
+              placeholder="Search chats"
               value={localQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full rounded-xl border border-border bg-background px-3 py-2 pr-10 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              onChange={(event) => handleSearchChange(event.target.value)}
+              className="h-10 w-full rounded-full border border-transparent bg-muted/70 pl-10 pr-10 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary/30 focus:bg-background focus:ring-2 focus:ring-primary/10"
             />
             {localQuery ? (
-              <button
-                type="button"
-                aria-label="Clear conversation search"
-                onClick={() => handleSearchChange("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 rounded text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                ×
+              <button type="button" aria-label="Clear conversation search" onClick={() => handleSearchChange("")} className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground">
+                <X className="h-3.5 w-3.5" />
               </button>
-            ) : (
-              <svg
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-            )}
+            ) : null}
           </div>
-        )}
+        ) : null}
+
+        <div className="mt-3 flex gap-1 overflow-x-auto" aria-label="Filter conversations">
+          {FILTERS.map((filter) => (
+            <button
+              key={filter.value}
+              type="button"
+              onClick={() => onFilterChange?.(filter.value)}
+              aria-pressed={activeFilter === filter.value}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#76556d]/50 ${activeFilter === filter.value ? "bg-[#76556d]/15 text-[#76556d] dark:text-[#d9b8d0]" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Conversation list */}
-      <div className="flex-1 overflow-y-auto">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            <div className="text-sm">Loading conversations...</div>
-          </div>
-        ) : filteredConversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4">
-            <svg
-              className="w-12 h-12 mb-3 opacity-50"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-              />
-            </svg>
-            <p className="text-sm font-medium">
-              {localQuery ? "No conversations found" : "No conversations yet"}
-            </p>
+      <div className="min-h-0 flex-1 overflow-y-auto py-1">
+        {isLoading ? <ConversationSkeleton /> : filteredConversations.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#76556d]/10 text-[#76556d] dark:text-[#d9b8d0]"><MessageCircleMore className="h-6 w-6" /></span>
+            <p className="mt-4 text-sm font-semibold text-foreground">{localQuery ? "No chats found" : "Your conversations live here"}</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{localQuery ? "Try a different name or message." : "Start a DM, create a study group, or open a Pod chat."}</p>
           </div>
         ) : (
-          <nav className="space-y-0">
+          <nav className="py-1">
             {filteredConversations.map((conversation) => (
               <ConversationItem
                 key={conversation.$id}
@@ -157,6 +159,6 @@ export function ConversationList({
           </nav>
         )}
       </div>
-    </div>
+    </aside>
   );
 }

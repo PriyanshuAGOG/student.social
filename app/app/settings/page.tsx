@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Loader2, Search } from "lucide-react"
+import { Loader2, Search } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -17,6 +17,7 @@ import { settingsSections, type SettingItem } from "./sections"
 import { toast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { authService, profileService } from "@/lib/appwrite"
+import { AppPageHeader } from "@/components/internal/AppPageHeader"
 import {
   buildPeerSparkSettingsFromFlat,
   flattenPeerSparkSettings,
@@ -166,7 +167,7 @@ export default function SettingsPage() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
-      link.download = `peerspark-data-export-${new Date().toISOString().split("T")[0]}.json`
+      link.download = `student-social-data-export-${new Date().toISOString().split("T")[0]}.json`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -185,6 +186,9 @@ export default function SettingsPage() {
   const handleAction = async (sectionId: string, itemId: string) => {
     try {
       switch (`${sectionId}.${itemId}`) {
+        case "integrations.calendar-sync":
+          router.push("/app/settings/calendar-sync")
+          return
         case "help.help-center":
           router.push("/help")
           return
@@ -192,7 +196,7 @@ export default function SettingsPage() {
           router.push("/contact")
           return
         case "help.send-feedback":
-          window.location.href = "mailto:support@student.social?subject=PeerSpark%20feedback"
+          window.location.href = "mailto:support@student.social?subject=Student.social%20feedback"
           return
         case "help.report-bug":
           router.push("/contact?topic=bugs")
@@ -290,7 +294,7 @@ export default function SettingsPage() {
           <p className="text-sm text-muted-foreground">{item.description}</p>
           {sectionId === "appearance" && (
             <div className="rounded-md border p-3 text-sm" style={{ fontSize: "var(--peerspark-font-size, 16px)" }}>
-              Live preview: PeerSpark will apply appearance changes instantly.
+              Live preview: Student.social will apply appearance changes instantly.
             </div>
           )}
           <Select
@@ -380,23 +384,13 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <div className="sticky top-0 z-50 border-b border-border bg-background/95 p-4 backdrop-blur-sm md:hidden">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <h1 className="text-lg font-semibold">Settings</h1>
-        </div>
+    <div className="student-settings-page flex flex-col bg-background">
+      <div className="p-3 md:p-6 md:pb-4">
+        <AppPageHeader title="Settings" meta={<span>{settingsSections.length} preference areas</span>} />
       </div>
 
-      <div className="hidden border-b bg-card p-6 md:block">
-        <h1 className="text-3xl font-bold">Settings</h1>
-        <p className="mt-1 text-muted-foreground">Manage your account preferences and application settings</p>
-      </div>
-
-      <div className="flex flex-1 overflow-hidden">
-        <aside className="hidden w-80 flex-col overflow-hidden border-r bg-card md:flex">
+      <div className="student-settings-workspace flex flex-1 overflow-hidden">
+        <aside className="student-settings-rail hidden w-80 flex-col overflow-hidden md:flex">
           <div className="border-b p-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -405,6 +399,7 @@ export default function SettingsPage() {
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 className="pl-10"
+                aria-label="Search settings"
               />
             </div>
           </div>
@@ -441,8 +436,22 @@ export default function SettingsPage() {
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   className="pl-10"
+                  aria-label="Search settings"
                 />
               </div>
+            </div>
+
+            <div className="student-settings-mobile-categories md:hidden">
+              <Label htmlFor="mobile-settings-section">Preference area</Label>
+              <Select value={selectedSection || "overview"} onValueChange={(value) => setSelectedSection(value === "overview" ? null : value)}>
+                <SelectTrigger id="mobile-settings-section" aria-label="Choose a settings area">
+                  <SelectValue placeholder="Choose a settings area" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="overview">Overview</SelectItem>
+                  {filteredSections.map((section) => <SelectItem key={section.id} value={section.id}>{section.title}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
 
             {selectedSection ? (
@@ -481,12 +490,10 @@ export default function SettingsPage() {
                 {filteredSections.map((section) => {
                   const Icon = section.icon
                   return (
-                    <Card key={section.id}>
+                    <Card key={section.id} className="student-settings-summary">
                       <CardHeader
-                        className="cursor-pointer md:cursor-default"
-                        onClick={() => {
-                          if (window.innerWidth >= 768) setSelectedSection(section.id)
-                        }}
+                        className="cursor-pointer"
+                        onClick={() => setSelectedSection(section.id)}
                       >
                         <div className="flex items-center gap-3">
                           <Icon className="h-5 w-5 text-muted-foreground" />
@@ -494,24 +501,12 @@ export default function SettingsPage() {
                             <CardTitle className="text-lg">{section.title}</CardTitle>
                             <CardDescription>{section.description}</CardDescription>
                           </div>
-                          <Badge variant="secondary" className="hidden md:inline-flex">
+                          <Badge variant="secondary" className="inline-flex">
                             {section.items.length} settings
                           </Badge>
                         </div>
                       </CardHeader>
 
-                      <div className="md:hidden">
-                        <CardContent className="pt-0">
-                          <div className="space-y-4">
-                            {section.items.map((item, index) => (
-                              <div key={item.id}>
-                                {renderSettingItem(section.id, item)}
-                                {index < section.items.length - 1 && <Separator className="mt-4" />}
-                              </div>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </div>
                     </Card>
                   )
                 })}

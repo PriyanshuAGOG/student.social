@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { Query } from 'node-appwrite'
 import { z } from 'zod'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { enforceRateLimit, enforceSameOrigin, jsonError, jsonOk, parseJsonBody, requireOwnership, requireUser } from '@/lib/api-security'
 import { getEnv } from '@/lib/env'
 

@@ -77,12 +77,12 @@ export function MobileHeader({
   }
 
   return (
-    <div className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border md:hidden">
+    <div className="student-mobile-header sticky top-0 z-50 md:hidden">
       <div className="flex items-center justify-between p-3 gap-3">
         {/* Profile Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="p-0 h-10 w-10 rounded-full">
+            <Button variant="ghost" size="sm" className="student-mobile-avatar-button p-0 h-10 w-10 rounded-full">
               <Avatar className="h-8 w-8">
                 <AvatarImage src={user?.prefs?.avatar || "/placeholder.svg"} alt={user?.name || "User"} />
                 <AvatarFallback>
@@ -123,7 +123,7 @@ export function MobileHeader({
 
         {/* Search Bar */}
         {showSearch && (
-          <div className="flex-1 relative">
+          <div className="student-mobile-search flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <Input
               placeholder="Search pods, people, posts..."
@@ -131,13 +131,13 @@ export function MobileHeader({
               onChange={(e) => onSearchChange?.(e.target.value)}
               onFocus={() => setIsSearchFocused(true)}
               onBlur={() => setIsSearchFocused(false)}
-              className="pl-10 h-10 bg-secondary/50 border-0 focus:bg-background"
+              className="pl-10 h-10"
             />
           </div>
         )}
 
         {/* Chat Button */}
-        <Button variant="ghost" size="sm" className="relative p-0 h-10 w-10 rounded-full" onClick={handleChatClick}>
+        <Button variant="ghost" size="sm" className="student-mobile-chat-button relative p-0 h-10 w-10 rounded-full" onClick={handleChatClick}>
           <MessageCircle className="h-5 w-5" />
           {unreadChats > 0 && (
             <Badge

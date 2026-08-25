@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { getEnv } from '@/lib/env'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { scanUploadMeta } from '@/lib/upload-security'
 
 const DATABASE_ID = getEnv().NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db'
 const RESOURCES_COLLECTION_ID = process.env.NEXT_PUBLIC_RESOURCES_COLLECTION_ID || 'resources'
@@ -34,20 +36,24 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: 'resources:upload', max: 20, windowMs: 60_000 })
+    const { userId } = requireUser(request)
     const { databases, storage } = await createAdminClient()
     const form = await request.formData()
-    const userId = request.headers.get('x-user-id') || String(form.get('userId') || '')
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const file = form.get('file')
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'File is required' }, { status: 400 })
     }
+    const scan = scanUploadMeta(file)
+    if (!scan.ok) throw new ApiError(400, 'INVALID_UPLOAD', scan.reason || 'File is not allowed')
 
-    const title = String(form.get('title') || file.name)
-    const description = String(form.get('description') || '')
+    const title = String(form.get('title') || file.name).trim().slice(0, 180)
+    const description = String(form.get('description') || '').trim().slice(0, 2000)
     const podId = String(form.get('podId') || '')
-    const visibility = String(form.get('visibility') || 'public')
+    const requestedVisibility = String(form.get('visibility') || 'public')
+    const visibility = ['public', 'private', 'pod'].includes(requestedVisibility) ? requestedVisibility : 'private'
     const tagsRaw = String(form.get('tags') || '[]')
     let tags: string[] = []
     try { tags = JSON.parse(tagsRaw) } catch { tags = [] }
@@ -79,6 +85,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, resource })
   } catch (error: any) {
+    if (error instanceof ApiError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
     console.error('[API] Error uploading resource:', error)
     return NextResponse.json({ error: 'Failed to upload resource' }, { status: 500 })
   }

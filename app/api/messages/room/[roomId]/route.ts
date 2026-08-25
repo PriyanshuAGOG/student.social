@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { Query } from 'node-appwrite';
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
+import { createAdminClient } from '@/lib/server/appwrite';
 import { withErrorHandling, validateInput } from '@/lib/error-handler';
 import { ApiError, requireOwnership, requireUser } from '@/lib/api-security';
 
@@ -61,60 +61,35 @@ export async function GET(
       ]
     );
 
-    // If userId provided, mark messages as read
-    if (auth.userId) {
-      for (const message of messages.documents) {
-        const readBy = Array.isArray(message.readBy) ? message.readBy : [];
-        if (!readBy.includes(auth.userId) && message.senderId !== auth.userId) {
-          try {
-            const existingReceipts = await databases.listDocuments(
-              DATABASE_ID,
-              MESSAGE_RECEIPTS_COLLECTION_ID,
-              [
-                Query.equal('messageId', message.$id),
-                Query.equal('userId', auth.userId),
-                Query.limit(1),
-              ]
-            );
-            const now = new Date().toISOString();
-
-            if (existingReceipts.documents.length > 0) {
-              const receipt = existingReceipts.documents[0];
-              await databases.updateDocument(DATABASE_ID, MESSAGE_RECEIPTS_COLLECTION_ID, receipt.$id, {
-                deliveredAt: receipt.deliveredAt || now,
-                readAt: now,
-                updatedAt: now,
-              });
-            } else {
-              await databases.createDocument(DATABASE_ID, MESSAGE_RECEIPTS_COLLECTION_ID, 'unique()', {
-                messageId: message.$id,
-                roomId,
-                userId: auth.userId,
-                deliveredAt: now,
-                readAt: now,
-                createdAt: now,
-                updatedAt: now,
-              });
-            }
-
-            await databases.updateDocument(
-              DATABASE_ID,
-              MESSAGES_COLLECTION_ID,
-              message.$id,
-              {
-                readBy: [...readBy, auth.userId],
-              }
-            );
-          } catch (updateError) {
-            console.error('Failed to mark message as read:', updateError);
-          }
-        }
+    const messageIds = messages.documents.map((message: any) => message.$id)
+    let receipts: any[] = []
+    if (messageIds.length > 0) {
+      try {
+        const receiptResult = await databases.listDocuments(DATABASE_ID, MESSAGE_RECEIPTS_COLLECTION_ID, [
+          Query.equal('messageId', messageIds),
+          Query.limit(Math.min(5000, Math.max(100, messageIds.length * Math.max(1, members.length)))),
+        ])
+        receipts = receiptResult.documents || []
+      } catch (receiptError) {
+        console.error('[messages/room] Receipt enrichment unavailable:', receiptError)
       }
     }
 
+    const readByMessage = new Map<string, Set<string>>()
+    for (const receipt of receipts) {
+      if (!receipt.readAt) continue
+      const readers = readByMessage.get(receipt.messageId) || new Set<string>()
+      readers.add(receipt.userId)
+      readByMessage.set(receipt.messageId, readers)
+    }
+    const enrichedMessages = messages.documents.map((message: any) => ({
+      ...message,
+      readBy: Array.from(new Set([...(Array.isArray(message.readBy) ? message.readBy : []), ...(readByMessage.get(message.$id) || [])])),
+    }))
+
     return {
       success: true,
-      messages: messages.documents.reverse(), // Oldest first
+      messages: enrichedMessages.reverse(), // Oldest first
       total: messages.total,
       limit,
       offset,

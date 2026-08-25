@@ -1,5 +1,5 @@
 import { adminJson, DATABASE_ID, parseAdminAction, withAdminApi, writeAdminAudit } from '@/lib/admin-server'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { COLLECTIONS } from '@/lib/appwrite-server'
 
 export const POST = withAdminApi('vault.moderate', async ({ request, admin, correlationId }) => {

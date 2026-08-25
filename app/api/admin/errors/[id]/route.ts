@@ -1,5 +1,5 @@
 import { adminJson, ADMIN_COLLECTIONS, DATABASE_ID, withAdminApi, writeAdminAudit } from '@/lib/admin-server'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 
 export const PATCH = withAdminApi('errors.manage', async ({ request, admin, correlationId }) => {
   const id = request.nextUrl.pathname.split('/').pop() || ''

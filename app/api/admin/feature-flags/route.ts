@@ -1,7 +1,7 @@
 import { ID, Query } from 'node-appwrite'
 import { z } from 'zod'
 import { adminJson, ADMIN_COLLECTIONS, DATABASE_ID, safeListDocuments, withAdminApi, writeAdminAudit } from '@/lib/admin-server'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { parseJsonBody } from '@/lib/api-security'
 
 const flagSchema = z.object({

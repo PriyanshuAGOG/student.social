@@ -4,7 +4,7 @@ import { expandRecurringEvent } from '@/lib/calendar/recurrence'
 import { hashCalendarToken, hashIp } from '@/lib/calendar/token'
 import { detectCalendarProvider } from '@/lib/calendar/providers'
 import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { normalizeCalendarSyncSettings } from '@/lib/calendar/settings'
 
 const secret = process.env.CALENDAR_FEED_SECRET || 'dev-secret'

@@ -22,9 +22,11 @@ import {
   RefreshCw,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { notificationService, podService } from "@/lib/appwrite"
+import { podService } from "@/lib/appwrite"
+import { notificationService } from "@/lib/appwrite/notifications"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
+import { AppPageHeader } from "@/components/internal/AppPageHeader"
 
 interface Notification {
   $id: string
@@ -358,74 +360,17 @@ export default function NotificationsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Mobile Header */}
-      <div className="md:hidden p-4 border-b border-border">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold flex items-center">
-              Notifications
-              {unreadCount > 0 && (
-                <Badge variant="destructive" className="ml-3">
-                  {unreadCount} new
-                </Badge>
-              )}
-            </h1>
-            <p className="text-sm text-muted-foreground">Stay updated with your community</p>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => loadNotifications(true)}
-              disabled={isRefreshing}
-            >
-              <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} disabled={unreadCount === 0}>
-              <Check className="mr-2 h-4 w-4" />
-              Mark All
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Desktop Header */}
-      <div className="hidden md:block p-4 md:p-8 pt-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight flex items-center">
-                Notifications
-                {unreadCount > 0 && (
-                  <Badge variant="destructive" className="ml-3">
-                    {unreadCount} new
-                  </Badge>
-                )}
-              </h2>
-              <p className="text-muted-foreground">Stay updated with your learning community</p>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Button 
-                variant="outline" 
-                onClick={() => loadNotifications(true)}
-                disabled={isRefreshing}
-              >
-                <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
-              <Button variant="outline" onClick={handleMarkAllAsRead} disabled={unreadCount === 0}>
-                <Check className="mr-2 h-4 w-4" />
-                Mark All Read
-              </Button>
-            </div>
-          </div>
-        </div>
+      <div className="mx-auto max-w-4xl px-4 pt-4 md:px-8 md:pt-6">
+        <AppPageHeader
+          title="Notifications"
+          meta={<span>{unreadCount} unread</span>}
+          actions={<><Button onClick={handleMarkAllAsRead} disabled={unreadCount === 0}><Check />Mark all read</Button><Button variant="outline" onClick={() => loadNotifications(true)} disabled={isRefreshing}><RefreshCw className={isRefreshing ? "animate-spin" : ""} />Refresh</Button></>}
+        />
       </div>
 
       <div className="max-w-4xl mx-auto px-4 md:px-8 pb-20 md:pb-8">
         <div className="space-y-4">
-          <div className="flex space-x-1 bg-secondary/50 rounded-lg p-1 max-w-fit">
+          <div className="student-notification-filters grid w-full grid-cols-5 gap-1 rounded-2xl bg-secondary/50 p-1" role="tablist" aria-label="Notification filters">
             {[
               { value: "all", label: "All", count: tabCounts.all },
               { value: "unread", label: "Unread", count: tabCounts.unread },
@@ -435,8 +380,11 @@ export default function NotificationsPage() {
             ].map((tab) => (
               <button
                 key={tab.value}
+                type="button"
+                role="tab"
+                aria-selected={filter === tab.value}
                 onClick={() => setFilter(tab.value)}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                className={`min-w-0 rounded-xl px-2 py-2 text-sm font-medium transition-all ${
                   filter === tab.value
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -502,11 +450,11 @@ export default function NotificationsPage() {
 
                           <div className="flex items-center space-x-2">
                             {!notification.isRead && (
-                              <Button variant="ghost" size="sm" onClick={() => handleMarkAsRead(notification.$id)}>
+                              <Button variant="ghost" size="sm" onClick={() => handleMarkAsRead(notification.$id)} aria-label={`Mark ${notification.title} as read`}>
                                 <Check className="w-4 h-4" />
                               </Button>
                             )}
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" aria-label={`Open actions for ${notification.title}`}>
                               <MoreHorizontal className="w-4 h-4" />
                             </Button>
                           </div>

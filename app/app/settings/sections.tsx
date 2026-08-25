@@ -339,6 +339,20 @@ export const settingsSections: SettingSection[] = [
     ]
   },
   {
+    id: 'integrations',
+    title: 'Connected Apps',
+    description: 'Connect Student.social to the tools you use every day',
+    icon: Calendar,
+    items: [
+      {
+        id: 'calendar-sync',
+        title: 'Calendar Sync',
+        description: 'Subscribe to classes, study sessions, deadlines, and goals from your calendar app',
+        type: 'button',
+      },
+    ],
+  },
+  {
     id: 'billing',
     title: 'Billing & Subscription',
     description: 'Manage your subscription and payment methods',
@@ -438,7 +452,7 @@ export const settingsSections: SettingSection[] = [
       {
         id: 'send-feedback',
         title: 'Send Feedback',
-        description: 'Help us improve PeerSpark',
+        description: 'Help us improve Student.social',
         type: 'button',
         action: () => console.log('Sending feedback...')
       },

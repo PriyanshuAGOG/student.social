@@ -7,11 +7,11 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Heart, MessageCircle, Share2, Bookmark, Search, Filter, ArrowLeft, Trash2, Loader2 } from 'lucide-react'
-import { useRouter } from "next/navigation"
+import { Heart, MessageCircle, Share2, Bookmark, Search, Trash2 } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { feedService } from "@/lib/appwrite"
+import { AppPageHeader } from "@/components/internal/AppPageHeader"
 
 interface SavedPost {
   id: string
@@ -39,7 +39,6 @@ export default function SavedPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState("all")
   const [isLoading, setIsLoading] = useState(true)
-  const router = useRouter()
   const { toast } = useToast()
   const { user } = useAuth()
 
@@ -135,7 +134,7 @@ export default function SavedPage() {
       try {
         if (navigator.share) {
           await navigator.share({
-            title: post.title || "PeerSpark post",
+            title: post.title || "Student.social post",
             text: post.content.slice(0, 160),
             url: shareUrl,
           })
@@ -167,63 +166,18 @@ export default function SavedPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Mobile Header */}
-      <div className="md:hidden sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border p-4">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <h1 className="text-lg font-semibold">Saved Posts</h1>
-        </div>
-      </div>
+      <div className="max-w-4xl mx-auto px-4 pt-3 md:px-8 md:pt-6 pb-20 md:pb-8">
+        <AppPageHeader title="Saved" meta={<span>{savedPosts.length} items</span>} />
 
-      {/* Desktop Header */}
-      <div className="hidden md:block p-4 md:p-8 pt-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center gap-4 mb-6">
-            <Button variant="ghost" size="sm" onClick={() => router.back()}>
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <div>
-              <h1 className="text-3xl font-bold">Saved Posts</h1>
-              <p className="text-muted-foreground">Your bookmarked posts and resources</p>
-            </div>
-          </div>
-
-          {/* Search */}
-          <div className="mb-6">
-            <div className="flex items-center space-x-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input
-                  placeholder="Search saved posts..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <Button variant="outline" size="icon">
-                <Filter className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile Search */}
-      <div className="md:hidden px-4 py-2 border-b border-border">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+        <div className="student-library-search">
+          <Search className="w-4 h-4" />
           <Input
-            placeholder="Search saved posts..."
+            placeholder="Search saved posts, people, or topics..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
           />
         </div>
-      </div>
 
-      <div className="max-w-4xl mx-auto px-4 md:px-8 pb-20 md:pb-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="all">All Saved</TabsTrigger>
@@ -244,7 +198,7 @@ export default function SavedPage() {
               </Card>
             ) : (
               filteredPosts.map((post) => (
-                <Card key={post.id} className="hover:shadow-md transition-shadow">
+                <Card key={post.id} className="student-feed-post hover:shadow-md transition-shadow">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center space-x-3">

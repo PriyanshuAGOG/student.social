@@ -10,8 +10,10 @@
 
 // @ts-nocheck
 import { Databases, Permission, Role } from 'node-appwrite';
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
+import { createAdminClient } from '@/lib/server/appwrite';
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
+import { z } from 'zod';
+import { parseJsonBody } from '@/lib/api-security';
 
 interface CourseCommitment {
   userId: string;
@@ -31,7 +33,7 @@ export async function POST(request: Request) {
   try {
     enforceSameOrigin(request);
     enforceRateLimit(request, { key: 'pods:course-commitment:create', max: 20, windowMs: 60 * 1000 });
-    const body = await request.json();
+    const body = await parseJsonBody(request, z.object({ userId: z.string().optional(), podCourseId: z.string().min(1).max(255), weeklyGoal: z.number().int().min(1).max(100), dueDate: z.string().datetime().optional() }));
     const auth = requireUser(request);
     if (body.userId) requireOwnership(body.userId, auth.userId);
     const { podCourseId, weeklyGoal, dueDate } = body;
@@ -191,7 +193,7 @@ export async function PUT(request: Request) {
     enforceSameOrigin(request);
     enforceRateLimit(request, { key: 'pods:course-commitment:update', max: 30, windowMs: 60 * 1000 });
     const auth = requireUser(request);
-    const body = await request.json();
+    const body = await parseJsonBody(request, z.object({ commitmentId: z.string().min(1).max(255), increment: z.number().int().min(1).max(100).default(1) }));
     const { commitmentId, increment = 1 } = body;
 
     if (!commitmentId) {

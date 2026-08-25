@@ -6,7 +6,7 @@
 import { NextRequest } from 'next/server'
 import { ID, Query } from 'node-appwrite'
 import crypto from 'crypto'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { getEnv } from '@/lib/env'
 import { adminJson, withAdminApi, writeAdminAudit } from '@/lib/admin-server'
 import { ApiError } from '@/lib/api-security'

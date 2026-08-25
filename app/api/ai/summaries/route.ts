@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
+import { z } from 'zod'
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireUser } from '@/lib/api-security'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const AI_TASKS_COLLECTION_ID = process.env.NEXT_PUBLIC_AI_TASKS_COLLECTION_ID || 'ai_tasks'
 const MESSAGES_COLLECTION_ID = process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID || 'messages'
+const CHAT_ROOMS_COLLECTION_ID = process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms'
+
+function roomMembers(room: any): string[] {
+  if (Array.isArray(room?.members)) return room.members.map(String)
+  try { return JSON.parse(String(room?.members || '[]')).map(String) } catch { return [] }
+}
+
+async function requireRoomMember(databases: any, roomId: string, userId: string) {
+  const room = await databases.getDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, roomId)
+  if (!roomMembers(room).includes(userId)) throw new ApiError(403, 'FORBIDDEN', 'You are not a member of this conversation')
+}
 
 function isMissingCollectionError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || '')
@@ -38,17 +51,19 @@ async function loadMessagesById(databases: any, messageIds: string[]) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json().catch(() => ({}))
-    const roomId = String(body?.roomId || '').trim()
-    const messageIds = Array.isArray(body?.messageIds) ? body.messageIds.filter(Boolean).map(String) : []
-    const requestedBy = body?.requestedBy ? String(body.requestedBy) : undefined
-    const summaryType = body?.summaryType ? String(body.summaryType) : 'short'
-
-    if (!roomId || messageIds.length === 0) {
-      return NextResponse.json({ success: false, error: 'roomId and messageIds are required' }, { status: 400 })
-    }
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: 'ai:summaries', max: 10, windowMs: 60_000 })
+    const auth = requireUser(request)
+    const { roomId, messageIds, summaryType } = await parseJsonBody(request, z.object({
+      roomId: z.string().trim().min(1).max(255),
+      messageIds: z.array(z.string().min(1).max(255)).min(1).max(100),
+      requestedBy: z.string().optional(),
+      summaryType: z.enum(['short', 'detailed', 'action_items']).default('short'),
+    }))
+    const requestedBy = auth.userId
 
     const { databases } = await createAdminClient()
+    await requireRoomMember(databases, roomId, auth.userId)
     const now = new Date().toISOString()
 
     try {
@@ -85,6 +100,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, task, warning: 'AI task storage is not configured; returned an inline summary.' })
     }
   } catch (error) {
+    if (error instanceof ApiError) return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
     console.error('[ai/summaries] error:', error)
     return NextResponse.json({ success: false, error: 'Failed to queue AI summary' }, { status: 500 })
   }
@@ -92,10 +108,12 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = requireUser(request)
     const roomId = request.nextUrl.searchParams.get('roomId')?.trim()
     if (!roomId) return NextResponse.json({ success: false, error: 'roomId required' }, { status: 400 })
 
     const { databases } = await createAdminClient()
+    await requireRoomMember(databases, roomId, auth.userId)
     try {
       const results = await databases.listDocuments(DATABASE_ID, AI_TASKS_COLLECTION_ID, [
         Query.equal('roomId', roomId),
@@ -112,6 +130,7 @@ export async function GET(request: NextRequest) {
       throw error
     }
   } catch (error) {
+    if (error instanceof ApiError) return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
     console.error('[ai/summaries GET] error:', error)
     return NextResponse.json({ success: false, error: 'Failed to load AI summaries' }, { status: 500 })
   }

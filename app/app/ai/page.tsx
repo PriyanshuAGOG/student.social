@@ -4,13 +4,12 @@ import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, Bot, User, Sparkles, BookOpen, Calculator, Code, Lightbulb, Mic, Paperclip, MoreVertical, Copy, ThumbsUp, ThumbsDown, RefreshCw, ArrowLeft } from 'lucide-react'
+import { Send, Bot, User, Sparkles, BookOpen, Calculator, Code, Lightbulb, Mic, Paperclip, MoreVertical, Copy, ThumbsUp, ThumbsDown, RefreshCw, ArrowLeft, Plus } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { toast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
@@ -62,16 +61,17 @@ const suggestions: Suggestion[] = [
   },
 ]
 
+function createWelcomeMessage(): Message {
+  return {
+    id: "welcome",
+    content: "Hello! I’m your AI study companion. Bring me a concept, problem, draft, or messy thought and we’ll work through it together. What are you learning today?",
+    sender: "ai",
+    timestamp: new Date(),
+  }
+}
+
 export default function AIAssistantPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      content:
-        "Hello! I'm your AI study assistant. I can help you with explanations, problem-solving, coding, study strategies, and more. What would you like to learn about today?",
-      sender: "ai",
-      timestamp: new Date(),
-    },
-  ])
+  const [messages, setMessages] = useState<Message[]>(() => [createWelcomeMessage()])
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isListening, setIsListening] = useState(false)
@@ -110,7 +110,7 @@ export default function AIAssistantPage() {
           role: m.sender === "ai" ? "assistant" : "user",
           content: m.content,
         })),
-        system: "You are PeerSpark's AI study assistant. Help students with explanations, problem-solving, coding, study strategies, and more. Be concise, helpful, and encouraging. Use markdown formatting for code and structured content.",
+        system: "You are Student.social's AI study assistant. Help students with explanations, problem-solving, coding, study strategies, and more. Be concise, helpful, and encouraging. Use markdown formatting for code and structured content.",
       }
 
       const resp = await fetch("/api/ai/chat", {
@@ -184,7 +184,7 @@ export default function AIAssistantPage() {
               role: m.sender === "ai" ? "assistant" : "user",
               content: m.content,
             })),
-            system: "You are PeerSpark's AI study assistant. Help students with explanations, problem-solving, coding, study strategies, and more. Be concise, helpful, and encouraging.",
+            system: "You are Student.social's AI study assistant. Help students with explanations, problem-solving, coding, study strategies, and more. Be concise, helpful, and encouraging.",
           }
 
           const resp = await fetch("/api/ai/chat", {
@@ -280,15 +280,15 @@ ${attachmentPrompt}` : attachmentPrompt)
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="student-ai-page flex flex-col h-screen bg-background">
       {/* Mobile Header */}
-      <div className="md:hidden sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border p-4">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
+      <div className="student-ai-mobile-header md:hidden sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border">
+        <div className="flex items-center gap-2.5">
+          <Button variant="ghost" size="sm" onClick={() => router.back()} aria-label="Back to previous screen" className="h-9 w-9 p-0">
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div className="relative">
-            <Avatar className="h-8 w-8">
+            <Avatar className="h-7 w-7">
               <AvatarImage src="/placeholder.svg?height=32&width=32&text=AI" />
               <AvatarFallback className="bg-primary text-primary-foreground">
                 <Bot className="h-4 w-4" />
@@ -296,19 +296,19 @@ ${attachmentPrompt}` : attachmentPrompt)
             </Avatar>
             <div className="absolute -bottom-1 -right-1 h-3 w-3 bg-green-500 rounded-full border-2 border-background" />
           </div>
-          <div className="flex-1">
-            <h1 className="font-semibold text-sm">AI Study Assistant</h1>
-            <p className="text-xs text-muted-foreground">Always ready to help</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="student-ai-mobile-title truncate">AI assistant</h1>
+            <p className="truncate text-[10px] text-muted-foreground">Ready to help</p>
           </div>
-          <Badge variant="secondary" className="gap-1">
-            <Sparkles className="h-3 w-3" />
+          <Badge variant="secondary" className="h-7 gap-1 px-2 text-[10px]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#3f6f6b]" />
             Online
           </Badge>
         </div>
       </div>
 
       {/* Desktop Header */}
-      <div className="hidden md:block border-b bg-card p-4">
+      <div className="student-ai-header hidden md:block border-b bg-card p-4">
         <div className="flex items-center gap-3">
           <div className="relative">
             <Avatar className="h-10 w-10">
@@ -332,6 +332,21 @@ ${attachmentPrompt}` : attachmentPrompt)
         </div>
       </div>
 
+      <div className="student-ai-body">
+        <aside className="student-ai-rail hidden lg:flex">
+          <Button onClick={() => { setMessages([createWelcomeMessage()]); setInputValue("") }} className="student-ai-new"><Plus />New conversation</Button>
+          <div className="student-ai-rail-label">START WITH A MODE</div>
+          <div className="student-ai-modes">
+            {suggestions.map((suggestion) => (
+              <button key={suggestion.id} type="button" onClick={() => handleSuggestionClick(suggestion)}>
+                <span><suggestion.icon aria-hidden="true" /></span>
+                <div><strong>{suggestion.title}</strong><small>{suggestion.description}</small></div>
+              </button>
+            ))}
+          </div>
+          <div className="student-ai-note"><Sparkles /><strong>Built for learning</strong><p>Ask for a hint, a plan, a critique, or a simpler explanation—not just an answer.</p></div>
+        </aside>
+        <section className="student-ai-conversation">
       {/* Messages */}
       <div className="flex-1 overflow-hidden relative">
         <ScrollArea className="h-full">
@@ -366,7 +381,7 @@ ${attachmentPrompt}` : attachmentPrompt)
                   <div className="absolute -right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" aria-label="Open AI response actions">
                           <MoreVertical className="h-3 w-3" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -425,7 +440,7 @@ ${attachmentPrompt}` : attachmentPrompt)
       </div>
 
       {/* Input Area */}
-      <div className="sticky bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm supports-[backdrop-filter]:bg-card/80 p-3 md:p-4 pb-[calc(env(safe-area-inset-bottom,0px)+68px)] md:pb-4">
+      <div className="student-ai-composer sticky bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm supports-[backdrop-filter]:bg-card/80 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-4">
         <div className="max-w-4xl mx-auto">
           {/* Suggestions (show when no messages or few messages) */}
           {messages.length <= 1 && (
@@ -481,6 +496,7 @@ ${attachmentPrompt}` : attachmentPrompt)
                   className="h-7 w-7 md:h-8 md:w-8 p-0"
                   onClick={startVoiceInput}
                   disabled={isLoading || isListening}
+                  aria-label={isListening ? "Listening for your question" : "Ask with your voice"}
                 >
                   <Mic className={`h-4 w-4 ${isListening ? "text-red-500" : ""}`} />
                 </Button>
@@ -489,7 +505,7 @@ ${attachmentPrompt}` : attachmentPrompt)
                 </Button>
               </div>
             </div>
-            <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isLoading} className="h-11 w-11 md:w-auto md:px-4 flex-shrink-0">
+            <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isLoading} className="h-11 w-11 md:w-auto md:px-4 flex-shrink-0" aria-label="Send question to AI tutor">
               <Send className="h-4 w-4" />
             </Button>
           </div>
@@ -499,6 +515,8 @@ ${attachmentPrompt}` : attachmentPrompt)
             <p>Powered by AI • Always learning</p>
           </div>
         </div>
+      </div>
+        </section>
       </div>
     </div>
   )

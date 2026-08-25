@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import Image from "next/image";
+import { Fragment, useMemo, useState } from "react";
 import { format } from "date-fns";
-import { Edit3, MoreHorizontal, Reply, Smile, Trash2 } from "lucide-react";
+import { Check, CheckCheck, CircleAlert, Clock3, Edit3, MoreHorizontal, Reply, Smile, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🔥", "👏", "🎉"];
 
@@ -16,7 +18,7 @@ interface ChatBubbleProps {
   fileUrl?: string | null;
   fileName?: string | null;
   type?: string;
-  replyToMessage?: any;
+  replyToMessage?: { authorName?: string; content?: string } | null;
   isEdited?: boolean;
   deliveryState?: "sending" | "sent" | "delivered" | "read" | "failed";
   onReply?: () => void;
@@ -29,8 +31,15 @@ interface ChatBubbleProps {
   currentUserId?: string;
 }
 
+function DeliveryIcon({ state }: { state?: ChatBubbleProps["deliveryState"] }) {
+  if (state === "read") return <CheckCheck className="h-3.5 w-3.5 text-sky-500" aria-label="Read" />;
+  if (state === "delivered") return <CheckCheck className="h-3.5 w-3.5" aria-label="Delivered" />;
+  if (state === "failed") return <CircleAlert className="h-3.5 w-3.5 text-red-500" aria-label="Failed" />;
+  if (state === "sending") return <Clock3 className="h-3.5 w-3.5" aria-label="Sending" />;
+  return <Check className="h-3.5 w-3.5" aria-label="Sent" />;
+}
+
 export function ChatBubble({
-  messageId,
   content,
   isOwn,
   timestamp,
@@ -38,7 +47,6 @@ export function ChatBubble({
   authorAvatar,
   fileUrl,
   fileName,
-  type,
   replyToMessage,
   isEdited,
   deliveryState,
@@ -46,241 +54,109 @@ export function ChatBubble({
   onDelete,
   onEdit,
   onReact,
-  onCopy,
   reactions,
   highlightQuery = "",
   currentUserId = "",
 }: ChatBubbleProps) {
   const [showActions, setShowActions] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
-
   const date = new Date(timestamp);
-  const timeFormatted = Number.isNaN(date.getTime())
-    ? ""
-    : format(date, "HH:mm");
-  const isImage =
-    fileUrl && /\.(jpg|jpeg|png|gif|webp|avif|bmp|svg)(\?|$)/i.test(fileUrl);
-  const normalizedReactions = useMemo(() => {
-    return Object.entries(reactions || {})
-      .map(([emoji, users]) => ({
-        emoji,
-        users: Array.from(new Set((users || []).filter(Boolean))),
-      }))
-      .filter((entry) => entry.users.length > 0);
-  }, [reactions]);
+  const timeFormatted = Number.isNaN(date.getTime()) ? "" : format(date, "HH:mm");
+  const isImage = Boolean(fileUrl && /\.(jpg|jpeg|png|gif|webp|avif|bmp)(\?|$)/i.test(fileUrl));
+  const normalizedReactions = useMemo(
+    () =>
+      Object.entries(reactions || {})
+        .map(([emoji, users]) => ({ emoji, users: Array.from(new Set((users || []).filter(Boolean))) }))
+        .filter((entry) => entry.users.length > 0),
+    [reactions],
+  );
 
   const renderHighlightedText = (text: string) => {
     const query = highlightQuery.trim();
     if (!query) return text;
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const parts = text.split(new RegExp(`(${escaped})`, "ig"));
-    return parts.map((part, index) =>
-      part.toLowerCase() === query.toLowerCase() ? (
-        <mark
-          key={`${part}-${index}`}
-          className="rounded bg-yellow-300 px-0.5 text-black"
-        >
-          {part}
-        </mark>
-      ) : (
-        <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>
-      ),
+    const escaped = query.replace(/[.*+?^$()|[\]\\]/g, "\\$&");
+    return text.split(new RegExp(`(${escaped})`, "ig")).map((part, index) =>
+      part.toLowerCase() === query.toLowerCase()
+        ? <mark key={`${part}-${index}`} className="rounded bg-yellow-300 px-0.5 text-black">{part}</mark>
+        : <Fragment key={`${part}-${index}`}>{part}</Fragment>,
     );
   };
 
   return (
-    <div
-      className={`group flex gap-3 py-2 transition-opacity duration-200 ${isOwn ? "justify-end" : "justify-start"}`}
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => {
-        setShowActions(false);
-        setShowReactionPicker(false);
-      }}
-    >
-      {!isOwn && (
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary via-cyan-500 to-violet-500 text-xs font-semibold text-primary-foreground shadow-sm">
-          {authorAvatar?.startsWith("http") ? (
-            <img
-              src={authorAvatar}
-              alt={authorName || "User"}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <span>{authorName?.[0] || "?"}</span>
-          )}
+    <div className={cn("group flex items-end gap-2 py-0.5", isOwn ? "justify-end" : "justify-start")} onMouseLeave={() => { setShowActions(false); setShowReactionPicker(false); }}>
+      {!isOwn ? (
+        <div className="relative mb-1 flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#76556d]/15 text-[10px] font-semibold text-[#76556d] dark:text-[#d9b8d0]">
+          {authorAvatar ? <Image src={authorAvatar} alt={authorName || "User"} fill unoptimized sizes="28px" className="object-cover" /> : <span>{authorName?.charAt(0).toUpperCase() || "?"}</span>}
         </div>
-      )}
+      ) : null}
 
-      <div
-        className={`flex max-w-[72%] flex-col gap-1 ${isOwn ? "items-end" : "items-start"}`}
-      >
-        {replyToMessage && (
-          <div className="max-w-full rounded-xl border border-border bg-muted/70 px-3 py-2 text-xs text-muted-foreground">
-            <div className="mb-1 font-medium text-foreground">
-              {replyToMessage.authorName}
-            </div>
-            <div className="truncate">
-              {replyToMessage.content?.substring(0, 70)}
-            </div>
-          </div>
-        )}
+      <div className={cn("relative flex max-w-[86%] flex-col sm:max-w-[74%] lg:max-w-[68%]", isOwn ? "items-end" : "items-start")}>
+        <div className="relative flex items-start gap-1">
+          {isOwn ? (
+            <button type="button" onClick={() => setShowActions((open) => !open)} className="mt-1 flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground opacity-100 transition hover:bg-muted md:opacity-0 md:group-hover:opacity-100" aria-label="Message actions" aria-expanded={showActions}><MoreHorizontal className="h-4 w-4" /></button>
+          ) : null}
 
-        <div
-          className={`relative rounded-3xl px-4 py-3 shadow-sm transition-all duration-150 ${
+          <div className={cn(
+            "relative min-w-24 rounded-2xl px-3 py-2 shadow-[0_1px_1px_rgba(0,0,0,0.06)]",
             isOwn
-              ? "rounded-br-lg bg-primary text-primary-foreground"
-              : "rounded-bl-lg border border-border bg-card text-card-foreground"
-          } ${showActions ? "shadow-lg" : ""}`}
-        >
-          {fileUrl && !isImage && (
-            <a
-              href={fileUrl}
-              target="_blank"
-              rel="noreferrer"
-              download={fileName}
-              className={`mb-2 flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm underline-offset-2 hover:underline ${isOwn ? "border-primary-foreground/20 bg-primary-foreground/10" : "border-border bg-muted/70"}`}
-            >
-              <span aria-hidden>📎</span>
-              <span className="truncate">
-                {fileName || "Download attachment"}
+              ? "rounded-br-md bg-[#ead8cf] text-[#352822] dark:bg-[#684737] dark:text-white"
+              : "rounded-bl-md border border-border/35 bg-card text-card-foreground",
+          )}>
+            {!isOwn && authorName ? <p className="mb-1 text-[11px] font-semibold text-[#76556d] dark:text-[#d9b8d0]">{authorName}</p> : null}
+            {replyToMessage ? (
+              <div className={cn("mb-2 rounded-xl border-l-4 border-primary px-2.5 py-2 text-xs", isOwn ? "bg-black/[0.05] dark:bg-black/15" : "bg-muted/70")}>
+                <p className="font-semibold text-primary">{replyToMessage.authorName || "Reply"}</p>
+                <p className="mt-0.5 truncate opacity-65">{replyToMessage.content?.slice(0, 90)}</p>
+              </div>
+            ) : null}
+
+            {fileUrl && !isImage ? (
+              <a href={fileUrl} target="_blank" rel="noreferrer" download={fileName || undefined} className="mb-2 flex items-center gap-2 rounded-xl bg-black/[0.06] px-3 py-2 text-sm underline-offset-2 hover:underline"><span aria-hidden>📎</span><span className="truncate">{fileName || "Download attachment"}</span></a>
+            ) : null}
+            {isImage ? (
+              <a href={fileUrl || "#"} target="_blank" rel="noreferrer" className="mb-2 block overflow-hidden rounded-xl">
+                <Image src={fileUrl || ""} alt={fileName || "Attachment"} width={720} height={480} unoptimized className="max-h-80 w-auto max-w-full object-cover" />
+              </a>
+            ) : null}
+
+            <p className="whitespace-pre-wrap break-words text-[14px] leading-[1.42]">
+              {renderHighlightedText(content)}
+              <span className="ml-2 inline-flex translate-y-[2px] items-center gap-0.5 whitespace-nowrap text-[10px] opacity-55">
+                {isEdited ? <span>edited ·</span> : null}
+                {timeFormatted}
+                {isOwn ? <DeliveryIcon state={deliveryState} /> : null}
               </span>
-            </a>
-          )}
+            </p>
+          </div>
 
-          {isImage && (
-            <a
-              href={fileUrl || "#"}
-              target="_blank"
-              rel="noreferrer"
-              className="mb-2 block overflow-hidden rounded-2xl"
-            >
-              <img
-                src={fileUrl || ""}
-                alt={fileName || "Attachment"}
-                className="max-h-72 max-w-full object-cover"
-              />
-            </a>
-          )}
-
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-            {renderHighlightedText(content)}
-          </p>
-          {isEdited && (
-            <span
-              className={`mt-1 block text-xs ${isOwn ? "text-primary-foreground/70" : "text-muted-foreground"}`}
-            >
-              (edited)
-            </span>
-          )}
+          {!isOwn ? (
+            <button type="button" onClick={() => setShowActions((open) => !open)} className="mt-1 flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground opacity-100 transition hover:bg-muted md:opacity-0 md:group-hover:opacity-100" aria-label="Message actions" aria-expanded={showActions}><MoreHorizontal className="h-4 w-4" /></button>
+          ) : null}
         </div>
 
-        {normalizedReactions.length > 0 && (
-          <div className="mt-1 flex flex-wrap gap-1">
+        {normalizedReactions.length > 0 ? (
+          <div className="-mt-1.5 z-10 flex flex-wrap gap-1 px-2">
             {normalizedReactions.map(({ emoji, users }) => {
-              const active = currentUserId
-                ? users.includes(currentUserId)
-                : false;
-              return (
-                <button
-                  type="button"
-                  key={emoji}
-                  className={`rounded-full border px-2 py-1 text-xs shadow-sm transition hover:scale-105 ${active ? "border-primary/60 bg-primary/15 text-primary" : "border-border bg-card text-foreground hover:bg-muted"}`}
-                  onClick={() => onReact?.(emoji)}
-                  aria-pressed={active}
-                  aria-label={`${active ? "Remove" : "Add"} ${emoji} reaction`}
-                >
-                  {emoji} {users.length}
-                </button>
-              );
+              const active = currentUserId ? users.includes(currentUserId) : false;
+              return <button type="button" key={emoji} onClick={() => onReact?.(emoji)} aria-pressed={active} className={cn("rounded-full border bg-card px-2 py-0.5 text-[11px] shadow-sm", active ? "border-[#76556d]/50 text-[#76556d] dark:text-[#d9b8d0]" : "border-border")}>{emoji} {users.length}</button>;
             })}
           </div>
-        )}
+        ) : null}
 
-        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
-          <span>{timeFormatted}</span>
-          {isOwn && (
-            <span>
-              {deliveryState === "read"
-                ? "✓✓"
-                : deliveryState === "failed"
-                  ? "failed"
-                  : deliveryState === "sending"
-                    ? "sending…"
-                    : "✓"}
-            </span>
-          )}
-        </div>
+        {showActions ? (
+          <div className={cn("absolute top-full z-30 mt-1 flex items-center gap-0.5 rounded-full border border-border bg-popover p-1 text-popover-foreground shadow-xl", isOwn ? "right-0" : "left-0")}>
+            <button type="button" onClick={onReply} className="rounded-full p-2 hover:bg-muted" aria-label="Reply"><Reply className="h-4 w-4" /></button>
+            {onReact ? <button type="button" onClick={() => setShowReactionPicker((open) => !open)} className="rounded-full p-2 hover:bg-muted" aria-label="React to message"><Smile className="h-4 w-4" /></button> : null}
+            {onEdit && isOwn ? <button type="button" onClick={() => onEdit()} className="rounded-full p-2 hover:bg-muted" aria-label="Edit message"><Edit3 className="h-4 w-4" /></button> : null}
+            {onDelete && isOwn ? <button type="button" onClick={onDelete} className="rounded-full p-2 text-destructive hover:bg-destructive/10" aria-label="Delete message"><Trash2 className="h-4 w-4" /></button> : null}
+            {showReactionPicker ? (
+              <div className={cn("absolute bottom-full mb-2 flex gap-0.5 rounded-full border border-border bg-popover p-1.5 shadow-2xl", isOwn ? "right-0" : "left-0")}>
+                {QUICK_REACTIONS.map((emoji) => <button key={emoji} type="button" onClick={() => { onReact?.(emoji); setShowReactionPicker(false); setShowActions(false); }} className="rounded-full p-1.5 text-lg hover:bg-muted" aria-label={`React ${emoji}`}>{emoji}</button>)}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
-
-      {showActions && (
-        <div className="relative flex items-center gap-1 self-center rounded-2xl border border-border bg-popover p-1 text-popover-foreground shadow-xl">
-          <button
-            type="button"
-            onClick={onReply}
-            className="rounded-xl p-1.5 transition hover:bg-muted"
-            title="Reply"
-            aria-label="Reply"
-          >
-            <Reply className="h-4 w-4" />
-          </button>
-          {onReact && (
-            <button
-              type="button"
-              onClick={() => setShowReactionPicker((prev) => !prev)}
-              className="rounded-xl p-1.5 transition hover:bg-muted"
-              title="React"
-              aria-label="React to message"
-              aria-expanded={showReactionPicker}
-            >
-              <Smile className="h-4 w-4" />
-            </button>
-          )}
-          {onEdit && isOwn && (
-            <button
-              type="button"
-              onClick={() => onEdit?.()}
-              className="rounded-xl p-1.5 transition hover:bg-muted"
-              title="Edit"
-              aria-label="Edit message"
-            >
-              <Edit3 className="h-4 w-4" />
-            </button>
-          )}
-          {onDelete && isOwn && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="rounded-xl p-1.5 text-destructive transition hover:bg-destructive/10"
-              title="Delete"
-              aria-label="Delete message"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          )}
-          {!onEdit && !onDelete && (
-            <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-          )}
-
-          {showReactionPicker && (
-            <div className="absolute bottom-full right-0 mb-2 flex gap-1 rounded-2xl border border-border bg-popover p-2 shadow-2xl">
-              {QUICK_REACTIONS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => {
-                    onReact?.(emoji);
-                    setShowReactionPicker(false);
-                  }}
-                  className="rounded-xl p-2 text-lg transition hover:bg-muted"
-                  aria-label={`React ${emoji}`}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

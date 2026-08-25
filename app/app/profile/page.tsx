@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { MapPin, Calendar, LinkIcon, Edit, MessageSquare, UserPlus, Target, BookOpen, Users, Clock, Award, TrendingUp, Heart, Share2, Settings, Shield, Bell, Key, Palette, Globe, User, Upload, Save, Crown, Zap, Download, Trash2, ArrowLeft, Bookmark } from 'lucide-react'
+import { MapPin, Calendar, LinkIcon, Edit, MessageSquare, UserPlus, Target, BookOpen, Users, Clock, Award, TrendingUp, Heart, Share2, Settings, Shield, Bell, Key, Palette, Globe, User, Upload, Save, Crown, Zap, Download, Trash2, Bookmark } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
@@ -384,8 +384,8 @@ export default function ProfilePage() {
     try {
       if (navigator.share) {
         await navigator.share({
-          title: post?.title || "PeerSpark post",
-          text: post?.content?.slice(0, 160) || "Check out this PeerSpark post",
+          title: post?.title || "Student.social post",
+          text: post?.content?.slice(0, 160) || "Check out this Student.social post",
           url: shareUrl,
         })
       } else {
@@ -428,183 +428,67 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-8">
-      {/* Mobile Header */}
-      <div className="md:hidden sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border p-4">
-        <div className="flex items-center justify-between">
-          <Button variant="ghost" size="sm" onClick={() => router.push('/app/feed')}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <h1 className="text-lg font-semibold">Profile</h1>
-          <Button variant="ghost" size="sm" onClick={() => router.push('/app/settings')}>
-            <Settings className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
+      <div className="max-w-6xl mx-auto px-4 pt-3 md:px-8 md:pt-6">
+        <Card className="student-profile-card mb-4 overflow-hidden md:mb-8">
+          <div className="student-profile-cover">
+            <div>
+              <span>LEARNING IDENTITY</span>
+              <p>A living record of what you study, share, and build with others.</p>
+            </div>
+            <div className="student-profile-cover-stat">
+              <strong>{userProfile.stats.studyStreak}</strong>
+              <span>day momentum</span>
+            </div>
+          </div>
+          <CardContent className="student-profile-content">
+            <div className="student-profile-identity">
+              <Avatar className="student-profile-avatar">
+                <AvatarImage src={userProfile.avatar || "/placeholder.svg"} alt={userProfile.name} />
+                <AvatarFallback>
+                  {userProfile.name.split(" ").map((n) => n[0]).join("")}
+                </AvatarFallback>
+              </Avatar>
 
-      <div className="max-w-6xl mx-auto px-4 md:px-8">
-        {/* Profile Header */}
-        <Card className="mb-4 md:mb-8">
-          <CardContent className="p-4 md:p-6 lg:p-8">
-            <div className="flex flex-col space-y-4">
-              {/* Mobile Profile Layout */}
-              <div className="md:hidden space-y-4">
-                <div className="flex items-center space-x-4">
-                  <Avatar className="w-20 h-20">
-                    <AvatarImage src={userProfile.avatar || "/placeholder.svg"} alt={userProfile.name} />
-                    <AvatarFallback className="text-xl">
-                      {userProfile.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <h1 className="text-xl font-bold">{userProfile.name}</h1>
-                    <p className="text-muted-foreground">{userProfile.username}</p>
-                    <div className="flex items-center space-x-4 text-sm mt-2">
-                      <div>
-                        <span className="font-semibold">{userProfile.following.toLocaleString()}</span>
-                        <span className="text-muted-foreground ml-1">Following</span>
-                      </div>
-                      <div>
-                        <span className="font-semibold">{userProfile.followers.toLocaleString()}</span>
-                        <span className="text-muted-foreground ml-1">Followers</span>
-                      </div>
-                    </div>
-                  </div>
+              <div className="student-profile-copy">
+                <div>
+                  <h1>{userProfile.name}</h1>
+                  <p>{userProfile.username}</p>
                 </div>
-
-                <p className="text-muted-foreground text-sm">{userProfile.bio}</p>
-
-                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  <div className="flex items-center space-x-1">
-                    <MapPin className="w-3 h-3" />
-                    <span>{userProfile.location}</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <LinkIcon className="w-3 h-3" />
-                    <span className="text-primary">{userProfile.website}</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <Calendar className="w-3 h-3" />
-                    <span>Joined {userProfile.joinedDate}</span>
-                  </div>
-                </div>
-
-                {/* Profile Actions */}
-                <div className="flex space-x-2">
-                  {isOwnProfile ? (
-                    <>
-                      <Button onClick={handleEditProfile} variant="outline" size="sm" className="flex-1">
-                        <Edit className="w-3 h-3 mr-2" />
-                        Edit Profile
-                      </Button>
-                      <Button onClick={handleSettings} size="sm" className="flex-1">
-                        <Settings className="w-3 h-3 mr-2" />
-                        Settings
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button onClick={handleMessage} variant="outline" size="sm" className="flex-1">
-                        <MessageSquare className="w-3 h-3 mr-2" />
-                        Message
-                      </Button>
-                      <Button
-                        onClick={handleFollow}
-                        size="sm"
-                        className={`flex-1 ${isFollowing ? "bg-muted hover:bg-muted/80 text-muted-foreground" : ""}`}
-                      >
-                        <UserPlus className="w-3 h-3 mr-2" />
-                        {isFollowing ? "Following" : "Follow"}
-                      </Button>
-                    </>
-                  )}
+                <p className="student-profile-bio">{userProfile.bio}</p>
+                <div className="student-profile-meta">
+                  {userProfile.location ? <span><MapPin />{userProfile.location}</span> : null}
+                  {userProfile.website ? <span><LinkIcon />{userProfile.website}</span> : null}
+                  <span><Calendar />Joined {userProfile.joinedDate}</span>
                 </div>
               </div>
 
-              {/* Desktop Profile Layout */}
-              <div className="hidden md:flex items-start space-x-6">
-                <Avatar className="w-24 h-24 lg:w-32 lg:h-32">
-                  <AvatarImage src={userProfile.avatar || "/placeholder.svg"} alt={userProfile.name} />
-                  <AvatarFallback className="text-2xl">
-                    {userProfile.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")}
-                  </AvatarFallback>
-                </Avatar>
-
-                <div className="flex-1 space-y-4">
-                  <div>
-                    <h1 className="text-3xl font-bold">{userProfile.name}</h1>
-                    <p className="text-muted-foreground text-lg">{userProfile.username}</p>
-                  </div>
-
-                  <p className="text-muted-foreground max-w-2xl">{userProfile.bio}</p>
-
-                  <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                    <div className="flex items-center space-x-1">
-                      <MapPin className="w-4 h-4" />
-                      <span>{userProfile.location}</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <LinkIcon className="w-4 h-4" />
-                      <span className="text-primary cursor-pointer hover:underline">{userProfile.website}</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <Calendar className="w-4 h-4" />
-                      <span>Joined {userProfile.joinedDate}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-6 text-sm">
-                    <div className="cursor-pointer hover:underline">
-                      <span className="font-semibold">{userProfile.following.toLocaleString()}</span>
-                      <span className="text-muted-foreground ml-1">Following</span>
-                    </div>
-                    <div className="cursor-pointer hover:underline">
-                      <span className="font-semibold">{userProfile.followers.toLocaleString()}</span>
-                      <span className="text-muted-foreground ml-1">Followers</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  {isOwnProfile ? (
-                    <>
-                      <Button onClick={handleEditProfile} variant="outline">
-                        <Edit className="w-4 h-4 mr-2" />
-                        Edit Profile
-                      </Button>
-                      <Button onClick={handleSettings}>
-                        <Settings className="w-4 h-4 mr-2" />
-                        Settings
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button onClick={handleMessage} variant="outline">
-                        <MessageSquare className="w-4 h-4 mr-2" />
-                        Message
-                      </Button>
-                      <Button
-                        onClick={handleFollow}
-                        className={isFollowing ? "bg-muted hover:bg-muted/80 text-muted-foreground" : ""}
-                      >
-                        <UserPlus className="w-4 h-4 mr-2" />
-                        {isFollowing ? "Following" : "Follow"}
-                      </Button>
-                    </>
-                  )}
-                </div>
+              <div className="student-profile-actions">
+                {isOwnProfile ? (
+                  <>
+                    <Button onClick={handleEditProfile} variant="outline"><Edit />Edit profile</Button>
+                    <Button onClick={handleSettings}><Settings />Settings</Button>
+                  </>
+                ) : (
+                  <>
+                    <Button onClick={handleMessage} variant="outline"><MessageSquare />Message</Button>
+                    <Button onClick={handleFollow} className={isFollowing ? "bg-muted hover:bg-muted/80 text-muted-foreground" : ""}>
+                      <UserPlus />{isFollowing ? "Following" : "Follow"}
+                    </Button>
+                  </>
+                )}
               </div>
+            </div>
+
+            <div className="student-profile-network">
+              <div><strong>{userProfile.following.toLocaleString()}</strong><span>Following</span></div>
+              <div><strong>{userProfile.followers.toLocaleString()}</strong><span>Followers</span></div>
+              <div><strong>{USER_ACHIEVEMENTS.filter((achievement) => achievement.earned).length}</strong><span>Milestones</span></div>
             </div>
           </CardContent>
         </Card>
 
         {/* Stats Cards */}
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-4 mb-4 md:mb-8">
+        <div className="student-profile-stats grid gap-3 grid-cols-2 md:grid-cols-4 mb-4 md:mb-8">
           <Card>
             <CardContent className="p-3 md:p-4 text-center">
               <div className="flex items-center justify-center mb-2">
@@ -655,9 +539,9 @@ export default function ProfilePage() {
         </div>
 
         {/* Main Content */}
-        <div className="mb-6">
+        <div className="student-profile-tabs mb-6">
           <div className="border-b border-border">
-            <div className="flex space-x-0">
+            <div className="flex space-x-0" role="tablist" aria-label="Profile sections">
               {[
                 { value: "posts", label: "Posts", icon: "📝", count: userPosts.length },
                 { value: "achievements", label: "Achievements", icon: "🏆", count: USER_ACHIEVEMENTS.filter(a => a.earned).length },
@@ -666,6 +550,9 @@ export default function ProfilePage() {
               ].map((tab) => (
                 <button
                   key={tab.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab.value}
                   onClick={() => setActiveTab(tab.value)}
                   className={`flex-1 flex flex-col items-center py-3 px-2 text-sm font-medium transition-all duration-200 border-b-2 ${
                     activeTab === tab.value
@@ -701,7 +588,7 @@ export default function ProfilePage() {
               </Card>
             )}
             {userPosts.map((post) => (
-              <Card key={post.id} className="hover:shadow-md transition-shadow">
+              <Card key={post.id} className="student-feed-post hover:shadow-md transition-shadow">
                 <CardContent className="p-4 md:p-6">
                   <div className="flex items-start space-x-3 mb-3">
                     <Avatar 
@@ -740,6 +627,7 @@ export default function ProfilePage() {
                         size="sm"
                         onClick={() => handleLike(post.id)}
                         className={`${post.isLiked ? "text-red-500" : ""} hover:text-red-500 h-8 px-2 md:px-3`}
+                        aria-label={post.isLiked ? "Unlike this post" : "Like this post"}
                       >
                         <Heart className={`w-4 h-4 mr-1 md:mr-2 ${post.isLiked ? "fill-current" : ""}`} />
                         <span className="text-xs md:text-sm">{post.likes}</span>
@@ -749,6 +637,7 @@ export default function ProfilePage() {
                         size="sm" 
                         className="hover:text-blue-500 h-8 px-2 md:px-3"
                         onClick={() => handleComment(post.id)}
+                        aria-label="Comment on this post"
                       >
                         <MessageSquare className="w-4 h-4 mr-1 md:mr-2" />
                         <span className="text-xs md:text-sm">{post.comments}</span>
@@ -758,6 +647,7 @@ export default function ProfilePage() {
                         size="sm"
                         onClick={() => handleShare(post.id)}
                         className="hover:text-green-500 h-8 px-2 md:px-3"
+                        aria-label="Share this post"
                       >
                         <Share2 className="w-4 h-4 mr-1 md:mr-2" />
                         <span className="text-xs md:text-sm">0</span>
@@ -767,6 +657,7 @@ export default function ProfilePage() {
                         size="sm"
                         onClick={() => handleBookmark(post.id)}
                         className={`${post.isBookmarked ? "text-yellow-500" : ""} hover:text-yellow-500 h-8 px-2 md:px-3`}
+                        aria-label={post.isBookmarked ? "Remove bookmark" : "Bookmark this post"}
                       >
                         <Bookmark className={`w-4 h-4 ${post.isBookmarked ? "fill-current" : ""}`} />
                       </Button>

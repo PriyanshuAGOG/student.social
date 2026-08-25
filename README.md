@@ -109,7 +109,7 @@ Productivity:
 ✅ Calendar Events ✅ Study Plans ✅ Streaks & Points ✅ Leaderboard ✅ Analytics
 
 AI & Integrations:
-✅ AI Assistant ✅ OpenRouter Integration ✅ Video Calls (Jitsi) ✅ Resource Vault
+✅ AI Assistant ✅ OpenRouter Integration ✅ Video Calls (LiveKit) ✅ Resource Vault
 
 ---
 

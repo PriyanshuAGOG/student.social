@@ -1,7 +1,8 @@
 "use client";
 
-import React from "react";
-import { formatDistanceToNow } from "date-fns";
+import Image from "next/image";
+import { formatDistanceToNowStrict } from "date-fns";
+import { GraduationCap, UsersRound } from "lucide-react";
 
 interface ConversationItemProps {
   id: string;
@@ -13,7 +14,7 @@ interface ConversationItemProps {
   isSelected?: boolean;
   isOnline?: boolean;
   onClick: () => void;
-  onContextMenu?: (e: React.MouseEvent) => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
   type?: "direct" | "group" | "pod";
 }
 
@@ -30,67 +31,37 @@ export function ConversationItem({
   type = "direct",
 }: ConversationItemProps) {
   const timeFormatted = timestamp
-    ? formatDistanceToNow(new Date(timestamp), { addSuffix: false })
+    ? formatDistanceToNowStrict(new Date(timestamp), { addSuffix: false })
     : "";
-  const badgeLabel = type === "pod" ? "Pod" : type === "group" ? "Group" : "DM";
 
   return (
     <button
       type="button"
       onClick={onClick}
       onContextMenu={onContextMenu}
-      className={`w-full border-l-2 px-4 py-3 text-left transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-        isSelected
-          ? "border-l-primary bg-primary/10 shadow-inner"
-          : "border-l-transparent hover:border-l-primary/40 hover:bg-muted/70"
-      }`}
+      className={`group mx-2 flex w-[calc(100%-1rem)] items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#76556d]/50 ${isSelected ? "bg-[#76556d]/[0.10]" : "hover:bg-muted/75"}`}
+      aria-current={isSelected ? "page" : undefined}
     >
-      <div className="flex items-center gap-3">
-        <div className="relative flex-shrink-0">
-          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-cyan-500 to-violet-500 text-sm font-semibold text-primary-foreground shadow-sm">
-            {avatar && avatar.startsWith("http") ? (
-              <img
-                src={avatar}
-                alt={name}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span>{name[0]?.toUpperCase()}</span>
-            )}
-          </div>
-          {isOnline && (
-            <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 animate-pulse rounded-full border-2 border-card bg-emerald-500" />
-          )}
+      <div className="relative shrink-0">
+        <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-[linear-gradient(145deg,#eadfe7,#c7aebd)] text-sm font-semibold text-[#4f3547] dark:bg-[linear-gradient(145deg,#76556d,#4a3544)] dark:text-white">
+          {avatar ? <Image src={avatar} alt={name} fill unoptimized sizes="48px" className="object-cover" /> : <span>{name.trim().charAt(0).toUpperCase() || "P"}</span>}
         </div>
+        {isOnline ? <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-[2.5px] border-card bg-[#8f9b6d]" aria-label="Online" /> : null}
+      </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="mb-0.5 flex items-baseline justify-between gap-2">
-            <h3 className="truncate text-sm font-semibold text-foreground">
-              {name}
-            </h3>
-            {timeFormatted && (
-              <span className="flex-shrink-0 text-xs text-muted-foreground">
-                {timeFormatted}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              {badgeLabel}
-            </span>
-            <p className="truncate text-xs text-muted-foreground">
-              {lastMessage || "No messages yet"}
-            </p>
-          </div>
+      <div className="min-w-0 flex-1 border-b border-border/45 py-1.5 group-last:border-transparent">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className={`truncate text-[15px] font-semibold tracking-[-0.01em] ${unreadCount ? "text-foreground" : "text-foreground/90"}`}>{name}</h3>
+          {timeFormatted ? <span className={`shrink-0 text-[11px] ${unreadCount ? "font-medium text-primary" : "text-muted-foreground"}`}>{timeFormatted}</span> : null}
         </div>
-
-        {unreadCount && unreadCount > 0 ? (
-          <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <span className="text-xs font-bold">
-              {unreadCount > 99 ? "99+" : unreadCount}
-            </span>
-          </div>
-        ) : null}
+        <div className="mt-1 flex items-center gap-1.5">
+          {type === "pod" ? <GraduationCap className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Pod chat" /> : null}
+          {type === "group" ? <UsersRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Group chat" /> : null}
+          <p className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{lastMessage || "Start the conversation"}</p>
+          {unreadCount && unreadCount > 0 ? (
+            <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">{unreadCount > 99 ? "99+" : unreadCount}</span>
+          ) : null}
+        </div>
       </div>
     </button>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { Fragment } from "react";
 import { format, isSameDay } from "date-fns";
 import { ChatBubble } from "./ChatBubble";
 
@@ -47,56 +47,51 @@ export function MessageGroup({
 }: MessageGroupProps) {
   if (messages.length === 0) return null;
 
-  // Show date divider if messages are from different days
-  const showDivider =
-    showDateDivider &&
-    messages.length > 0 &&
-    messages[0].timestamp &&
-    (messages[0].$id === messages[0].$id
-      ? false
-      : !isSameDay(
-          new Date(messages[0].timestamp),
-          new Date(messages[0].timestamp),
-        ));
-
   return (
-    <div className="space-y-1">
-      {showDivider && (
-        <div className="flex items-center gap-3 py-4 px-4">
-          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-          <span className="text-xs text-slate-500">
-            {format(new Date(messages[0].timestamp), "MMMM d, yyyy")}
-          </span>
-          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-        </div>
-      )}
-
-      {messages.map((message) => {
+    <div className="space-y-0.5">
+      {messages.map((message, index) => {
         const isOwn = message.authorId === currentUserId;
+        const previousMessage = messages[index - 1];
+        const showDivider =
+          showDateDivider &&
+          Boolean(message.timestamp) &&
+          (!previousMessage ||
+            !isSameDay(
+              new Date(message.timestamp),
+              new Date(previousMessage.timestamp),
+            ));
 
         return (
-          <ChatBubble
-            key={message.$id}
-            messageId={message.$id}
-            content={message.content}
-            isOwn={isOwn}
-            timestamp={message.timestamp}
-            authorName={message.authorName}
-            authorAvatar={message.authorAvatar}
-            fileUrl={message.fileUrl}
-            fileName={message.fileName}
-            type={message.type}
-            replyToMessage={message.replyToMessage}
-            isEdited={message.isEdited}
-            deliveryState={message.deliveryState}
-            reactions={message.metadata?.reactions}
-            currentUserId={currentUserId}
-            onReply={() => onReply?.(message)}
-            onDelete={() => onDelete?.(message.$id)}
-            onEdit={() => onEdit?.(message)}
-            onReact={(emoji) => onReact?.(message.$id, emoji)}
-            highlightQuery={highlightQuery}
-          />
+          <Fragment key={message.$id}>
+            {showDivider ? (
+              <div className="flex justify-center py-4">
+                <span className="rounded-full border border-border/45 bg-card/90 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur">
+                  {format(new Date(message.timestamp), "MMMM d, yyyy")}
+                </span>
+              </div>
+            ) : null}
+            <ChatBubble
+              messageId={message.$id}
+              content={message.content}
+              isOwn={isOwn}
+              timestamp={message.timestamp}
+              authorName={message.authorName}
+              authorAvatar={message.authorAvatar}
+              fileUrl={message.fileUrl}
+              fileName={message.fileName}
+              type={message.type}
+              replyToMessage={message.replyToMessage}
+              isEdited={message.isEdited}
+              deliveryState={message.deliveryState}
+              reactions={message.metadata?.reactions}
+              currentUserId={currentUserId}
+              onReply={() => onReply?.(message)}
+              onDelete={() => onDelete?.(message.$id)}
+              onEdit={() => onEdit?.(message)}
+              onReact={(emoji) => onReact?.(message.$id, emoji)}
+              highlightQuery={highlightQuery}
+            />
+          </Fragment>
         );
       })}
     </div>

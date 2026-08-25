@@ -10,6 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import { authService } from "@/lib/appwrite"
 import { useAuth } from "@/lib/auth-context"
+import { AuthShell } from "@/components/public/AuthShell"
 
 type VerifyState = "idle" | "verifying" | "verified" | "error"
 
@@ -47,7 +48,7 @@ function VerifyEmailContent() {
       try {
         await authService.confirmEmailVerification(userId, secret)
         setVerifyState("verified")
-        setMessage("Your email has been verified. Please sign in to continue to PeerSpark.")
+        setMessage("Your email has been verified. Please sign in to continue to Student.social.")
         toast({ title: "Email verified", description: "You can now sign in securely." })
         try {
           await refreshUser()
@@ -99,9 +100,8 @@ function VerifyEmailContent() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-6 sm:py-10">
-      <div className="w-full max-w-lg">
-        <Card className="border-0 shadow-lg sm:rounded-2xl">
+    <AuthShell>
+        <Card className="ss-auth-inner border-0 shadow-none">
           <CardHeader className="text-center space-y-3">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
               {verifyState === "verified" ? <CheckCircle2 className="h-6 w-6" /> : <Mail className="h-6 w-6" />}
@@ -132,7 +132,7 @@ function VerifyEmailContent() {
 
             <p className="text-sm leading-6 text-muted-foreground">
               {message ||
-                "For your security, PeerSpark requires a verified email before loading feeds, pods, messages, or profile data. If you do not see the email, check spam or request a new link."}
+                "For your security, Student.social requires a verified email before loading feeds, circles, messages, or profile data. If you do not see the email, check spam or request a new link."}
             </p>
 
             {verifyState === "verifying" && (
@@ -158,8 +158,7 @@ function VerifyEmailContent() {
             )}
           </CardFooter>
         </Card>
-      </div>
-    </div>
+    </AuthShell>
   )
 }
 

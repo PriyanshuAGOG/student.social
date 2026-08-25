@@ -3,21 +3,19 @@
 import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
-import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft } from "lucide-react"
-import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { authService } from "@/lib/appwrite"
+import { AuthShell } from "@/components/public/AuthShell"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const router = useRouter()
   const { toast } = useToast()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -55,16 +53,8 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="flex items-center justify-center mb-8">
-          <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center mr-3">
-            <Image src="/logo.png" alt="PeerSpark" width={40} height={40} className="object-cover" />
-          </div>
-          <span className="text-2xl font-bold">PeerSpark</span>
-        </div>
-
-        <Card className="border-0 shadow-lg">
+    <AuthShell>
+        <Card className="ss-auth-inner border-0 shadow-none">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold">Reset password</CardTitle>
             <CardDescription>Enter your email to receive a password reset link</CardDescription>
@@ -131,7 +121,6 @@ export default function ForgotPasswordPage() {
             </>
           )}
         </Card>
-      </div>
-    </div>
+    </AuthShell>
   )
 }

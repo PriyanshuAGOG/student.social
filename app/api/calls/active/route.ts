@@ -1,124 +1,84 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
-import { requireUser, enforceSameOrigin, enforceRateLimit, ApiError } from '@/lib/api-security'
+import { createAdminClient } from '@/lib/server/appwrite'
+import { requireUser, enforceRateLimit, ApiError } from '@/lib/api-security'
+import { parseStringList, shouldSurfaceActiveCall } from '@/lib/calls/domain'
 
-const DATABASE_ID =
-  process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID ||
-  process.env.APPWRITE_DATABASE_ID ||
-  process.env.NEXT_PUBLIC_DATABASE_ID ||
-  'peerspark-main-db'
-const CALLS_COLLECTION = process.env.NEXT_PUBLIC_CALLS_COLLECTION_ID || 'calls'
-const PROFILES_COLLECTION = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
+const CALL_SESSIONS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALL_SESSIONS_COLLECTION_ID || 'call_sessions'
+const CALL_PARTICIPANTS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALL_PARTICIPANTS_COLLECTION_ID || 'call_participants'
+const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'
 
-function isMissingOrSchemaError(error: any): boolean {
-  const message = String(error?.message || '').toLowerCase()
-  return (
-    error?.code === 401 ||
-    error?.code === 403 ||
-    error?.code === 404 ||
-    message.includes('not found') ||
-    message.includes('could not be found') ||
-    message.includes('collection') ||
-    message.includes('attribute') ||
-    message.includes('index')
-  )
-}
-
-function normalizeCall(call: any) {
+function normalizeCall(session: any, userId: string, caller: any) {
+  const mediaType = session.mediaType === 'voice' ? 'voice' : 'video'
   return {
-    ...call,
-    id: call?.$id || call?.id,
+    ...session,
+    id: session.$id,
+    chatId: session.roomId,
+    roomName: session.providerSessionId,
+    callType: mediaType === 'voice' ? 'audio' : 'video',
+    status: session.state === 'active' ? 'accepted' : session.state,
+    direction: session.callerId === userId ? 'outgoing' : 'incoming',
+    participantIds: parseStringList(session.participantIds),
+    caller,
   }
 }
 
 export async function GET(req: NextRequest) {
   try {
-    enforceSameOrigin(req)
-    enforceRateLimit(req, { key: 'calls:active', max: 60, windowMs: 60000 })
-
+    enforceRateLimit(req, { key: 'calls:active', max: 60, windowMs: 60_000 })
     const auth = requireUser(req)
-    const userId = auth.userId
     const { databases } = await createAdminClient()
 
-    let activeCalls: any[] = []
-    try {
-      const [ringing, acceptedAsReceiver, acceptedAsCaller] = await Promise.all([
-        databases.listDocuments(DATABASE_ID, CALLS_COLLECTION, [
-          Query.equal('receiverId', userId),
-          Query.equal('status', 'ringing'),
-          Query.limit(25),
-        ]),
-        databases.listDocuments(DATABASE_ID, CALLS_COLLECTION, [
-          Query.equal('receiverId', userId),
-          Query.equal('status', 'accepted'),
-          Query.limit(25),
-        ]),
-        databases.listDocuments(DATABASE_ID, CALLS_COLLECTION, [
-          Query.equal('callerId', userId),
-          Query.equal('status', 'accepted'),
-          Query.limit(25),
-        ]),
-      ])
+    const [asCaller, participantRecords] = await Promise.all([
+      databases.listDocuments(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, [
+        Query.equal('callerId', auth.userId),
+        Query.equal('state', ['ringing', 'active']),
+        Query.orderDesc('startedAt'),
+        Query.limit(25),
+      ]),
+      databases.listDocuments(DATABASE_ID, CALL_PARTICIPANTS_COLLECTION_ID, [
+        Query.equal('userId', auth.userId),
+        Query.equal('state', ['invited', 'joined']),
+        Query.limit(25),
+      ]),
+    ])
 
-      const byId = new Map<string, any>()
-      for (const doc of [
-        ...(ringing.documents || []),
-        ...(acceptedAsReceiver.documents || []),
-        ...(acceptedAsCaller.documents || []),
-      ]) {
-        byId.set(doc.$id || doc.id, normalizeCall(doc))
-      }
-      activeCalls = Array.from(byId.values())
-    } catch (callsError: any) {
-      if (!isMissingOrSchemaError(callsError)) throw callsError
-      console.warn('[Calls Active API] Calls collection unavailable; returning no active calls:', callsError?.message || callsError)
-      activeCalls = []
+    const participantSessions = await Promise.all(
+      (participantRecords.documents || []).map((participant: any) =>
+        databases.getDocument(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, participant.callSessionId).catch(() => null),
+      ),
+    )
+    const activeParticipantSessionIds = new Set(
+      (participantRecords.documents || []).map((participant: any) => participant.callSessionId),
+    )
+
+    const sessions = new Map<string, any>()
+    for (const session of [...(asCaller.documents || []), ...participantSessions]) {
+      if (session && shouldSurfaceActiveCall(session, activeParticipantSessionIds)) sessions.set(session.$id, session)
     }
 
-    const enrichedCalls = await Promise.all(
-      activeCalls.map(async (call: any) => {
+    const callerProfiles = new Map<string, any>()
+    const calls = await Promise.all(Array.from(sessions.values()).map(async (session) => {
+      let caller = callerProfiles.get(session.callerId)
+      if (!caller) {
         try {
-          const callerProfile = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION, call.callerId)
-          return {
-            ...call,
-            caller: {
-              id: callerProfile['$id'],
-              name: callerProfile.name || callerProfile.username || 'User',
-              avatar: callerProfile.profilePictureUrl || callerProfile.avatar || null,
-            },
-          }
+          const profile = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, session.callerId)
+          caller = { id: profile.$id, name: profile.name || profile.username || 'User', avatar: profile.profilePictureUrl || profile.avatar || null }
         } catch {
-          return {
-            ...call,
-            caller: {
-              id: call.callerId,
-              name: 'User',
-              avatar: null,
-            },
-          }
+          caller = { id: session.callerId, name: 'User', avatar: null }
         }
-      }),
-    )
+        callerProfiles.set(session.callerId, caller)
+      }
+      return normalizeCall(session, auth.userId, caller)
+    }))
 
-    return NextResponse.json({
-      success: true,
-      calls: enrichedCalls,
-      count: enrichedCalls.length,
-    })
+    return NextResponse.json({ success: true, calls, count: calls.length }, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error: any) {
-    console.error('[Calls Active API] Error:', error)
-
     if (error instanceof ApiError) {
-      return NextResponse.json(
-        { success: false, error: error.message, code: error.code },
-        { status: error.status },
-      )
+      return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
     }
-
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch active calls' },
-      { status: 500 },
-    )
+    console.error('[Calls Active API] Error:', error)
+    return NextResponse.json({ success: false, error: 'Failed to fetch active calls' }, { status: 500 })
   }
 }

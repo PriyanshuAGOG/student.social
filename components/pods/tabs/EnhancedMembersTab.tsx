@@ -244,7 +244,7 @@ export function EnhancedMembersTab({
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    The user must already have a PeerSpark account
+                    The student must already have a Student.social account
                   </p>
                 </div>
               </div>

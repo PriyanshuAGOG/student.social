@@ -5,8 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { Query } from 'node-appwrite';
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
+import { createAdminClient } from '@/lib/server/appwrite';
 import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
+import { enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const COMMENTS_COLLECTION_ID = (process.env.NEXT_PUBLIC_COMMENTS_COLLECTION_ID || 'comments');
@@ -16,10 +17,12 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  enforceSameOrigin(request);
+  enforceRateLimit(request, { key: 'comments:delete', max: 30, windowMs: 60_000 });
+  const auth = requireUser(request);
   const { data, error } = await withErrorHandling(async () => {
     const { id: commentId } = await params;
-    const searchParams = request.nextUrl.searchParams;
-    const userId = searchParams.get('userId');
+    const userId = auth.userId;
 
     validateInput(
       { commentId, userId },

@@ -10,7 +10,7 @@
 
 // @ts-nocheck
 import { Query } from 'node-appwrite';
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
+import { createAdminClient } from '@/lib/server/appwrite';
 import { courseService } from '@/lib/course-service';
 
 interface CourseProfile {

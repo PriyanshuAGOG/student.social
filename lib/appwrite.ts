@@ -1,6 +1,11 @@
 import { AppwriteException, Client, Account, Databases, Storage, Teams, Avatars, Functions, Messaging, Query, Realtime } from "appwrite"
 import { rankPodsForUser } from "./pod-matching"
 import { getEnv, normalizeAppwriteEndpoint, requireEnv } from "./env"
+import { callService } from "./appwrite/calls"
+import { apiJson } from "./appwrite/http"
+import { createProfileEnsureDeduper } from "./appwrite/profile-ensure-deduper"
+
+export { callService }
 
 // Debug function to log initialization (opt-in for dev only)
 const debugLog = (message: string, data?: any) => {
@@ -41,39 +46,6 @@ function normalizeUsername(input: string): string {
     .replace(/[\s-]+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '')
-}
-
-async function apiJson(path: string, init: RequestInit = {}) {
-  if (typeof window === 'undefined') {
-    throw new Error('API helpers are only available in the browser')
-  }
-
-  const sessionUser = await fetchSessionUser()
-
-  const response = await fetch(path, {
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(sessionUser?.$id ? { 'x-user-id': sessionUser.$id } : {}),
-      ...(sessionUser?.role ? { 'x-user-role': sessionUser.role } : {}),
-      ...(init.headers || {}),
-    },
-    ...init,
-  })
-
-  const payload = await response.json().catch(() => null)
-  if (!response.ok) {
-    const message = typeof payload?.error === 'string'
-      ? payload.error
-      : payload?.error?.message || payload?.message || `Request failed with ${response.status}`
-    const error = new Error(message) as Error & { status?: number; code?: string; details?: unknown }
-    error.status = response.status
-    error.code = payload?.code || payload?.error?.code || payload?.details?.code
-    error.details = payload?.details || payload
-    throw error
-  }
-
-  return payload
 }
 
 // Initialize Appwrite Client with your credentials
@@ -819,6 +791,18 @@ async function ensureProfileViaApi(userId: string, defaults: Record<string, unkn
   return payload.profile
 }
 
+const profileEnsureDeduper = createProfileEnsureDeduper<any>()
+
+async function fetchOwnSessionProfile(userId: string) {
+  const response = await fetch('/api/auth/session', {
+    credentials: 'include',
+    cache: 'no-store',
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok || payload?.profile?.$id !== userId) return null
+  return payload.profile
+}
+
 // Profile Functions
 export const profileService = {
   /**
@@ -829,47 +813,24 @@ export const profileService = {
     name?: string
     email?: string
   } = {}): Promise<any> {
-    try {
-      const profile = await ensureProfileViaApi(userId, defaults)
-      devLog(`[ensureProfileExists] Profile ensured via API`, { id: profile.$id })
-      return profile
-    } catch (apiError: any) {
-      console.warn(`[ensureProfileExists] Server profile ensure failed, trying client fallback:`, apiError)
+    return profileEnsureDeduper.ensure(userId, async () => {
       try {
-        // First try to get existing profile
-        const existing = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId)
-        devLog(`[ensureProfileExists] Profile already exists for user: ${userId}`)
-        return existing
-      } catch (error: any) {
-        // If not found, create it
-        if (error?.code === 404 || error?.message?.includes('not found')) {
-          devLog(`[ensureProfileExists] Creating profile for user: ${userId}`)
-          try {
-            const response = await apiJson('/api/profiles/ensure', {
-              method: 'POST',
-              body: JSON.stringify({
-                userId,
-                defaults: {
-                  name: defaults.name || `User_${userId.slice(0, 6)}`,
-                  email: defaults.email || '',
-                },
-              }),
-            })
-            devLog(`[ensureProfileExists] Profile created successfully`, { id: response?.profile?.$id })
-            return response?.profile ?? null
-          } catch (createError: any) {
-            // If document already exists (race condition), fetch it
-            if (createError?.code === 409 || createError?.message?.includes('already exists')) {
-              return await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId).catch(() => null)
-            }
-            console.error(`[ensureProfileExists] Failed to create profile:`, createError)
-            return null
-          }
+        const profile = await ensureProfileViaApi(userId, defaults)
+        devLog(`[ensureProfileExists] Profile ensured via API`, { id: profile.$id })
+        return profile
+      } catch (apiError: any) {
+        // Do not retry the mutation endpoint or fall back to a client-side
+        // create. The server route is the sole authenticated write path.
+        const existing = await fetchOwnSessionProfile(userId).catch(() => null)
+        if (existing) {
+          devLog(`[ensureProfileExists] Reused profile from authenticated session`, { id: existing.$id })
+          return existing
         }
-        console.error(`[ensureProfileExists] Error:`, error)
-        return null
+
+        console.warn(`[ensureProfileExists] Server profile ensure failed:`, apiError)
+        throw apiError
       }
-    }
+    })
   },
 
   // Get user profile (returns null if not found, use ensureProfileExists for guaranteed profile)
@@ -880,7 +841,8 @@ export const profileService = {
       const sessionPayload = sessionResponse ? await sessionResponse.json().catch(() => null) : null
       const profile = sessionPayload?.profile?.$id === userId
         ? sessionPayload.profile
-        : await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, userId)
+        : (await apiJson(`/api/profiles/list?userId=${encodeURIComponent(userId)}`)).profile
+      if (!profile?.$id) return null
       devLog(`[getProfile] Successfully fetched profile`, {
         userId: profile.$id,
         name: profile.name,
@@ -2412,7 +2374,7 @@ export const chatService = {
     }
 
     realtime
-      .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.MESSAGES}.documents`, pushIfRelevant)
+      .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.MESSAGES}.documents`, pushIfRelevant, [Query.equal('roomId', roomId)])
       .then((nextSubscription) => {
         if (closed) {
           Promise.resolve(nextSubscription.close?.()).catch(() => undefined)
@@ -2549,27 +2511,38 @@ export const chatService = {
   /**
    * Mark message as read
    */
-  async markMessageAsRead(messageId: string, userId: string) {
-    try {
-      if (!messageId || !userId) {
-        throw new Error("Message ID and User ID are required")
-      }
+  async markRoomMessages(roomId: string, messageIds: string[], state: 'delivered' | 'read' = 'read') {
+    if (!roomId || !Array.isArray(messageIds) || messageIds.length === 0) return { success: true, updated: 0 }
+    return apiJson(`/api/messages/room/${encodeURIComponent(roomId)}/receipts`, {
+      method: 'POST',
+      body: JSON.stringify({ messageIds: Array.from(new Set(messageIds)).slice(0, 200), state }),
+    })
+  },
 
-      const message = await databases.getDocument(DATABASE_ID, COLLECTIONS.MESSAGES, messageId)
-      const readBy = Array.isArray(message.readBy) ? message.readBy : []
-
-      if (!readBy.includes(userId)) {
-        readBy.push(userId)
-        await databases.updateDocument(DATABASE_ID, COLLECTIONS.MESSAGES, messageId, {
-          readBy: readBy,
-        })
-      }
-
-      return { success: true }
-    } catch (error) {
-      console.error("Mark message as read error:", error)
-      throw error
+  subscribeToReceipts(roomId: string, callback: (receipt: any) => void) {
+    let closed = false
+    let subscription: { close?: () => Promise<void> | void } | null = null
+    realtime
+      .subscribe(`databases.${DATABASE_ID}.collections.message_receipts.documents`, (event: any) => {
+        const receipt = event?.payload || event?.data || event
+        if (!closed && receipt?.roomId === roomId) callback(receipt)
+      }, [Query.equal('roomId', roomId)])
+      .then((nextSubscription) => {
+        if (closed) void nextSubscription.close?.()
+        else subscription = nextSubscription
+      })
+      .catch((error) => {
+        if (!closed && process.env.NODE_ENV === 'development') console.warn('Realtime receipt subscription unavailable:', error)
+      })
+    return () => {
+      closed = true
+      void subscription?.close?.()
     }
+  },
+
+  async markMessageAsRead(messageId: string, _userId: string, roomId?: string) {
+    if (!roomId) throw new Error('Room ID is required to mark a message as read')
+    return this.markRoomMessages(roomId, [messageId], 'read')
   },
 
   /**
@@ -2577,63 +2550,6 @@ export const chatService = {
    */
   async createDirectChat(userId1: string, userId2: string) {
     return await this.getOrCreateDirectRoom(userId1, userId2)
-  },
-}
-
-export const callService = {
-  async startRoomCall(roomId: string, mediaType: 'voice' | 'video' = 'video') {
-    if (!roomId) {
-      throw new Error('Room ID is required')
-    }
-
-    const response = await apiJson('/api/calls/sessions', {
-      method: 'POST',
-      body: JSON.stringify({ roomId, mediaType }),
-    })
-
-    const session = response.session || response.data || response
-    return {
-      ...session,
-      joinUrl: session?.joinUrl || response.joinUrl,
-      participantMessage: response.participantMessage,
-      participants: response.participants,
-      invitedParticipants: response.invitedParticipants,
-    }
-  },
-
-  async updateSession(sessionId: string, action: 'accept' | 'decline' | 'end' | 'join' | 'leave', reason?: string) {
-    if (!sessionId) {
-      throw new Error('Session ID is required')
-    }
-
-    const response = await apiJson(`/api/calls/sessions/${encodeURIComponent(sessionId)}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ action, reason }),
-    })
-
-    return response.session || response.data || response
-  },
-
-  async getSessionToken(sessionId: string) {
-    if (!sessionId) {
-      throw new Error('Session ID is required')
-    }
-
-    return apiJson(`/api/calls/sessions/${encodeURIComponent(sessionId)}/token`, {
-      method: 'POST',
-    })
-  },
-
-  async getRoomCallHistory(roomId: string, limit = 20) {
-    if (!roomId) {
-      throw new Error('Room ID is required')
-    }
-
-    const response = await apiJson(`/api/calls/sessions?roomId=${encodeURIComponent(roomId)}&limit=${encodeURIComponent(String(limit))}`)
-    return {
-      documents: response.sessions || response.documents || [],
-      total: response.total || 0,
-    }
   },
 }
 
@@ -2676,7 +2592,7 @@ export const presenceService = {
     }
 
     realtime
-      .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_PRESENCE}.documents`, pushIfRelevant)
+      .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_PRESENCE}.documents`, pushIfRelevant, [Query.equal('roomId', roomId)])
       .then((nextSubscription) => {
         if (closed) {
           Promise.resolve(nextSubscription.close?.()).catch(() => undefined)
@@ -4103,158 +4019,6 @@ Total: ${report.resourceStats.totalResources}
       return { success: true, goalId, progress }
     } catch (error) {
       console.error("Track goal progress error:", error)
-      throw error
-    }
-  },
-}
-
-// Jitsi Integration for Video Calls
-export const jitsiService = {
-  // Generate Jitsi meeting URL
-  generateMeetingUrl(roomName: string, displayName: string, options: any = {}) {
-    const domain = "meet.jit.si" // Free Jitsi server
-    const config = {
-      roomName: roomName.replace(/[^a-zA-Z0-9]/g, ""), // Clean room name
-      width: options.width || "100%",
-      height: options.height || "600px",
-      parentNode: options.parentNode || document.body,
-      configOverwrite: {
-        startWithAudioMuted: options.startMuted || false,
-        startWithVideoMuted: options.startVideoMuted || false,
-        enableWelcomePage: false,
-        prejoinPageEnabled: false,
-        ...options.config,
-      },
-      interfaceConfigOverwrite: {
-        TOOLBAR_BUTTONS: [
-          "microphone",
-          "camera",
-          "closedcaptions",
-          "desktop",
-          "fullscreen",
-          "fodeviceselection",
-          "hangup",
-          "profile",
-          "chat",
-          "recording",
-          "livestreaming",
-          "etherpad",
-          "sharedvideo",
-          "settings",
-          "raisehand",
-          "videoquality",
-          "filmstrip",
-          "invite",
-          "feedback",
-          "stats",
-          "shortcuts",
-          "tileview",
-          "videobackgroundblur",
-          "download",
-          "help",
-          "mute-everyone",
-        ],
-        ...options.interfaceConfig,
-      },
-      userInfo: {
-        displayName: displayName,
-        email: options.email || "",
-      },
-    }
-
-    return {
-      url: `https://${domain}/${config.roomName}`,
-      config: config,
-      embedUrl: `https://${domain}/${config.roomName}#config.startWithAudioMuted=${config.configOverwrite.startWithAudioMuted}&config.startWithVideoMuted=${config.configOverwrite.startWithVideoMuted}`,
-    }
-  },
-
-  // Create meeting for pod
-  async createPodMeeting(
-    podId: string,
-    userId: string,
-    title: string,
-    options: {
-      startTime?: string
-      endTime?: string
-      createCalendarEvent?: boolean
-    } = {},
-  ) {
-    try {
-      const pod = await podService.getPodDetails(podId)
-      const user = await profileService.getProfile(userId)
-      
-      if (!user) {
-        throw new Error("User profile not found")
-      }
-
-      const roomName = `peerspark-${podId}-${Date.now()}`
-      const meeting = this.generateMeetingUrl(roomName, user.name, {
-        startMuted: true,
-        startVideoMuted: false,
-      })
-
-      if (options.createCalendarEvent !== false) {
-        await calendarService.createEvent(
-          userId,
-          `${title} - ${pod.name}`,
-          options.startTime || new Date().toISOString(),
-          options.endTime || new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-          {
-            podId: podId,
-            meetingUrl: meeting.url,
-            type: "meeting",
-          }
-        )
-      }
-
-      // Notify pod members
-      await Promise.all(
-        pod.members
-          .filter((memberId: string) => memberId !== userId)
-          .map((memberId: string) =>
-            notificationService.createNotification(
-              memberId,
-              "Meeting Started",
-              `${user.name} started a meeting in ${pod.name}`,
-              "meeting",
-              {
-                actionUrl: meeting.url,
-                podId: podId,
-              }
-            ),
-          ),
-      )
-
-      return meeting
-    } catch (error) {
-      console.error("Create pod meeting error:", error)
-      throw error
-    }
-  },
-
-  // Create direct meeting
-  async createDirectMeeting(userId1: string, userId2: string) {
-    try {
-      const user1 = await profileService.getProfile(userId1)
-      const user2 = await profileService.getProfile(userId2)
-      
-      if (!user1 || !user2) {
-        throw new Error("One or both users not found")
-      }
-
-      const roomName = `peerspark-direct-${[userId1, userId2].sort().join("-")}-${Date.now()}`
-      const meeting = this.generateMeetingUrl(roomName, user1.name)
-
-      // Notify the other user
-      await notificationService.createNotification(userId2, "Video Call", `${user1.name} is calling you`, "call", {
-        actionUrl: meeting.url,
-        callerId: userId1,
-      })
-
-      return meeting
-    } catch (error) {
-      console.error("Create direct meeting error:", error)
       throw error
     }
   },

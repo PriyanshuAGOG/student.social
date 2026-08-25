@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { ID, Permission, Query, Role } from 'node-appwrite'
+import { z } from 'zod'
+import { createAdminClient } from '@/lib/server/appwrite'
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireUser } from '@/lib/api-security'
+import { checkDurableRateLimit } from '@/lib/server/rate-limit'
+import { parseStringList } from '@/lib/calls/domain'
+import { sendIncomingCallPush } from '@/lib/server/web-push'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const CHAT_ROOMS_COLLECTION_ID = process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms'
@@ -10,18 +14,11 @@ const CALL_PARTICIPANTS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALL_PARTICIPANT
 const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'
 const NOTIFICATIONS_COLLECTION_ID = process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications'
 
-function parseMembers(room: any): string[] {
-  if (Array.isArray(room?.members)) return room.members.filter(Boolean)
-  if (typeof room?.members === 'string') {
-    try {
-      const parsed = JSON.parse(room.members)
-      return Array.isArray(parsed) ? parsed.filter(Boolean) : []
-    } catch {
-      return []
-    }
-  }
-  return []
-}
+const createCallSchema = z.object({
+  roomId: z.string().trim().min(1).max(255),
+  mediaType: z.enum(['voice', 'video']).default('video'),
+  roomTitle: z.string().trim().min(1).max(120).optional(),
+})
 
 function buildJoinUrl(sessionId: string, mediaType: 'voice' | 'video' = 'video'): string {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || ''
@@ -29,62 +26,11 @@ function buildJoinUrl(sessionId: string, mediaType: 'voice' | 'video' = 'video')
   return `${appBaseUrl}/app/chat?call=${encodeURIComponent(sessionId)}&callType=${encodeURIComponent(mediaType)}`
 }
 
-function normalizeMediaType(input: unknown): 'voice' | 'video' {
-  return input === 'voice' ? 'voice' : 'video'
-}
-
 function isNotFound(error: any): boolean {
   const message = String(error?.message || '').toLowerCase()
   return error?.code === 404 || message.includes('not found') || message.includes('could not be found')
 }
 
-
-function getUnknownAttribute(error: any): string | null {
-  const message = String(error?.message || '')
-  return message.match(/Unknown attribute:\s*"([^"]+)"/)?.[1] || null
-}
-
-function isSchemaOrCollectionError(error: any): boolean {
-  const message = String(error?.message || '').toLowerCase()
-  return error?.code === 401 || error?.code === 403 || isNotFound(error) || Boolean(getUnknownAttribute(error)) || message.includes('attribute') || message.includes('collection') || message.includes('index') || message.includes('permission')
-}
-
-async function createDocumentWithSchemaRetry(databases: any, collectionId: string, payload: Record<string, unknown>) {
-  const data = { ...payload }
-  const removed = new Set<string>()
-
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    try {
-      return await databases.createDocument(DATABASE_ID, collectionId, 'unique()', data)
-    } catch (error: any) {
-      const unknownAttribute = getUnknownAttribute(error)
-      if (!unknownAttribute || removed.has(unknownAttribute)) throw error
-      removed.add(unknownAttribute)
-      delete data[unknownAttribute]
-    }
-  }
-
-  throw new Error(`Unable to create ${collectionId} after schema compatibility retries`)
-}
-
-function buildEphemeralSession(roomId: string, callerId: string, mediaType: 'voice' | 'video', startedAt: string, providerSessionId: string, joinUrl: string) {
-  return {
-    $id: providerSessionId,
-    roomId,
-    callerId,
-    participantIds: [],
-    mediaType,
-    provider: 'livekit',
-    providerSessionId,
-    joinUrl,
-    state: 'ringing',
-    startedAt,
-    lastActivityAt: startedAt,
-    createdAt: startedAt,
-    updatedAt: startedAt,
-    degraded: true,
-  }
-}
 
 function internalError(message: string, error: any) {
   return NextResponse.json(
@@ -107,7 +53,7 @@ async function getRoomForMember(databases: any, roomId: string, userId: string) 
     throw error
   }
 
-  const members = parseMembers(room)
+  const members = parseStringList(room?.members || room?.participants)
   if (!members.includes(userId)) {
     throw new ApiError(403, 'FORBIDDEN', 'You are not a member of this conversation')
   }
@@ -121,15 +67,11 @@ export async function POST(req: NextRequest) {
     enforceRateLimit(req, { key: 'calls:create-session', max: 30, windowMs: 60 * 1000 })
 
     const auth = requireUser(req)
-    const body = await req.json().catch(() => ({}))
-    const roomId = String(body?.roomId || '').trim()
-    const mediaType = normalizeMediaType(body?.mediaType)
+    const durableLimit = await checkDurableRateLimit(`calls:create:${auth.userId}`, 12, 60_000)
+    if (!durableLimit.allowed) throw new ApiError(429, 'RATE_LIMITED', 'Too many calls started; wait before trying again')
+    const { roomId, mediaType, roomTitle } = await parseJsonBody(req, createCallSchema, 4096)
 
-    if (!roomId) {
-      throw new ApiError(400, 'INVALID_INPUT', 'roomId is required')
-    }
-
-    const { databases } = await createAdminClient()
+    const { databases, users } = await createAdminClient()
     const { members } = await getRoomForMember(databases, roomId, auth.userId)
 
     const invitedParticipantIds = members.filter((memberId) => memberId && memberId !== auth.userId)
@@ -137,21 +79,24 @@ export async function POST(req: NextRequest) {
     const isSoloFallback = invitedParticipantIds.length === 0
 
     const startedAt = new Date().toISOString()
-    const providerSessionId = `student-social-${roomId}-${Date.now()}`
-    const joinUrl = buildJoinUrl(providerSessionId, mediaType)
+    const sessionId = ID.unique()
+    const providerSessionId = `student-social-${sessionId}`
+    const joinUrl = buildJoinUrl(sessionId, mediaType)
+    const readPermissions = members.map((memberId) => Permission.read(Role.user(memberId)))
 
     let callerName = 'Someone'
+    let callerAvatar: string | null = null
     try {
       const callerProfile = await databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, auth.userId)
       callerName = callerProfile?.name || callerName
+      callerAvatar = callerProfile?.profilePictureUrl || callerProfile?.avatar || null
     } catch {
       // Use fallback display name if the profile lookup fails.
     }
 
-    let session
-    try {
-      session = await createDocumentWithSchemaRetry(databases, CALL_SESSIONS_COLLECTION_ID, {
+    const session = await databases.createDocument(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, sessionId, {
         roomId,
+        ...(roomTitle ? { roomTitle } : {}),
         callerId: auth.userId,
         participantIds,
         mediaType,
@@ -164,15 +109,10 @@ export async function POST(req: NextRequest) {
         ringTimeoutAt: new Date(Date.now() + 60_000).toISOString(),
         createdAt: startedAt,
         updatedAt: startedAt,
-      })
-    } catch (sessionError: any) {
-      if (!isSchemaOrCollectionError(sessionError)) throw sessionError
-      console.warn('[calls/sessions POST] Durable call session unavailable; returning ephemeral call:', sessionError?.message || sessionError)
-      session = buildEphemeralSession(roomId, auth.userId, mediaType, startedAt, providerSessionId, joinUrl)
-    }
+      }, readPermissions)
 
     try {
-      await createDocumentWithSchemaRetry(databases, CALL_PARTICIPANTS_COLLECTION_ID, {
+      await databases.createDocument(DATABASE_ID, CALL_PARTICIPANTS_COLLECTION_ID, ID.unique(), {
         callSessionId: session.$id,
         roomId,
         userId: auth.userId,
@@ -184,14 +124,10 @@ export async function POST(req: NextRequest) {
         connectionState: 'connected',
         createdAt: startedAt,
         updatedAt: startedAt,
-      })
-    } catch (participantError: any) {
-      console.warn('[calls/sessions POST] Caller participant write skipped:', participantError?.message || participantError)
-    }
+      }, readPermissions)
 
-    for (const participantId of participantIds) {
-      try {
-        await createDocumentWithSchemaRetry(databases, CALL_PARTICIPANTS_COLLECTION_ID, {
+      await Promise.all(participantIds.map((participantId) =>
+        databases.createDocument(DATABASE_ID, CALL_PARTICIPANTS_COLLECTION_ID, ID.unique(), {
           callSessionId: session.$id,
           roomId,
           userId: participantId,
@@ -202,13 +138,21 @@ export async function POST(req: NextRequest) {
           connectionState: 'waiting',
           createdAt: startedAt,
           updatedAt: startedAt,
-        })
-      } catch (participantError: any) {
-        console.warn('[calls/sessions POST] Guest participant write skipped:', participantError?.message || participantError)
-      }
+        }, readPermissions),
+      ))
+    } catch (participantError: any) {
+      await databases.updateDocument(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, session.$id, {
+        state: 'failed',
+        endedAt: new Date().toISOString(),
+        endedReason: 'participant_state_write_failed',
+        updatedAt: new Date().toISOString(),
+      }).catch(() => undefined)
+      throw participantError
+    }
 
-      try {
-        await createDocumentWithSchemaRetry(databases, NOTIFICATIONS_COLLECTION_ID, {
+    await Promise.allSettled(participantIds.map(async (participantId) => {
+      await Promise.allSettled([
+        databases.createDocument(DATABASE_ID, NOTIFICATIONS_COLLECTION_ID, ID.unique(), {
           userId: participantId,
           title: `${callerName} is calling`,
           message: `${callerName} started a ${mediaType} call`,
@@ -219,11 +163,16 @@ export async function POST(req: NextRequest) {
           actorId: auth.userId,
           actorName: callerName,
           metadata: JSON.stringify({ roomId, sessionId: session.$id, mediaType }),
-        })
-      } catch (notificationError) {
-        console.error('[calls/sessions] Failed to create call notification:', notificationError)
-      }
-    }
+        }),
+        sendIncomingCallPush(users, participantId, {
+          sessionId: session.$id,
+          callerName,
+          callerAvatar,
+          mediaType: mediaType || 'video',
+          joinUrl,
+        }),
+      ])
+    }))
 
     return NextResponse.json({
       success: true,
@@ -256,21 +205,14 @@ export async function GET(req: NextRequest) {
     const { databases } = await createAdminClient()
     await getRoomForMember(databases, roomId, auth.userId)
 
-    let sessions: any = { documents: [] }
-    try {
-      sessions = await databases.listDocuments(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, [
-        Query.equal('roomId', roomId),
-        Query.orderDesc('startedAt'),
-        Query.limit(limit),
-      ])
-    } catch (sessionsError: any) {
-      if (!isSchemaOrCollectionError(sessionsError)) throw sessionsError
-      console.warn('[calls/sessions GET] Durable call history unavailable; returning empty history:', sessionsError?.message || sessionsError)
-      return NextResponse.json({ success: true, degraded: true, sessions: [], total: 0 })
-    }
+    const sessions = await databases.listDocuments(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, [
+      Query.equal('roomId', roomId),
+      Query.orderDesc('startedAt'),
+      Query.limit(limit),
+    ])
 
     const visibleSessions = (sessions.documents || []).filter((session: any) => {
-      const participants = Array.isArray(session.participantIds) ? session.participantIds : []
+      const participants = parseStringList(session.participantIds)
       return session.callerId === auth.userId || participants.includes(auth.userId)
     })
 

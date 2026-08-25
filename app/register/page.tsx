@@ -11,10 +11,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
 import { Eye, EyeOff, Github, Mail, Check, X, AlertCircle } from "lucide-react"
-import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
+import { AuthShell } from "@/components/public/AuthShell"
 import { authService } from "@/lib/appwrite"
 import { getPasswordRequirements } from "@/lib/password-security"
 import { signInWithGoogle, signInWithGitHub } from "@/lib/server/oauth"
@@ -122,19 +122,11 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-6 sm:py-10">
-      <div className="w-full max-w-md">
-        <div className="flex items-center justify-center mb-8">
-          <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center mr-3">
-            <Image src="/logo.png" alt="PeerSpark" width={40} height={40} className="object-cover" />
-          </div>
-          <span className="text-2xl font-bold">PeerSpark</span>
-        </div>
-
-        <Card className="border-0 shadow-lg sm:rounded-2xl">
+    <AuthShell>
+        <Card className="ss-auth-inner border-0 shadow-none">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold">Create your account</CardTitle>
-            <CardDescription>Join thousands of learners on PeerSpark</CardDescription>
+            <CardDescription>Build a better study rhythm with Student.social</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <form onSubmit={handleRegister} className="space-y-4">
@@ -326,7 +318,7 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="auth-oauth grid grid-cols-2 gap-4">
               <form action={signInWithGoogle}>
                 <Button variant="outline" type="submit" className="w-full" disabled={isLoading}>
                   <Mail className="mr-2 h-4 w-4" />
@@ -350,7 +342,6 @@ export default function RegisterPage() {
             </p>
           </CardFooter>
         </Card>
-      </div>
-    </div>
+    </AuthShell>
   )
 }

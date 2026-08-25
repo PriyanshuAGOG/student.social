@@ -1,23 +1,18 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from "next/server"
 import { Query } from "node-appwrite"
-import { createAdminClient } from "@/lib/appwrite-comprehensive-fixes"
+import { createAdminClient } from "@/lib/server/appwrite"
 import { DATABASE_ID, COLLECTIONS } from "@/lib/appwrite-server"
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from "@/lib/api-security"
+import { z } from "zod"
+import { parseJsonBody } from "@/lib/api-security"
 
 export async function POST(request: NextRequest) {
   try {
     enforceSameOrigin(request)
     enforceRateLimit(request, { key: "pods:generate-course", max: 5, windowMs: 60 * 1000 })
     const auth = requireUser(request)
-    const { podId, youtubeUrl, courseTitle } = await request.json()
-
-    if (!podId || !youtubeUrl || !courseTitle) {
-      return NextResponse.json(
-        { error: "Missing required fields: podId, youtubeUrl, courseTitle" },
-        { status: 400 }
-      )
-    }
+    const { podId, youtubeUrl, courseTitle } = await parseJsonBody(request, z.object({ podId: z.string().min(1).max(255), youtubeUrl: z.string().url().max(500), courseTitle: z.string().trim().min(3).max(180) }))
 
     // Check if pod already has a course
     const { databases } = await createAdminClient()

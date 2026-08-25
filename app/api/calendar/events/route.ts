@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes'
+import { createAdminClient } from '@/lib/server/appwrite'
 import { ApiError, jsonError, jsonOk, parseJsonBody, requireOwnership, requireUser } from '@/lib/api-security'
 import { z } from 'zod'
 

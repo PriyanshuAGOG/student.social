@@ -3,16 +3,15 @@ import { getAppwriteServerConfig } from '@/lib/env'
 import { sendAppwriteVerificationEmail } from '@/lib/appwrite-verification'
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security'
 import { authErrorResponse } from '@/lib/auth-route-utils'
+import { z } from 'zod'
+import { parseJsonBody } from '@/lib/api-security'
 
 export async function POST(req: NextRequest) {
   try {
     enforceSameOrigin(req)
     enforceRateLimit(req, { key: 'auth:send-verification', max: 3, windowMs: 15 * 60 * 1000 })
 
-    const body = await req.json().catch(() => null)
-    if (!body) return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
-    const { userId } = body || {}
-    if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
+    const { userId } = await parseJsonBody(req, z.object({ userId: z.string().min(1).max(255) }))
 
     const auth = requireUser(req)
     requireOwnership(userId, auth.userId)

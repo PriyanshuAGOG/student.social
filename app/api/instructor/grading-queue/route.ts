@@ -8,12 +8,15 @@
  */
 
 import { Query } from 'node-appwrite';
-import { createAdminClient } from '@/lib/appwrite-comprehensive-fixes';
+import { createAdminClient } from '@/lib/server/appwrite';
 import { courseService } from '@/lib/course-service';
+import { z } from 'zod';
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireUser } from '@/lib/api-security';
 
 const DATABASE_ID = process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 
 interface GradingQueueItem {
+  id: string;
   submissionId: string;
   studentId: string;
   studentName: string;
@@ -29,6 +32,15 @@ interface GradingQueueItem {
   assignmentDifficulty: string;
   priority: 'high' | 'medium' | 'low';
   status: 'pending' | 'reviewing' | 'graded';
+  assessmentTitle: string;
+  lessonTitle: string;
+  submissionType: string;
+  submissionText: string;
+  submittedAt: string;
+  score: number;
+  feedback: string;
+  passed: boolean;
+  gradedAt?: string;
 }
 
 /**
@@ -38,17 +50,11 @@ interface GradingQueueItem {
  */
 export async function GET(request: Request) {
   try {
+    const auth = requireUser(request);
     const { searchParams } = new URL(request.url);
-    const instructorId = searchParams.get('instructorId');
+    const instructorId = auth.userId;
     const courseId = searchParams.get('courseId');
     const limit = parseInt(searchParams.get('limit') || '50', 10);
-
-    if (!instructorId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing instructorId parameter' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
 
     const { databases } = await createAdminClient();
 
@@ -81,7 +87,8 @@ export async function GET(request: Request) {
         (confidence > 0 && confidence < 0.7) ||
         (score >= 40 && score <= 60);
 
-      if (!needsReview) {
+      const isGraded = submission.status === 'Graded' || submission.status === 'graded';
+      if (!needsReview && !isGraded) {
         continue;
       }
 
@@ -113,6 +120,7 @@ export async function GET(request: Request) {
         }
 
         gradingQueue.push({
+          id: submission.$id,
           submissionId: submission.$id,
           studentId: submission.userId,
           studentName: `Student ${submission.userId.slice(0, 8)}`,
@@ -128,6 +136,15 @@ export async function GET(request: Request) {
           assignmentDifficulty: assignment.difficulty || 'medium',
           priority,
           status: submission.status === 'Graded' ? 'graded' : 'pending',
+          assessmentTitle: assignment.title || 'Assignment',
+          lessonTitle: course?.title || 'Course',
+          submissionType: assignment.type || 'unknown',
+          submissionText: submission.submissionText || '',
+          submittedAt: submission.submittedAt || submission.$createdAt,
+          score: Number(submission.manualScore ?? score ?? 0),
+          feedback: submission.aiGeneratedFeedback || '',
+          passed: Number(submission.manualScore ?? score ?? 0) >= 70,
+          gradedAt: submission.gradedAt,
         });
       } catch (err) {
         console.log('Error processing submission:', err);
@@ -159,6 +176,9 @@ export async function GET(request: Request) {
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return Response.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error('Error fetching grading queue:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Failed to fetch grading queue' }),
@@ -174,26 +194,25 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { submissionId, instructorId, grade, feedback, plagiarismScore } = body;
-
-    if (!submissionId || !instructorId || grade === undefined) {
-      return new Response(
-        JSON.stringify({
-          error: 'Missing required fields: submissionId, instructorId, grade',
-        }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (grade < 0 || grade > 100) {
-      return new Response(
-        JSON.stringify({ error: 'Grade must be between 0 and 100' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
+    enforceSameOrigin(request);
+    enforceRateLimit(request, { key: 'instructor:grade', max: 30, windowMs: 60_000 });
+    const auth = requireUser(request);
+    const { submissionId, grade, feedback, plagiarismScore } = await parseJsonBody(request, z.object({
+      submissionId: z.string().min(1).max(255),
+      grade: z.number().min(0).max(100),
+      feedback: z.string().trim().max(2000).default(''),
+      plagiarismScore: z.number().min(0).max(100).optional(),
+    }));
+    const instructorId = auth.userId;
 
     const { databases } = await createAdminClient();
+
+    const submission = await databases.getDocument(DATABASE_ID, 'assignment_submissions', submissionId);
+    const assignment = await databases.getDocument(DATABASE_ID, 'course_assignments', submission.assignmentId);
+    const course = await databases.getDocument(DATABASE_ID, 'courses', assignment.courseId);
+    if (course.instructorId !== instructorId) {
+      throw new ApiError(403, 'FORBIDDEN', 'This submission does not belong to one of your courses');
+    }
 
     // Update submission with instructor grade
     const updated = await databases.updateDocument(
@@ -211,12 +230,6 @@ export async function POST(request: Request) {
     );
 
     // Notify student
-    const submission = await databases.getDocument(
-      DATABASE_ID,
-      'assignment_submissions',
-      submissionId
-    );
-
     try {
       await databases.createDocument(
         DATABASE_ID,
@@ -245,6 +258,9 @@ export async function POST(request: Request) {
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return Response.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error('Error submitting grade:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Failed to submit grade' }),

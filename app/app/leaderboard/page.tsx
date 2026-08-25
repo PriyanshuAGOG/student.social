@@ -5,13 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Trophy, Medal, Crown, Flame, Clock, BookOpen, TrendingUp, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { podService, profileService } from "@/lib/appwrite"
 import { rankLearners, type ScorePeriod } from "@/lib/engagement-scoring"
+import { AppPageHeader } from "@/components/internal/AppPageHeader"
 
 type LeaderboardUser = {
   rank: number
@@ -132,25 +132,10 @@ export default function LeaderboardPage() {
   return (
     <div className="flex-1 p-4 md:p-8 pt-6">
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-4">
-            <SidebarTrigger className="-ml-1" />
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight">Leaderboard</h2>
-              <p className="text-muted-foreground">Ranked from points, streaks, study hours, pod participation, and recent activity</p>
-            </div>
-          </div>
-          <select
-            value={selectedPeriod}
-            onChange={(e) => setSelectedPeriod(e.target.value as ScorePeriod)}
-            aria-label="Leaderboard time period"
-            className="relative z-50 px-3 py-2 border border-border rounded-md bg-background shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            <option value="weekly">This Week</option>
-            <option value="monthly">This Month</option>
-            <option value="all-time">All Time</option>
-          </select>
-        </div>
+        <AppPageHeader
+          title="Leaderboard"
+          actions={<label className="student-page-header-select"><span>Time range</span><select value={selectedPeriod} onChange={(e) => setSelectedPeriod(e.target.value as ScorePeriod)} aria-label="Leaderboard time period"><option value="weekly">This week</option><option value="monthly">This month</option><option value="all-time">All time</option></select></label>}
+        />
 
         <Tabs defaultValue="global" className="space-y-4">
           <TabsList>

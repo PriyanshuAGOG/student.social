@@ -21,7 +21,7 @@
 **Key Files:**
 - Main Pods Listing: `app/app/pods/page.tsx` (640 lines)
 - Pod Detail Page: `app/app/pods/[podId]/page.tsx` (1692 lines - NEEDS REFACTOR)
-- Backend Services: `lib/appwrite.ts` (jitsiService)
+- Calling: authenticated pod chat room plus the canonical LiveKit session API
 - UI Components: `components/ui/`
 
 ---
@@ -116,7 +116,7 @@
 - [x] Add "reconnecting" state with spinner and retry logic
 
 #### Backend Tasks
-- [x] Verify `jitsiService.createPodMeeting()` works correctly
+- [x] Route scheduled pod meetings through the canonical LiveKit call surface
 - [x] Add meeting state to pod document (active/inactive)
 - [x] Store meeting history for analytics
 - [x] Add participant tracking per meeting

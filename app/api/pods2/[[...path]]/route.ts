@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { ID, Permission, Query, Role } from "node-appwrite"
 import { InputFile } from "node-appwrite/file"
-import { createAdminClient } from "@/lib/appwrite-comprehensive-fixes"
+import { createAdminClient } from "@/lib/server/appwrite"
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from "@/lib/api-security"
 import { calculateLeaderboard, calculatePodCompletionRate, calculatePodHealthScore } from "@/lib/pods/calculations"
 import { extractYouTubeId, generateStarterRoadmap } from "@/lib/pods/generator"
@@ -9,6 +9,7 @@ import { POD_COLLECTIONS, type PodRole } from "@/lib/pods/types"
 import { normalizeAppwriteEndpoint } from "@/lib/env"
 import { scanUploadMeta } from "@/lib/upload-security"
 import { generateLiveKitToken } from "@/lib/livekit-service"
+import { fuzzyIncludes } from "@/lib/search-utils"
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || "peerspark-main-db"
 const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || "profiles"
@@ -57,9 +58,24 @@ function errorResponse(error: unknown) {
   return NextResponse.json({ success: false, error: { code: "INTERNAL_ERROR", message } }, { status: 500 })
 }
 
-function publicPodPermissions(creatorId: string) {
+function podMemberIds(pod: any) {
+  return Array.from(new Set([
+    String(pod?.creatorId || ''),
+    ...(Array.isArray(pod?.members) ? pod.members.map(String) : []),
+  ].filter(Boolean)))
+}
+
+function podReadPermissions(pod: any) {
+  if (pod?.visibility === 'public' || pod?.isPublic === true) return [Permission.read(Role.any())]
+  return podMemberIds(pod).map((userId) => Permission.read(Role.user(userId)))
+}
+
+function podDocumentPermissions(creatorId: string, memberIds: string[], visibility: unknown) {
+  const readPermissions = visibility === 'public'
+    ? [Permission.read(Role.any())]
+    : Array.from(new Set([creatorId, ...memberIds].filter(Boolean))).map((userId) => Permission.read(Role.user(userId)))
   return [
-    Permission.read(Role.any()),
+    ...readPermissions,
     Permission.update(Role.user(creatorId)),
     Permission.delete(Role.user(creatorId)),
   ]
@@ -86,12 +102,24 @@ async function safeList(databases: any, collection: string, queries: string[] = 
 }
 
 async function safeCreate(databases: any, collection: string, id: string, data: Record<string, unknown>, permissions?: string[]) {
+  let effectivePermissions = permissions
+  if (!effectivePermissions && typeof data.podId === 'string' && data.podId) {
+    const pod = await getPod(databases, data.podId)
+    if (collection === POD_COLLECTIONS.notificationsQueue && typeof data.userId === 'string' && data.userId) {
+      effectivePermissions = [Permission.read(Role.user(data.userId))]
+    } else if (collection === POD_COLLECTIONS.invites) {
+      const readers = [pod.creatorId, data.invitedBy, data.invitedUserId].map(String).filter(Boolean)
+      effectivePermissions = Array.from(new Set(readers)).map((userId) => Permission.read(Role.user(userId)))
+    } else {
+      effectivePermissions = podReadPermissions(pod)
+    }
+  }
   try {
-    return await databases.createDocument(DATABASE_ID, collection, id, data, permissions)
+    return await databases.createDocument(DATABASE_ID, collection, id, data, effectivePermissions)
   } catch (error: any) {
     if (String(error?.message || "").includes("Unknown attribute")) {
       const cleaned = Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined && value !== null))
-      return databases.createDocument(DATABASE_ID, collection, id, cleaned, permissions)
+      return databases.createDocument(DATABASE_ID, collection, id, cleaned, effectivePermissions)
     }
     throw error
   }
@@ -282,9 +310,18 @@ export async function GET(request: NextRequest, ctx: Params) {
       const queries = [Query.orderDesc("weeklyActivityScore"), Query.orderDesc("createdAt"), Query.limit(80)]
       if (category && category !== "All") queries.unshift(Query.equal("category", category))
       if (difficulty && difficulty !== "All") queries.unshift(Query.equal("difficulty", difficulty))
-      if (search) queries.unshift(Query.search("name", search))
       const result = await safeList(databases, POD_COLLECTIONS.pods, queries)
-      const pods = result.documents.map(normalizePod)
+      const listedPods = result.documents.map(normalizePod)
+      const pods = search
+        ? listedPods.filter((pod: any) => fuzzyIncludes([
+            pod.name,
+            pod.shortOutcome,
+            pod.description,
+            pod.category,
+            pod.difficulty,
+            ...(Array.isArray(pod.tags) ? pod.tags : []),
+          ].filter(Boolean).join(" "), search))
+        : listedPods
 
       let myPods: any[] = []
       try {
@@ -443,7 +480,13 @@ export async function POST(request: NextRequest, ctx: Params) {
         updatedAt: now(),
       }, memberDocPermissions(auth.userId, pod.creatorId))
       const members = Array.isArray(pod.members) ? Array.from(new Set([...pod.members, auth.userId])) : [auth.userId]
-      await databases.updateDocument(DATABASE_ID, POD_COLLECTIONS.pods, pod.$id, { members, memberCount: members.length, activeMemberCount: members.length, updatedAt: now() }).catch(() => null)
+      await databases.updateDocument(
+        DATABASE_ID,
+        POD_COLLECTIONS.pods,
+        pod.$id,
+        { members, memberCount: members.length, activeMemberCount: members.length, updatedAt: now() },
+        podDocumentPermissions(pod.creatorId, members, pod.visibility),
+      ).catch(() => null)
       await databases.updateDocument(DATABASE_ID, POD_COLLECTIONS.invites, invite.$id, { status: "accepted", invitedUserId: auth.userId, updatedAt: now() }).catch(() => null)
       return response({ pod: normalizePod(pod), membership })
     }
@@ -463,7 +506,7 @@ export async function POST(request: NextRequest, ctx: Params) {
         POD_RESOURCES_BUCKET_ID,
         ID.unique(),
         InputFile.fromBuffer(Buffer.from(await file.arrayBuffer()), fileName),
-        [Permission.read(Role.users()), Permission.update(Role.user(auth.userId)), Permission.delete(Role.user(auth.userId))],
+        [...podReadPermissions(pod), Permission.update(Role.user(auth.userId)), Permission.delete(Role.user(auth.userId))],
       )
       const resource = await safeCreate(databases, POD_COLLECTIONS.resources, ID.unique(), {
         podId: pod.$id,
@@ -501,7 +544,7 @@ export async function POST(request: NextRequest, ctx: Params) {
         POD_CHAT_ATTACHMENTS_BUCKET_ID,
         ID.unique(),
         InputFile.fromBuffer(Buffer.from(await file.arrayBuffer()), fileName),
-        [Permission.read(Role.users()), Permission.update(Role.user(auth.userId)), Permission.delete(Role.user(auth.userId))],
+        [...podReadPermissions(pod), Permission.update(Role.user(auth.userId)), Permission.delete(Role.user(auth.userId))],
       )
       return response({ attachment: { fileId: uploaded.$id, fileName, fileUrl: fileViewUrl(POD_CHAT_ATTACHMENTS_BUCKET_ID, uploaded.$id), fileSize: file.size, fileType: file.type } }, 201)
     }
@@ -511,12 +554,16 @@ export async function POST(request: NextRequest, ctx: Params) {
     if (path.length === 0) {
       const name = String(body.name || "").trim()
       if (name.length < 3) throw new ApiError(400, "INVALID_POD", "Pod name must be at least 3 characters.")
+      const shortOutcome = String(body.shortOutcome || body.outcome || "").trim()
+      if (shortOutcome.length < 10 || shortOutcome.length > 180) throw new ApiError(400, "INVALID_POD", "Short outcome must be between 10 and 180 characters.")
+      const description = String(body.description || "").trim()
+      if (description.length < 20 || description.length > 500) throw new ApiError(400, "INVALID_POD", "Description must be between 20 and 500 characters.")
       const slug = slugify(String(body.slug || name))
       const pod = await safeCreate(databases, POD_COLLECTIONS.pods, ID.unique(), {
         name,
         slug,
-        shortOutcome: String(body.shortOutcome || body.outcome || "Make measurable progress with a focused learning cohort.").slice(0, 180),
-        description: String(body.description || ""),
+        shortOutcome,
+        description,
         category: String(body.category || "General"),
         difficulty: String(body.difficulty || "beginner").toLowerCase(),
         language: String(body.language || "English"),
@@ -546,7 +593,7 @@ export async function POST(request: NextRequest, ctx: Params) {
         nextSessionAt: body.firstSessionAt || "",
         createdAt: now(),
         updatedAt: now(),
-      }, publicPodPermissions(auth.userId))
+      }, podDocumentPermissions(auth.userId, [auth.userId], String(body.visibility || "public")))
 
       await safeCreate(databases, POD_COLLECTIONS.memberships, ID.unique(), {
         podId: pod.$id,
@@ -662,7 +709,13 @@ export async function POST(request: NextRequest, ctx: Params) {
         updatedAt: now(),
       }, memberDocPermissions(auth.userId, pod.creatorId))
       const members = Array.isArray(pod.members) ? Array.from(new Set([...pod.members, auth.userId])) : [auth.userId]
-      await databases.updateDocument(DATABASE_ID, POD_COLLECTIONS.pods, pod.$id, { members, memberCount: members.length, activeMemberCount: members.length, updatedAt: now() }).catch(() => null)
+      await databases.updateDocument(
+        DATABASE_ID,
+        POD_COLLECTIONS.pods,
+        pod.$id,
+        { members, memberCount: members.length, activeMemberCount: members.length, updatedAt: now() },
+        podDocumentPermissions(pod.creatorId, members, pod.visibility),
+      ).catch(() => null)
       return response({ membership, alreadyMember: false })
     }
 
@@ -791,7 +844,7 @@ export async function POST(request: NextRequest, ctx: Params) {
         type: String(body.type || "link"),
         storageFileId: String(body.storageFileId || ""),
         url: String(body.url || ""),
-        content: String(body.content || ""),
+        content: String(body.content || "").slice(0, 7000),
         tags: Array.isArray(body.tags) ? body.tags.slice(0, 20) : [],
         visibility: String(body.visibility || "pod"),
         attachedToType: String(body.attachedToType || "none"),
@@ -895,7 +948,14 @@ export async function PATCH(request: NextRequest, ctx: Params) {
       await assertPodRole(databases, pod.$id, auth.userId, ["owner", "mentor"])
       const allowed = ["name", "shortOutcome", "description", "category", "difficulty", "tags", "visibility", "approvalRequired", "maxMembers", "weeklyRhythm", "defaultSessionDay", "defaultSessionTime", "timezone", "status"]
       const update = Object.fromEntries(Object.entries(body).filter(([key]) => allowed.includes(key)))
-      const updated = await databases.updateDocument(DATABASE_ID, POD_COLLECTIONS.pods, pod.$id, { ...update, updatedAt: now() })
+      const visibility = update.visibility ?? pod.visibility
+      const updated = await databases.updateDocument(
+        DATABASE_ID,
+        POD_COLLECTIONS.pods,
+        pod.$id,
+        { ...update, updatedAt: now() },
+        podDocumentPermissions(pod.creatorId, podMemberIds(pod), visibility),
+      )
       return response({ pod: normalizePod(updated) })
     }
 

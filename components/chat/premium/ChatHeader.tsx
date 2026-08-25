@@ -1,14 +1,7 @@
 "use client";
 
-import React from "react";
-import {
-  MoreVertical,
-  Phone,
-  Search,
-  Settings,
-  Video,
-  VolumeX,
-} from "lucide-react";
+import Image from "next/image";
+import { ArrowLeft, MoreVertical, Phone, Search, Settings, Video, VolumeX } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +26,29 @@ interface ChatHeaderProps {
   callStatusText?: string;
 }
 
+function HeaderIconButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      className="inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-40"
+      title={label}
+      aria-label={label}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function ChatHeader({
   title,
   subtitle,
@@ -46,122 +62,49 @@ export function ChatHeader({
   onMuteConversation,
   onBack,
   showBackButton = false,
-  callStatusText = "LiveKit-ready voice/video room",
+  callStatusText = "Voice and video ready",
 }: ChatHeaderProps) {
   const memberSubtitle = totalMembers
     ? `${onlineCount || 0} online · ${totalMembers} member${totalMembers === 1 ? "" : "s"}`
-    : subtitle;
+    : subtitle || callStatusText;
 
   return (
-    <div className="border-b border-border/70 bg-card/95 px-4 py-3 shadow-sm backdrop-blur-xl md:px-6">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          {showBackButton && (
-            <button
-              type="button"
-              onClick={onBack}
-              className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Back to conversations"
-            >
-              <svg
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 19l-7-7 7-7"
-                />
-              </svg>
-            </button>
-          )}
+    <header className="flex h-[62px] shrink-0 items-center justify-between gap-3 border-b border-border/50 bg-card/92 px-2.5 backdrop-blur-xl md:px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        {showBackButton ? (
+          <HeaderIconButton label="Back to conversations" onClick={onBack}><ArrowLeft className="h-5 w-5" /></HeaderIconButton>
+        ) : null}
 
-          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary/80 via-cyan-500 to-violet-500 text-sm font-semibold text-primary-foreground shadow-md">
-            {avatar?.startsWith("http") ? (
-              <img
-                src={avatar}
-                alt={title}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span>{title[0] || "C"}</span>
-            )}
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-sm font-semibold text-foreground md:text-base">
-              {title}
-            </h1>
-            <p className="truncate text-xs text-muted-foreground">
-              {memberSubtitle || callStatusText}
-            </p>
-          </div>
+        <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[linear-gradient(145deg,#eadfe7,#c7aebd)] text-sm font-semibold text-[#4f3547] dark:bg-[linear-gradient(145deg,#76556d,#4a3544)] dark:text-white">
+          {avatar ? <Image src={avatar} alt={title} fill unoptimized sizes="40px" className="object-cover" /> : <span>{title.trim().charAt(0).toUpperCase() || "P"}</span>}
         </div>
 
-        <div className="flex flex-shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={onVideoCall}
-            disabled={!onVideoCall}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-sm transition hover:border-cyan-500/60 hover:bg-cyan-500/10 hover:text-cyan-600 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
-            title="Start video call"
-            aria-label="Start video call"
-          >
-            <Video className="h-5 w-5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={onCall}
-            disabled={!onCall}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-sm transition hover:border-emerald-500/60 hover:bg-emerald-500/10 hover:text-emerald-600 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-            title="Start voice call"
-            aria-label="Start voice call"
-          >
-            <Phone className="h-5 w-5" />
-          </button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                title="More options"
-                aria-label="Open conversation options"
-              >
-                <MoreVertical className="h-5 w-5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="z-50 w-60">
-              <DropdownMenuItem
-                onSelect={onSearchMessages}
-                className="cursor-pointer"
-              >
-                <Search className="mr-2 h-4 w-4" />
-                Search messages
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={onMuteConversation}
-                className="cursor-pointer"
-              >
-                <VolumeX className="mr-2 h-4 w-4" />
-                Mute conversation
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={onMoreOptions}
-                className="cursor-pointer"
-              >
-                <Settings className="mr-2 h-4 w-4" />
-                Chat settings & details
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="min-w-0">
+          <h1 className="truncate text-[15px] font-semibold tracking-[-0.015em] text-foreground md:text-base">{title}</h1>
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground md:text-xs">
+            {onlineCount ? <span className="text-[#78815f] dark:text-[#b8c39a]">{memberSubtitle}</span> : memberSubtitle}
+          </p>
         </div>
       </div>
-    </div>
+
+      <div className="flex shrink-0 items-center">
+        <HeaderIconButton label="Start video call" onClick={onVideoCall}><Video className="h-[19px] w-[19px]" /></HeaderIconButton>
+        <HeaderIconButton label="Start voice call" onClick={onCall}><Phone className="h-[18px] w-[18px]" /></HeaderIconButton>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className="inline-flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Open conversation options">
+              <MoreVertical className="h-5 w-5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="z-50 w-60 rounded-2xl p-1.5">
+            <DropdownMenuItem onSelect={onSearchMessages} className="cursor-pointer rounded-xl"><Search className="mr-2 h-4 w-4" />Search messages</DropdownMenuItem>
+            <DropdownMenuItem onSelect={onMuteConversation} className="cursor-pointer rounded-xl"><VolumeX className="mr-2 h-4 w-4" />Mute conversation</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onMoreOptions} className="cursor-pointer rounded-xl"><Settings className="mr-2 h-4 w-4" />Chat details</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </header>
   );
 }

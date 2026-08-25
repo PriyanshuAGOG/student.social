@@ -19,7 +19,7 @@ export function OnlineIndicator({ isOnline = false, size = 'md', className = '' 
 
   return (
     <div
-      className={`${sizeClasses[size]} rounded-full bg-green-500 border-2 border-black animate-pulse ${className}`}
+      className={`${sizeClasses[size]} rounded-full bg-[#8f9b6d] border-2 border-black animate-pulse ${className}`}
     />
   )
 }
