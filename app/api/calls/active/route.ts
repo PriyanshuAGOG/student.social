@@ -9,15 +9,17 @@ const CALL_SESSIONS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALL_SESSIONS_COLLEC
 const CALL_PARTICIPANTS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALL_PARTICIPANTS_COLLECTION_ID || 'call_participants'
 const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'
 
-function normalizeCall(session: any, userId: string, caller: any) {
+function normalizeCall(session: any, userId: string, caller: any, participantState?: string) {
   const mediaType = session.mediaType === 'voice' ? 'voice' : 'video'
+  const effectiveState = session.callerId !== userId && participantState === 'invited' ? 'ringing' : session.state
   return {
     ...session,
     id: session.$id,
     chatId: session.roomId,
     roomName: session.providerSessionId,
     callType: mediaType === 'voice' ? 'audio' : 'video',
-    status: session.state === 'active' ? 'accepted' : session.state,
+    state: effectiveState,
+    status: effectiveState === 'active' ? 'accepted' : effectiveState,
     direction: session.callerId === userId ? 'outgoing' : 'incoming',
     participantIds: parseStringList(session.participantIds),
     caller,
@@ -52,6 +54,9 @@ export async function GET(req: NextRequest) {
     const activeParticipantSessionIds = new Set(
       (participantRecords.documents || []).map((participant: any) => participant.callSessionId),
     )
+    const participantStateBySessionId = new Map(
+      (participantRecords.documents || []).map((participant: any) => [participant.callSessionId, participant.state]),
+    )
 
     const sessions = new Map<string, any>()
     for (const session of [...(asCaller.documents || []), ...participantSessions]) {
@@ -70,7 +75,7 @@ export async function GET(req: NextRequest) {
         }
         callerProfiles.set(session.callerId, caller)
       }
-      return normalizeCall(session, auth.userId, caller)
+      return normalizeCall(session, auth.userId, caller, participantStateBySessionId.get(session.$id))
     }))
 
     return NextResponse.json({ success: true, calls, count: calls.length }, { headers: { 'Cache-Control': 'private, no-store' } })

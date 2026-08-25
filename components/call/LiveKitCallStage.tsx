@@ -23,12 +23,15 @@ import {
   Mic,
   MicOff,
   PhoneOff,
+  Search,
   Settings2,
   ShieldCheck,
   Users,
+  UserPlus,
   Video,
   X,
 } from 'lucide-react'
+import { callService } from '@/lib/appwrite/calls'
 
 interface LiveKitCallStageProps {
   sessionId: string
@@ -54,6 +57,14 @@ interface TokenPayload {
     mediaType?: 'voice' | 'video'
     state?: string
   }
+}
+
+interface InviteCandidate {
+  userId: string
+  name: string
+  username?: string
+  avatar?: string | null
+  invited?: boolean
 }
 
 const CALL_FEATURES = [
@@ -115,11 +126,19 @@ export function LiveKitCallStage({
   const [micEnabled, setMicEnabled] = useState(true)
   const [cameraEnabled, setCameraEnabled] = useState(mediaType === 'video')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [inviteQuery, setInviteQuery] = useState('')
+  const [inviteCandidates, setInviteCandidates] = useState<InviteCandidate[]>([])
+  const [isLoadingInvites, setIsLoadingInvites] = useState(false)
+  const [invitingUserId, setInvitingUserId] = useState('')
+  const [supportsAudioOutputSelection, setSupportsAudioOutputSelection] = useState(false)
   const [videoFit, setVideoFit] = useState<'fit' | 'fill'>('fit')
   const [copied, setCopied] = useState(false)
   const [e2eeOptions, setE2eeOptions] = useState<E2EEOptions | undefined>()
   const callShellRef = useRef<HTMLDivElement | null>(null)
   const e2eeWorkerRef = useRef<Worker | null>(null)
+  const leaveInFlightRef = useRef(false)
+  const reportedDiagnosticsRef = useRef(new Set<string>())
 
   const effectiveMediaType = tokenPayload?.session?.mediaType || mediaType
   const isVideoCall = effectiveMediaType === 'video'
@@ -137,11 +156,39 @@ export function LiveKitCallStage({
     setCameraEnabled(mediaType === 'video')
     setMicEnabled(true)
     setSettingsOpen(false)
+    setInviteOpen(false)
+    setInviteQuery('')
+    setInviteCandidates([])
     setVideoFit('fit')
     setE2eeOptions(undefined)
     e2eeWorkerRef.current?.terminate()
     e2eeWorkerRef.current = null
+    leaveInFlightRef.current = false
+    reportedDiagnosticsRef.current.clear()
   }, [sessionId, mediaType])
+
+  useEffect(() => {
+    setSupportsAudioOutputSelection(typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype)
+  }, [])
+
+  useEffect(() => {
+    if (!inviteOpen || !isJoined) return
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      setIsLoadingInvites(true)
+      void callService.getInviteCandidates(sessionId, inviteQuery).then((payload: any) => {
+        if (!cancelled) setInviteCandidates(Array.isArray(payload?.candidates) ? payload.candidates : [])
+      }).catch((cause: any) => {
+        if (!cancelled) setError(cause?.message || 'Unable to load people for this call')
+      }).finally(() => {
+        if (!cancelled) setIsLoadingInvites(false)
+      })
+    }, inviteQuery ? 250 : 0)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [inviteOpen, inviteQuery, isJoined, sessionId])
 
   useEffect(() => () => {
     e2eeWorkerRef.current?.terminate()
@@ -189,6 +236,30 @@ export function LiveKitCallStage({
     }).catch(() => undefined)
   }, [sessionId])
 
+  const reportCallIssue = useCallback((kind: string, message: string) => {
+    const roomId = tokenPayload?.session?.roomId
+    const key = `${kind}:${message}`
+    if (!roomId || reportedDiagnosticsRef.current.has(key)) return
+    reportedDiagnosticsRef.current.add(key)
+    void fetch('/api/calls/diagnostics', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        callSessionId: sessionId,
+        roomId,
+        metrics: {
+          kind,
+          mediaType: effectiveMediaType,
+          viewport: `${window.innerWidth}x${window.innerHeight}`,
+          orientation: window.screen.orientation?.type || 'unknown',
+          online: navigator.onLine,
+        },
+        logs: [{ level: 'error', message: message.slice(0, 500), timestamp: new Date().toISOString() }],
+      }),
+    }).catch(() => undefined)
+  }, [effectiveMediaType, sessionId, tokenPayload?.session?.roomId])
+
   const joinCall = async () => {
     setIsJoining(true)
     setError(null)
@@ -219,6 +290,8 @@ export function LiveKitCallStage({
   }
 
   const leaveCall = useCallback(async (endForEveryone = false) => {
+    if (leaveInFlightRef.current) return
+    leaveInFlightRef.current = true
     await markSession(endForEveryone ? 'end' : 'leave')
     setIsJoined(false)
     setTokenPayload(null)
@@ -227,6 +300,24 @@ export function LiveKitCallStage({
     e2eeWorkerRef.current = null
     onClose()
   }, [markSession, onClose])
+
+  const handleDisconnected = useCallback(() => {
+    if (leaveInFlightRef.current) return
+    void leaveCall(false)
+  }, [leaveCall])
+
+  const inviteParticipant = async (candidate: InviteCandidate) => {
+    setInvitingUserId(candidate.userId)
+    setError(null)
+    try {
+      await callService.inviteParticipant(sessionId, candidate.userId)
+      setInviteCandidates((current) => current.map((entry) => entry.userId === candidate.userId ? { ...entry, invited: true } : entry))
+    } catch (cause: any) {
+      setError(cause?.message || 'Unable to invite this person')
+    } finally {
+      setInvitingUserId('')
+    }
+  }
 
   const copyInvite = async () => {
     try {
@@ -361,9 +452,17 @@ export function LiveKitCallStage({
           options={{ adaptiveStream: true, dynacast: true, e2ee: e2eeOptions }}
           connectOptions={{ autoSubscribe: true, maxRetries: 8 }}
           onConnected={() => void markSession('join')}
-          onDisconnected={() => void leaveCall(false)}
-          onEncryptionError={(encryptionError) => setError(`Call encryption failed: ${encryptionError.message}`)}
-          onMediaDeviceFailure={(_, kind) => setError(`Unable to use the selected ${kind || 'media'} device. Check browser permissions.`)}
+          onDisconnected={handleDisconnected}
+          onEncryptionError={(encryptionError) => {
+            const message = `Call encryption failed: ${encryptionError.message}`
+            setError(message)
+            reportCallIssue('encryption', message)
+          }}
+          onMediaDeviceFailure={(_, kind) => {
+            const message = `Unable to use the selected ${kind || 'media'} device. Check browser permissions.`
+            setError(message)
+            reportCallIssue('media-device', message)
+          }}
           className="peer-call-room relative flex h-full min-h-0 flex-col"
           data-video-fit={videoFit}
           data-lk-theme="default"
@@ -398,6 +497,9 @@ export function LiveKitCallStage({
                   <Maximize2 className="h-5 w-5" />
                 </button>
               ) : null}
+              <button type="button" onClick={() => { setSettingsOpen(false); setInviteOpen(true) }} className="peer-call-icon-button" aria-label="Add participant">
+                <UserPlus className="h-5 w-5" />
+              </button>
               <button type="button" onClick={copyInvite} className="peer-call-icon-button" aria-label="Copy call invite">
                 {copied ? <Check className="h-5 w-5 text-[#8fbdb7]" /> : <Copy className="h-5 w-5" />}
               </button>
@@ -427,10 +529,10 @@ export function LiveKitCallStage({
                     <p className="mb-2 text-xs font-medium uppercase tracking-[0.15em] text-white/35">Microphone</p>
                     <MediaDeviceSelect kind="audioinput" />
                   </div>
-                  <div>
+                  {supportsAudioOutputSelection ? <div>
                     <p className="mb-2 text-xs font-medium uppercase tracking-[0.15em] text-white/35">Speaker</p>
                     <MediaDeviceSelect kind="audiooutput" />
-                  </div>
+                  </div> : null}
                   {isVideoCall ? (
                     <div>
                       <p className="mb-2 text-xs font-medium uppercase tracking-[0.15em] text-white/35">Camera</p>
@@ -447,6 +549,41 @@ export function LiveKitCallStage({
                       </button>
                     ) : null}
                   </div>
+                </div>
+              </aside>
+            </>
+          ) : null}
+
+          {inviteOpen ? (
+            <>
+              <button type="button" className="absolute inset-0 z-30 bg-black/35 backdrop-blur-[2px]" onClick={() => setInviteOpen(false)} aria-label="Close participant invite" />
+              <aside className="peer-call-settings absolute bottom-0 right-0 top-0 z-40 w-full max-w-sm overflow-y-auto border-l border-white/[0.08] bg-[#292c28]/98 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl backdrop-blur-2xl">
+                <div className="mb-5 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">Add to call</h2>
+                    <p className="mt-1 text-xs text-white/45">Invite another Student.social member</p>
+                  </div>
+                  <button type="button" onClick={() => setInviteOpen(false)} className="peer-call-icon-button" aria-label="Close participant invite"><X className="h-5 w-5" /></button>
+                </div>
+                <label className="flex h-11 items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.05] px-3 text-white/60 focus-within:border-[#8fbdb7]/40">
+                  <Search className="h-4 w-4" />
+                  <input value={inviteQuery} onChange={(event) => setInviteQuery(event.target.value)} placeholder="Search name or username" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/30" aria-label="Search people to invite" />
+                </label>
+                <div className="mt-4 space-y-2">
+                  {isLoadingInvites ? <div className="flex items-center justify-center py-10 text-white/45"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> Loading people</div> : null}
+                  {!isLoadingInvites && inviteCandidates.length === 0 ? <p className="py-10 text-center text-sm text-white/40">No people found.</p> : null}
+                  {!isLoadingInvites ? inviteCandidates.map((candidate) => (
+                    <div key={candidate.userId} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3">
+                      <CallIdentity title={candidate.name} size="small" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{candidate.name}</p>
+                        {candidate.username ? <p className="truncate text-xs text-white/40">@{candidate.username}</p> : null}
+                      </div>
+                      <button type="button" onClick={() => void inviteParticipant(candidate)} disabled={invitingUserId === candidate.userId} className="h-9 rounded-full bg-[#8fbdb7] px-3 text-xs font-semibold text-[#182826] disabled:opacity-55">
+                        {invitingUserId === candidate.userId ? 'Inviting…' : candidate.invited ? 'Ring again' : 'Invite'}
+                      </button>
+                    </div>
+                  )) : null}
                 </div>
               </aside>
             </>

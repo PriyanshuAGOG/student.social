@@ -1,5 +1,5 @@
 // Service Worker for Student.social PWA
-const CACHE_VERSION = 'student-social-v4';
+const CACHE_VERSION = 'student-social-v5';
 const RUNTIME_CACHE = 'student-social-runtime';
 
 // Assets to cache on install
@@ -168,7 +168,7 @@ self.addEventListener('push', (event) => {
     requireInteraction: incomingCall || Boolean(data.requireInteraction),
     renotify: incomingCall,
     silent: false,
-    vibrate: incomingCall ? [420, 180, 420, 180, 720] : [180, 90, 180],
+    vibrate: incomingCall ? [420, 160, 420, 720, 420, 160, 420] : [180, 90, 180],
     timestamp: Date.now(),
     actions: incomingCall ? [
       { action: 'accept-call', title: 'Answer' },

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Query } from 'node-appwrite'
+import { ID, Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { z } from 'zod'
 import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireUser } from '@/lib/api-security'
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     const doc = await databases.createDocument(
       DATABASE_ID,
       process.env.NEXT_PUBLIC_CALL_DIAGNOSTICS_COLLECTION_ID || 'call_diagnostics',
-      'unique()',
+      ID.unique(),
       {
         callSessionId,
         roomId,

@@ -54,7 +54,10 @@ export function assertCallActionAllowed(session: any, userId: string, action: Ca
     throw new Error('CALL_ALREADY_FINISHED')
   }
   if (action === 'end' && !isCaller) throw new Error('CALL_END_REQUIRES_CALLER')
-  if (action === 'accept' && (isCaller || state !== 'ringing')) throw new Error('CALL_CANNOT_ACCEPT')
+  // A participant can be invited after a group call is already active. Their
+  // personal participant record is still "invited", so accepting remains a
+  // valid transition without moving the shared session backwards to ringing.
+  if (action === 'accept' && (isCaller || !['ringing', 'active'].includes(state))) throw new Error('CALL_CANNOT_ACCEPT')
   if (action === 'decline' && (isCaller || state !== 'ringing')) throw new Error('CALL_CANNOT_DECLINE')
   if (action === 'join' && !['ringing', 'active'].includes(state)) throw new Error('CALL_CANNOT_JOIN')
 }

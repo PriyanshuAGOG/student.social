@@ -30,6 +30,16 @@ test('invitee accept activates a ringing call', () => {
   assert.equal(update.acceptedAt, '2026-08-22T00:00:00.000Z')
 })
 
+test('a late invitee can accept an already active group call', () => {
+  const active = { ...base, state: 'active', participantIds: ['guest-1', 'guest-2'] }
+  assert.doesNotThrow(() => assertCallActionAllowed(active, 'guest-2', 'accept'))
+  assert.deepEqual(getSessionUpdates(active, 'guest-2', 'accept', '2026-08-25T10:00:00.000Z'), {
+    lastActivityAt: '2026-08-25T10:00:00.000Z',
+    updatedAt: '2026-08-25T10:00:00.000Z',
+    acceptedAt: '2026-08-25T10:00:00.000Z',
+  })
+})
+
 test('terminal calls reject joining but allow idempotent leave', () => {
   const ended = { ...base, state: 'ended' }
   assert.throws(() => assertCallActionAllowed(ended, 'student-a', 'join'), /CALL_ALREADY_FINISHED/)

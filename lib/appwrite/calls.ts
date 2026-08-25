@@ -37,4 +37,17 @@ export const callService = {
     const response = await apiJson<any>(`/api/calls/sessions?roomId=${encodeURIComponent(roomId)}&limit=${encodeURIComponent(String(limit))}`)
     return { documents: response.sessions || response.documents || [], total: response.total || 0 }
   },
+
+  async getInviteCandidates(sessionId: string, query = '') {
+    if (!sessionId) throw new Error('Session ID is required')
+    return apiJson(`/api/calls/sessions/${encodeURIComponent(sessionId)}/invite?q=${encodeURIComponent(query)}`)
+  },
+
+  async inviteParticipant(sessionId: string, userId: string) {
+    if (!sessionId || !userId) throw new Error('Session and participant are required')
+    return apiJson(`/api/calls/sessions/${encodeURIComponent(sessionId)}/invite`, {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    })
+  },
 }

@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
 import { deriveCallEncryptionMaterial, generateLiveKitToken } from '@/lib/livekit-service'
-import { canAccessCall, isCallExpired, parseStringList, TERMINAL_CALL_STATES } from '@/lib/calls/domain'
+import { canAccessCall, isCallExpired, TERMINAL_CALL_STATES } from '@/lib/calls/domain'
 import { checkDurableRateLimit } from '@/lib/server/rate-limit'
 import { z } from 'zod'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
-const CHAT_ROOMS_COLLECTION_ID = process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms'
 const CALL_SESSIONS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALL_SESSIONS_COLLECTION_ID || 'call_sessions'
 const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'
 
@@ -41,12 +40,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ses
     if (!canAccessCall(session, auth.userId)) throw new ApiError(403, 'FORBIDDEN', 'You are not invited to this call')
     if (TERMINAL_CALL_STATES.has(session.state)) throw new ApiError(409, 'CALL_FINISHED', 'This call has finished')
     if (isCallExpired(session) && session.callerId !== auth.userId) throw new ApiError(410, 'CALL_EXPIRED', 'This call was not answered in time')
-
-    const room = await databases.getDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, session.roomId)
-    const members = parseStringList(room?.members || room?.participants)
-    if (!members.includes(auth.userId) || !canAccessCall(session, auth.userId)) {
-      throw new ApiError(403, 'FORBIDDEN', 'You are not a member of this call')
-    }
 
     let displayName = 'PeerSpark user'
     let avatar = ''

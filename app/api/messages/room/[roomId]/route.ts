@@ -12,7 +12,6 @@ import { ApiError, requireOwnership, requireUser } from '@/lib/api-security';
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const MESSAGES_COLLECTION_ID = (process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID || 'messages');
 const CHAT_ROOMS_COLLECTION_ID = (process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms');
-const MESSAGE_RECEIPTS_COLLECTION_ID = process.env.NEXT_PUBLIC_MESSAGE_RECEIPTS_COLLECTION_ID || 'message_receipts';
 
 export async function GET(
   request: NextRequest,
@@ -61,35 +60,12 @@ export async function GET(
       ]
     );
 
-    const messageIds = messages.documents.map((message: any) => message.$id)
-    let receipts: any[] = []
-    if (messageIds.length > 0) {
-      try {
-        const receiptResult = await databases.listDocuments(DATABASE_ID, MESSAGE_RECEIPTS_COLLECTION_ID, [
-          Query.equal('messageId', messageIds),
-          Query.limit(Math.min(5000, Math.max(100, messageIds.length * Math.max(1, members.length)))),
-        ])
-        receipts = receiptResult.documents || []
-      } catch (receiptError) {
-        console.error('[messages/room] Receipt enrichment unavailable:', receiptError)
-      }
-    }
-
-    const readByMessage = new Map<string, Set<string>>()
-    for (const receipt of receipts) {
-      if (!receipt.readAt) continue
-      const readers = readByMessage.get(receipt.messageId) || new Set<string>()
-      readers.add(receipt.userId)
-      readByMessage.set(receipt.messageId, readers)
-    }
-    const enrichedMessages = messages.documents.map((message: any) => ({
-      ...message,
-      readBy: Array.from(new Set([...(Array.isArray(message.readBy) ? message.readBy : []), ...(readByMessage.get(message.$id) || [])])),
-    }))
-
     return {
       success: true,
-      messages: enrichedMessages.reverse(), // Oldest first
+      // Receipt updates travel on their own realtime channel. Keeping that
+      // enrichment off the critical path makes opening a conversation one
+      // database query instead of two, while the UI still converges live.
+      messages: messages.documents.reverse(), // Oldest first
       total: messages.total,
       limit,
       offset,

@@ -1,9 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Check, CheckCheck, CircleAlert, Clock3, Edit3, MoreHorizontal, Reply, Smile, Trash2 } from "lucide-react";
+import { Check, CheckCheck, CircleAlert, Clock3, Edit3, MoreHorizontal, Pause, Play, Reply, Smile, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🔥", "👏", "🎉"];
@@ -47,6 +47,7 @@ export function ChatBubble({
   authorAvatar,
   fileUrl,
   fileName,
+  type,
   replyToMessage,
   isEdited,
   deliveryState,
@@ -63,6 +64,7 @@ export function ChatBubble({
   const date = new Date(timestamp);
   const timeFormatted = Number.isNaN(date.getTime()) ? "" : format(date, "HH:mm");
   const isImage = Boolean(fileUrl && /\.(jpg|jpeg|png|gif|webp|avif|bmp)(\?|$)/i.test(fileUrl));
+  const isVoice = Boolean(fileUrl && type === "voice");
   const normalizedReactions = useMemo(
     () =>
       Object.entries(reactions || {})
@@ -110,7 +112,10 @@ export function ChatBubble({
               </div>
             ) : null}
 
-            {fileUrl && !isImage ? (
+            {isVoice ? (
+              <VoiceNotePlayer src={fileUrl || ""} label={fileName || "Voice message"} />
+            ) : null}
+            {fileUrl && !isImage && !isVoice ? (
               <a href={fileUrl} target="_blank" rel="noreferrer" download={fileName || undefined} className="mb-2 flex items-center gap-2 rounded-xl bg-black/[0.06] px-3 py-2 text-sm underline-offset-2 hover:underline"><span aria-hidden>📎</span><span className="truncate">{fileName || "Download attachment"}</span></a>
             ) : null}
             {isImage ? (
@@ -157,6 +162,60 @@ export function ChatBubble({
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function formatAudioTime(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return "0:00";
+  const minutes = Math.floor(value / 60);
+  const seconds = Math.floor(value % 60);
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function VoiceNotePlayer({ src, label }: { src: string; label: string }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  const togglePlayback = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) await audio.play().catch(() => undefined);
+    else audio.pause();
+  };
+
+  return (
+    <div className="mb-2 flex min-w-52 items-center gap-2.5 rounded-xl bg-black/[0.06] px-2.5 py-2" aria-label={label}>
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="metadata"
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => setIsPlaying(false)}
+        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+      />
+      <button type="button" onClick={togglePlayback} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground" aria-label={isPlaying ? "Pause voice message" : "Play voice message"}>
+        {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={Math.max(duration, 0.1)}
+        step={0.1}
+        value={Math.min(currentTime, Math.max(duration, 0.1))}
+        onChange={(event) => {
+          const next = Number(event.target.value);
+          setCurrentTime(next);
+          if (audioRef.current) audioRef.current.currentTime = next;
+        }}
+        className="h-1 min-w-0 flex-1 accent-primary"
+        aria-label="Voice message position"
+      />
+      <span className="w-9 text-right text-[10px] tabular-nums opacity-60">{formatAudioTime(duration || currentTime)}</span>
     </div>
   );
 }

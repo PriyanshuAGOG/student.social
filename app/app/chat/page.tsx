@@ -66,6 +66,36 @@ interface ChatProfile {
   email?: string;
 }
 
+const MESSAGE_CACHE_TTL_MS = 2 * 60 * 1000;
+const messageCache = new Map<string, { messages: StandardizedMessage[]; cachedAt: number }>();
+const RECORDER_MIME_TYPES = [
+  "audio/webm;codecs=opus",
+  "audio/mp4;codecs=mp4a.40.2",
+  "audio/mp4",
+  "audio/ogg;codecs=opus",
+  "audio/webm",
+];
+
+function preferredRecorderMimeType(): string {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") return "";
+  return RECORDER_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+}
+
+function voiceFileExtension(mimeType: string): string {
+  if (mimeType.includes("mp4")) return "m4a";
+  if (mimeType.includes("ogg")) return "ogg";
+  return "webm";
+}
+
+function mergeMessages(current: StandardizedMessage[], incoming: StandardizedMessage[]): StandardizedMessage[] {
+  const byId = new Map<string, StandardizedMessage>();
+  for (const message of [...current, ...incoming]) {
+    const key = message.clientMessageId || message.$id;
+    byId.set(key, { ...(byId.get(key) || {}), ...message } as StandardizedMessage);
+  }
+  return Array.from(byId.values()).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+}
+
 export default function PremiumChatPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -113,6 +143,17 @@ export default function PremiumChatPage() {
   const outbox = useChatOutbox(selectedRoom?.$id || "");
   const chatPresence = useChatPresence(selectedRoom?.$id || "", user?.$id);
   const typingUsers = chatPresence.otherTypingEntries.map((entry) => entry.userId || "Someone");
+
+  useEffect(() => () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+    recorder.ondataavailable = null;
+    recorder.onstop = null;
+    recorder.onerror = null;
+    if (recorder.state !== "inactive") recorder.stop();
+    recorder.stream.getTracks().forEach((track) => track.stop());
+    mediaRecorderRef.current = null;
+  }, []);
 
   useEffect(() => {
     const queued = outbox.outboxMessages.find((message) => message.deliveryState === "queued");
@@ -318,30 +359,40 @@ export default function PremiumChatPage() {
   // Load messages when room changes
   useEffect(() => {
     if (!selectedRoom?.$id) return;
-    loadMessages();
+    const roomId = selectedRoom.$id;
+    const cacheKey = `${user?.$id || "anonymous"}:${roomId}`;
+    const cached = messageCache.get(cacheKey);
+    const hasFreshCache = Boolean(cached && Date.now() - cached.cachedAt < MESSAGE_CACHE_TTL_MS);
+    setMessages(hasFreshCache ? cached!.messages : []);
+    setIsLoading(!hasFreshCache);
 
     const unsubscribe = chatService.subscribeToMessages(
-      selectedRoom.$id,
+      roomId,
       (newMsg: any) => {
         const normalized = normalizeMessage(newMsg, user?.$id);
         setMessages((prev) => {
-          const exists = prev.some((m) => m.$id === normalized.$id);
-          return exists ? prev : [...prev, normalized];
+          const next = mergeMessages(prev, [normalized]);
+          messageCache.set(cacheKey, { messages: next, cachedAt: Date.now() });
+          return next;
         });
         if (user?.$id && normalized.authorId !== user.$id) {
-          void chatService.markRoomMessages(selectedRoom.$id, [normalized.$id], "read");
+          void chatService.markRoomMessages(roomId, [normalized.$id], "read");
         }
       },
     );
 
-    const unsubscribeReceipts = chatService.subscribeToReceipts(selectedRoom.$id, (receipt: any) => {
+    const unsubscribeReceipts = chatService.subscribeToReceipts(roomId, (receipt: any) => {
       if (!receipt?.readAt || !receipt?.messageId || !receipt?.userId) return;
-      setMessages((prev) => prev.map((message) =>
-        message.$id === receipt.messageId
+      setMessages((prev) => {
+        const next = prev.map((message) => message.$id === receipt.messageId
           ? { ...message, readBy: Array.from(new Set([...(message.readBy || []), receipt.userId])) }
-          : message,
-      ));
+          : message);
+        messageCache.set(cacheKey, { messages: next, cachedAt: Date.now() });
+        return next;
+      });
     });
+
+    void loadMessages(roomId);
 
     return () => {
       unsubscribe?.();
@@ -400,22 +451,27 @@ export default function PremiumChatPage() {
     }
   };
 
-  const loadMessages = async () => {
-    if (!selectedRoom?.$id) return;
-    setIsLoading(true);
+  const loadMessages = async (roomId: string) => {
+    if (!roomId) return;
+    const cacheKey = `${user?.$id || "anonymous"}:${roomId}`;
     try {
-      const res = await chatService.getMessages(selectedRoom.$id, 50);
+      const res = await chatService.getMessages(roomId, 50);
       const normalized = (res.documents || [])
         .map((msg: any) => normalizeMessage(msg, user?.$id))
         .sort(
           (a: any, b: any) =>
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
         );
-      setMessages(normalized);
+      if (activeRoomIdRef.current !== roomId) return;
+      setMessages((current) => {
+        const next = mergeMessages(current, normalized);
+        messageCache.set(cacheKey, { messages: next, cachedAt: Date.now() });
+        return next;
+      });
       const unreadIds = normalized
         .filter((message: any) => message.authorId !== user?.$id && !(message.readBy || []).includes(user?.$id))
         .map((message: any) => message.$id);
-      if (unreadIds.length > 0) void chatService.markRoomMessages(selectedRoom.$id, unreadIds, "read");
+      if (unreadIds.length > 0) void chatService.markRoomMessages(roomId, unreadIds, "read");
     } catch (error: any) {
       toast({
         title: "Failed to load messages",
@@ -423,7 +479,7 @@ export default function PremiumChatPage() {
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      if (activeRoomIdRef.current === roomId) setIsLoading(false);
     }
   };
 
@@ -583,27 +639,40 @@ export default function PremiumChatPage() {
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
       audioChunksRef.current = [];
-      const recorder = new MediaRecorder(stream);
+      const mimeType = preferredRecorderMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 64_000 })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
+      recorder.onerror = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        mediaRecorderRef.current = null;
+        setIsListening(false);
+        toast({ title: "Recording stopped", description: "The browser could not continue recording. Please try again.", variant: "destructive" });
+      };
       recorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop());
+        mediaRecorderRef.current = null;
         setIsListening(false);
         const blob = new Blob(audioChunksRef.current, {
           type: recorder.mimeType || "audio/webm",
         });
         if (blob.size > 0) {
+          const extension = voiceFileExtension(blob.type);
           void sendAttachmentMessage(
-            new File([blob], `voice-${Date.now()}.webm`, { type: blob.type }),
+            new File([blob], `voice-${Date.now()}.${extension}`, { type: blob.type || "audio/webm" }),
             "Voice message",
           );
         }
       };
-      recorder.start();
+      recorder.start(750);
       setIsListening(true);
       toast({
         title: "Recording voice message",
@@ -942,7 +1011,9 @@ export default function PremiumChatPage() {
             onAttachFile={sendAttachmentMessage}
             onEmoji={(emoji) => setInputValue((prev) => `${prev}${emoji}`)}
             onVoice={handleToggleVoiceRecording}
-            isLoading={isLoading || isUploadingAttachment}
+            // History can hydrate in the background; messaging and recording
+            // should be available immediately after the room opens.
+            isLoading={isUploadingAttachment}
             isListening={isListening}
             replyingTo={replyingTo}
             onCancelReply={() => setReplyingTo(null)}
