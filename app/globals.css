@@ -93,6 +93,12 @@
   color: white;
 }
 
+.peer-call-icon-button[aria-pressed="true"] {
+  border-color: rgba(143, 189, 183, 0.34);
+  background: rgba(143, 189, 183, 0.18);
+  color: #d7efec;
+}
+
 .peer-call-icon-button:active {
   transform: scale(0.96);
 }
@@ -141,6 +147,25 @@
 
 .peer-call-conference .lk-grid-layout {
   gap: 0.65rem;
+}
+
+/* Camera feeds default to the complete frame. Some mobile browsers publish
+   portrait video before orientation metadata settles; fitting independently
+   of that metadata prevents laptop and phone participants from being cropped. */
+.peer-call-conference .lk-participant-media-video[data-source="camera"] {
+  width: 100%;
+  height: 100%;
+  object-fit: contain !important;
+  object-position: center center !important;
+  background: #0c1210;
+}
+
+.peer-call-room[data-video-fit="fill"] .lk-participant-media-video[data-source="camera"] {
+  object-fit: cover !important;
+}
+
+.peer-call-conference .lk-participant-media-video[data-source="screen_share"] {
+  object-fit: contain !important;
 }
 
 .peer-call-conference .lk-participant-tile {
@@ -285,7 +310,7 @@
 @media (max-width: 767px) {
   .peer-call-conference .lk-grid-layout-wrapper,
   .peer-call-conference .lk-focus-layout-wrapper {
-    padding: 4.5rem 0.5rem 6.5rem;
+    padding: 4rem 0.4rem 5.75rem;
   }
 
   .peer-call-conference .lk-grid-layout {
@@ -293,26 +318,46 @@
   }
 
   .peer-call-conference .lk-participant-tile {
-    border-radius: 1rem;
+    border-radius: 1.1rem;
+    box-shadow: 0 14px 38px rgba(0, 0, 0, 0.24);
+  }
+
+  .peer-call-conference .lk-participant-metadata {
+    right: 0.45rem;
+    bottom: 0.45rem;
+    left: 0.45rem;
+    max-width: calc(100% - 0.9rem);
+    padding: 0.3rem 0.55rem;
   }
 
   .peer-call-conference .lk-control-bar {
     bottom: max(0.75rem, env(safe-area-inset-bottom));
-    width: calc(100% - 1rem);
+    width: max-content;
+    max-width: calc(100% - 0.8rem);
     justify-content: center;
-    overflow-x: auto;
-    padding: 0.4rem;
+    overflow: visible;
+    gap: 0.22rem;
+    padding: 0.32rem;
   }
 
   .peer-call-conference .lk-control-bar .lk-button,
   .peer-call-conference .lk-control-bar button {
-    min-height: 2.7rem;
-    min-width: 2.7rem;
-    padding: 0.65rem;
+    min-height: 2.8rem;
+    min-width: 2.8rem;
+    padding: 0.62rem;
   }
 
   .peer-call-conference .lk-button-group-menu {
     display: none;
+  }
+
+  .peer-call-conference [data-lk-source="screen_share"] {
+    display: none;
+  }
+
+  .peer-call-live-header .peer-call-icon-button {
+    height: 2.45rem;
+    width: 2.45rem;
   }
 
   .peer-call-settings {
@@ -322,6 +367,21 @@
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     border-left: 0;
     border-radius: 1.5rem 1.5rem 0 0;
+  }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .peer-call-conference .lk-grid-layout-wrapper,
+  .peer-call-conference .lk-focus-layout-wrapper {
+    padding: 3.35rem 0.35rem 4.35rem;
+  }
+
+  .peer-call-conference .lk-control-bar {
+    bottom: max(0.35rem, env(safe-area-inset-bottom));
+  }
+
+  .peer-call-live-header {
+    padding-top: max(0.45rem, env(safe-area-inset-top));
   }
 }
 

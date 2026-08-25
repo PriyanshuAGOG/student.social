@@ -19,6 +19,7 @@ import {
   Copy,
   LoaderCircle,
   LockKeyhole,
+  Maximize2,
   Mic,
   MicOff,
   PhoneOff,
@@ -114,6 +115,7 @@ export function LiveKitCallStage({
   const [micEnabled, setMicEnabled] = useState(true)
   const [cameraEnabled, setCameraEnabled] = useState(mediaType === 'video')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [videoFit, setVideoFit] = useState<'fit' | 'fill'>('fit')
   const [copied, setCopied] = useState(false)
   const [e2eeOptions, setE2eeOptions] = useState<E2EEOptions | undefined>()
   const callShellRef = useRef<HTMLDivElement | null>(null)
@@ -135,6 +137,7 @@ export function LiveKitCallStage({
     setCameraEnabled(mediaType === 'video')
     setMicEnabled(true)
     setSettingsOpen(false)
+    setVideoFit('fit')
     setE2eeOptions(undefined)
     e2eeWorkerRef.current?.terminate()
     e2eeWorkerRef.current = null
@@ -362,12 +365,13 @@ export function LiveKitCallStage({
           onEncryptionError={(encryptionError) => setError(`Call encryption failed: ${encryptionError.message}`)}
           onMediaDeviceFailure={(_, kind) => setError(`Unable to use the selected ${kind || 'media'} device. Check browser permissions.`)}
           className="peer-call-room relative flex h-full min-h-0 flex-col"
+          data-video-fit={videoFit}
           data-lk-theme="default"
         >
           <ConnectionStateToast />
           <StartAudio label="Tap to enable call audio" className="peer-start-audio" />
 
-          <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between bg-gradient-to-b from-black/70 to-transparent px-4 pb-10 pt-4 md:px-7 md:pt-6">
+          <header className="peer-call-live-header pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between bg-gradient-to-b from-black/70 to-transparent px-3 pb-8 pt-[max(.75rem,env(safe-area-inset-top))] md:px-7 md:pb-10 md:pt-6">
             <div className="pointer-events-auto flex min-w-0 items-center gap-3">
               <CallIdentity title={roomTitle} size="small" />
               <div className="min-w-0">
@@ -382,6 +386,18 @@ export function LiveKitCallStage({
               </div>
             </div>
             <div className="pointer-events-auto flex items-center gap-2">
+              {isVideoCall ? (
+                <button
+                  type="button"
+                  onClick={() => setVideoFit((current) => current === 'fit' ? 'fill' : 'fit')}
+                  className="peer-call-icon-button"
+                  aria-label={videoFit === 'fit' ? 'Fill tiles with video' : 'Show the complete camera frame'}
+                  aria-pressed={videoFit === 'fill'}
+                  title={videoFit === 'fit' ? 'Fill tiles' : 'Fit full frame'}
+                >
+                  <Maximize2 className="h-5 w-5" />
+                </button>
+              ) : null}
               <button type="button" onClick={copyInvite} className="peer-call-icon-button" aria-label="Copy call invite">
                 {copied ? <Check className="h-5 w-5 text-[#8fbdb7]" /> : <Copy className="h-5 w-5" />}
               </button>

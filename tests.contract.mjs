@@ -128,6 +128,7 @@ test('call sessions are backed by authenticated routes and durable schema', () =
   const callClient = fs.readFileSync('lib/appwrite/calls.ts', 'utf8')
   const tokenRoute = fs.readFileSync('app/api/calls/sessions/[sessionId]/token/route.ts', 'utf8')
   const callStage = fs.readFileSync('components/call/LiveKitCallStage.tsx', 'utf8')
+  const callStyles = fs.readFileSync('app/globals.css', 'utf8')
 
   assert.match(createCall, /requireUser\(req\)/)
   assert.match(createCall, /enforceSameOrigin\(req\)/)
@@ -142,6 +143,11 @@ test('call sessions are backed by authenticated routes and durable schema', () =
   assert.match(callClient, /startRoomCall\(/)
   assert.match(tokenRoute, /deriveCallEncryptionMaterial/)
   assert.match(callStage, /ExternalE2EEKeyProvider/)
+  assert.match(callStage, /data-video-fit=\{videoFit\}/)
+  assert.match(callStage, /Show the complete camera frame/)
+  assert.match(callStyles, /\.lk-participant-media-video\[data-source="camera"\]/)
+  assert.match(callStyles, /object-fit: contain !important/)
+  assert.match(callStyles, /max-height: 520px.*orientation: landscape/s)
   assert.doesNotMatch(createCall, /buildEphemeralSession|degraded call/)
 })
 
