@@ -26,7 +26,7 @@ function configured(): boolean {
 
 function configureVapid(): void {
   webPush.setVapidDetails(
-    process.env.WEB_PUSH_SUBJECT || process.env.NEXT_PUBLIC_APP_URL || 'https://studentsocial.vercel.app',
+    process.env.WEB_PUSH_SUBJECT || process.env.NEXT_PUBLIC_APP_URL || 'https://studentssocial.vercel.app',
     process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY!,
     process.env.WEB_PUSH_PRIVATE_KEY!,
   )

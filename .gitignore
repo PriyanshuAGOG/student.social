@@ -32,6 +32,7 @@ android/signing/
 *.keystore
 work/
 public/downloads/*.apk
+!public/downloads/student-social-latest.apk
 
 # Debug
 npm-debug.log*

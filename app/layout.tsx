@@ -13,7 +13,7 @@ import PWAInstallPrompt from "@/components/pwa-install-prompt"
 const publicSans = DM_Sans({ subsets: ["latin"], variable: "--font-sans" })
 const publicSerif = Instrument_Serif({ subsets: ["latin"], weight: "400", variable: "--font-serif" })
 
-const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://studentsocial.vercel.app"
+const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://studentssocial.vercel.app"
 
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl),

@@ -5,6 +5,30 @@ import { checkDurableRateLimit } from '@/lib/server/rate-limit'
 const WINDOW_MS = 60_000
 const MAX_REQUESTS_PER_WINDOW = 120
 
+function getLiveKitConnectOrigins(configuredUrl: string | undefined): string[] {
+  if (!configuredUrl) return []
+
+  try {
+    const url = new URL(configuredUrl)
+    const origins = new Set([url.origin])
+    const companionProtocol = {
+      'wss:': 'https:',
+      'ws:': 'http:',
+      'https:': 'wss:',
+      'http:': 'ws:',
+    }[url.protocol]
+
+    if (companionProtocol) {
+      url.protocol = companionProtocol
+      origins.add(url.origin)
+    }
+
+    return [...origins]
+  } catch {
+    return []
+  }
+}
+
 function getClientIp(req: NextRequest): string {
   const forwarded = req.headers.get('x-forwarded-for')
   if (forwarded) return forwarded.split(',')[0].trim()
@@ -138,8 +162,8 @@ export async function proxy(req: NextRequest) {
   // Content Security Policy
   const production = process.env.NODE_ENV === 'production'
   const appwriteOrigin = (() => { try { return new URL(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || '').origin } catch { return '' } })()
-  const liveKitOrigin = (() => { try { return new URL(process.env.NEXT_PUBLIC_LIVEKIT_URL || '').origin } catch { return '' } })()
-  const connectSources = ["'self'", appwriteOrigin, liveKitOrigin, ...(production ? [] : ['http:', 'https:', 'ws:', 'wss:'])].filter(Boolean)
+  const liveKitOrigins = getLiveKitConnectOrigins(process.env.NEXT_PUBLIC_LIVEKIT_URL)
+  const connectSources = [...new Set(["'self'", appwriteOrigin, ...liveKitOrigins, ...(production ? [] : ['http:', 'https:', 'ws:', 'wss:'])].filter(Boolean))]
   res.headers.set(
     'Content-Security-Policy',
     [
