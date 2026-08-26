@@ -32,3 +32,37 @@
 .ss-public .status-refresh:disabled{cursor:wait;opacity:.55}
 .ss-public .status-skeleton{opacity:.72}
 @media(prefers-reduced-motion:reduce){.ss-public{scroll-behavior:auto}.ss-public *,.ss-public *:before,.ss-public *:after{transition:none!important;animation:none!important}}
+
+/* Shared public-page resilience. Keep every navigation/footer route usable at
+   tablet widths and prevent long policy or editorial copy from overflowing. */
+.ss-public .public-page{min-height:100vh;background:var(--cream)}
+.ss-public .site-nav summary::-webkit-details-marker{display:none}
+.ss-public .mobile-menu>div{max-height:calc(100vh - 94px);overflow-y:auto}
+.ss-public .page-hero h1,.ss-public .public-heading h2,.ss-public .info-card h3,.ss-public .journal-grid h3,.ss-public .policy-article{overflow-wrap:anywhere}
+.ss-public .site-footer a{display:inline-flex;min-height:30px;align-items:center}
+@media(max-width:1000px){
+  .ss-public .mobile-menu{display:block}
+  .ss-public .site-nav{gap:20px}
+  .ss-public .nav-actions{margin-left:auto}
+}
+@media(max-width:680px){
+  .ss-public .page-hero h1{font-size:clamp(44px,15vw,61px);line-height:.92}
+  .ss-public .page-hero-inner{padding:58px 0 68px}
+  .ss-public .honesty-note{max-width:100%}
+  .ss-public .public-heading h2{font-size:clamp(38px,12vw,48px)}
+  .ss-public .public-heading>p{font-size:12px}
+  .ss-public .info-card{min-height:0}
+  .ss-public .info-card div,.ss-public .tour-row p,.ss-public .policy-article section p{font-size:12px}
+  .ss-public .beta-banner{padding:28px 22px}
+  .ss-public .journal-signup{padding:70px 0}
+  .ss-public .journal-signup h2{font-size:clamp(40px,13vw,55px)}
+  .ss-public .policy-wrap{padding:42px 0 72px}
+  .ss-public .footer-grid{grid-template-columns:1fr 1fr;column-gap:24px;row-gap:32px}
+}
+@media(max-width:390px){
+  .ss-public .brand{gap:7px;font-size:14px}
+  .ss-public .brand sup{display:none}
+  .ss-public .timeline,.ss-public .fund-grid,.ss-public .quick-links .container,.ss-public .footer-grid{grid-template-columns:1fr}
+  .ss-public .footer-brand{grid-column:auto}
+  .ss-public .quick-links a{border-right:0;border-bottom:1px solid rgba(255,255,255,.2)}
+}

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 // @ts-expect-error -- Node 22's strip-types test runner requires the explicit .ts suffix.
-import { assertCallActionAllowed, canAccessCall, getSessionUpdates, hasRemainingCallParticipants, isCallExpired, parseStringList, shouldSurfaceActiveCall } from '../lib/calls/domain.ts'
+import { assertCallActionAllowed, canAccessCall, getSessionUpdates, hasRemainingCallParticipants, isCallExpired, isParticipantInvitationCurrent, parseStringList, shouldSurfaceActiveCall } from '../lib/calls/domain.ts'
 // @ts-expect-error -- Node 22's strip-types test runner requires the explicit .ts suffix.
 import { createOutboxMessage, mergeChatMessages } from '../hooks/use-chat-outbox.ts'
 
@@ -49,6 +49,16 @@ test('terminal calls reject joining but allow idempotent leave', () => {
 test('ring timeout and serialized member parsing are deterministic', () => {
   assert.equal(isCallExpired({ ...base, ringTimeoutAt: '2020-01-01T00:00:00.000Z' }), true)
   assert.deepEqual(parseStringList('["a","a","b"]'), ['a', 'b'])
+})
+
+test('stale participant invitations cannot replay as phantom calls after login', () => {
+  const now = Date.parse('2026-08-26T12:00:00.000Z')
+  const activeSession = { $id: 'active-call', state: 'active' }
+  assert.equal(isParticipantInvitationCurrent({ state: 'invited', updatedAt: '2026-08-26T11:59:30.000Z' }, activeSession, now), true)
+  assert.equal(isParticipantInvitationCurrent({ state: 'invited', updatedAt: '2026-08-26T11:58:59.000Z' }, activeSession, now), false)
+  assert.equal(isParticipantInvitationCurrent({ state: 'joined', updatedAt: '2020-01-01T00:00:00.000Z' }, activeSession, now), true)
+  assert.equal(isParticipantInvitationCurrent({ state: 'declined', updatedAt: '2026-08-26T11:59:59.000Z' }, activeSession, now), false)
+  assert.equal(isParticipantInvitationCurrent({ state: 'invited' }, { state: 'ringing', ringTimeoutAt: '2026-08-26T11:59:59.000Z' }, now), false)
 })
 
 test('leaving participants are not resurfaced and solo rooms can terminate', () => {

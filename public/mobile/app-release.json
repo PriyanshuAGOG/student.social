@@ -2,7 +2,7 @@
   "versionCode": 3,
   "versionName": "2.0.0-native",
   "minimumVersionCode": 1,
-  "apkUrl": "https://studentssocial.vercel.app/downloads/student-social-latest.apk",
+  "apkUrl": "https://studentssocial.vercel.app/downloads/student-social-latest.apk?v=3",
   "publishedAt": "2026-08-26T00:00:00+05:30",
   "notes": [
     "A fully native Kotlin and Jetpack Compose client—no WebView or browser wrapper.",

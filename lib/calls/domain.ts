@@ -4,6 +4,7 @@ export const CALL_ACTIONS = ['accept', 'decline', 'end', 'join', 'leave'] as con
 export type CallAction = (typeof CALL_ACTIONS)[number]
 
 export const TERMINAL_CALL_STATES = new Set<CallState>(['declined', 'ended', 'missed', 'failed'])
+export const PARTICIPANT_INVITE_TTL_MS = 60_000
 
 export function parseStringList(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -27,6 +28,19 @@ export function isCallExpired(session: any, now = Date.now()): boolean {
   if (session?.state !== 'ringing' || !session?.ringTimeoutAt) return false
   const timeout = Date.parse(String(session.ringTimeoutAt))
   return Number.isFinite(timeout) && timeout <= now
+}
+
+export function isParticipantInvitationCurrent(participant: any, session: any, now = Date.now()): boolean {
+  if (participant?.state === 'joined') return true
+  if (participant?.state !== 'invited') return false
+
+  if (session?.state === 'ringing') {
+    const ringTimeout = Date.parse(String(session?.ringTimeoutAt || ''))
+    return Number.isFinite(ringTimeout) && ringTimeout > now
+  }
+
+  const invitedAt = Date.parse(String(participant?.updatedAt || participant?.createdAt || ''))
+  return Number.isFinite(invitedAt) && invitedAt + PARTICIPANT_INVITE_TTL_MS > now
 }
 
 export function hasRemainingCallParticipants(participants: any[], departingUserId: string): boolean {

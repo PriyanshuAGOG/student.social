@@ -2,13 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { requireUser, enforceRateLimit, ApiError } from '@/lib/api-security'
-import { parseStringList, shouldSurfaceActiveCall } from '@/lib/calls/domain'
+import { isParticipantInvitationCurrent, parseStringList, shouldSurfaceActiveCall } from '@/lib/calls/domain'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const CALL_SESSIONS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALL_SESSIONS_COLLECTION_ID || 'call_sessions'
 const CALL_PARTICIPANTS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALL_PARTICIPANTS_COLLECTION_ID || 'call_participants'
 const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles'
-
 function normalizeCall(session: any, userId: string, caller: any, participantState?: string) {
   const mediaType = session.mediaType === 'voice' ? 'voice' : 'video'
   const effectiveState = session.callerId !== userId && participantState === 'invited' ? 'ringing' : session.state
@@ -51,8 +50,15 @@ export async function GET(req: NextRequest) {
         databases.getDocument(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, participant.callSessionId).catch(() => null),
       ),
     )
+    const sessionById = new Map(
+      participantSessions.filter(Boolean).map((session: any) => [session.$id, session]),
+    )
+    const now = Date.now()
     const activeParticipantSessionIds = new Set(
-      (participantRecords.documents || []).map((participant: any) => participant.callSessionId),
+      (participantRecords.documents || [])
+        // An old invited participant row must never replay as a fresh call on login.
+        .filter((participant: any) => isParticipantInvitationCurrent(participant, sessionById.get(participant.callSessionId), now))
+        .map((participant: any) => participant.callSessionId),
     )
     const participantStateBySessionId = new Map(
       (participantRecords.documents || []).map((participant: any) => [participant.callSessionId, participant.state]),
@@ -60,11 +66,11 @@ export async function GET(req: NextRequest) {
 
     const sessions = new Map<string, any>()
     for (const session of [...(asCaller.documents || []), ...participantSessions]) {
-      if (session && shouldSurfaceActiveCall(session, activeParticipantSessionIds)) sessions.set(session.$id, session)
+      if (session && shouldSurfaceActiveCall(session, activeParticipantSessionIds, now)) sessions.set(session.$id, session)
     }
 
     const callerProfiles = new Map<string, any>()
-    const calls = await Promise.all(Array.from(sessions.values()).map(async (session) => {
+    const calls = await Promise.all(Array.from(sessions.values()).sort((a, b) => Date.parse(b.startedAt || '') - Date.parse(a.startedAt || '')).map(async (session) => {
       let caller = callerProfiles.get(session.callerId)
       if (!caller) {
         try {

@@ -189,6 +189,7 @@ export function useCall(): CallContextType {
     }
 
     setIncomingCall(null)
+    setCallState((current) => current === 'incoming_ringing' ? 'idle' : current)
   }, [])
 
   return {
