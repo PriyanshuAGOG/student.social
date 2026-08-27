@@ -19,9 +19,9 @@
     <application
         android:name=".StudentSocialApplication"
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/student_social_icon"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher"
+        android:roundIcon="@drawable/student_social_icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.StudentSocial"
         android:usesCleartextTraffic="false">
