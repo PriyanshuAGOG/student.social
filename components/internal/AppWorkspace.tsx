@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { BrandLogo } from "@/components/brand-logo"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { CreatePostModal } from "@/components/create-post-modal"
@@ -36,10 +37,6 @@ const pageNames: Record<string, string> = {
   settings: "Settings",
   saved: "Saved",
   admin: "Admin",
-}
-
-function StudentMark() {
-  return <span className="student-app-mark" aria-hidden="true"><i /><i /><i /></span>
 }
 
 export function AppWorkspace({ children }: { children: React.ReactNode }) {
@@ -95,7 +92,9 @@ export function AppWorkspace({ children }: { children: React.ReactNode }) {
     <div className={`student-workspace${immersive ? " is-immersive" : ""}`}>
       {!immersive ? (
         <header className="student-global-bar">
-          <Link href="/app/feed" className="student-global-brand md:hidden" aria-label="Student.social home"><StudentMark /><strong>student.social</strong></Link>
+          <Link href="/app/feed" className="student-global-brand md:hidden" aria-label="Student.social home">
+            <BrandLogo variant="wordmark" decorative className="h-auto w-[118px] object-contain" />
+          </Link>
           <div className="student-global-greeting hidden md:flex">
             <span>{greeting},</span><strong>{firstName}</strong><small>{title}</small>
           </div>
