@@ -20,7 +20,16 @@ export interface Call {
   startedAt: string
   acceptedAt?: string
   endedAt?: string
+  endedReason?: string
   caller?: { id: string; name: string; avatar?: string }
+}
+
+export interface CallOutcome {
+  callId: string
+  kind: 'declined' | 'missed' | 'ended' | 'failed'
+  title: string
+  message: string
+  occurredAt: string
 }
 
 export interface CallContextType {
@@ -40,7 +49,9 @@ export interface CallContextType {
   isCameraOff: boolean
   callDuration: number
   error: string | null
-  syncActiveCalls: (calls: Call[]) => void
+  lastCallOutcome: CallOutcome | null
+  dismissCallOutcome: () => void
+  syncActiveCalls: (calls: Call[], resolvedCalls?: Call[]) => void
 }
 
 function normalizeCall(input: any): Call {
@@ -61,6 +72,36 @@ function normalizeCall(input: any): Call {
   }
 }
 
+function describeCallOutcome(call: Call): CallOutcome {
+  const isOutgoing = call.direction === 'outgoing'
+  const kind = call.state === 'declined' || call.state === 'missed' || call.state === 'failed' ? call.state : 'ended'
+  let title = 'Call ended'
+  let message = 'The call has finished.'
+
+  if (kind === 'declined') {
+    title = 'Call declined'
+    message = isOutgoing ? 'They may be busy and declined your call.' : 'You declined the incoming call.'
+  } else if (kind === 'missed' || call.endedReason === 'no_answer') {
+    title = 'No answer'
+    message = isOutgoing ? 'They did not answer the call.' : 'You missed an incoming call.'
+  } else if (kind === 'failed') {
+    title = 'Call could not connect'
+    message = 'A connection problem ended this call.'
+  } else if (call.endedReason === 'participant_left') {
+    message = 'The other participant left the call.'
+  } else if (call.endedReason === 'caller_cancelled') {
+    message = isOutgoing ? 'You cancelled the call.' : 'The caller cancelled before you answered.'
+  }
+
+  return {
+    callId: call.id,
+    kind: kind === 'missed' || call.endedReason === 'no_answer' ? 'missed' : kind,
+    title,
+    message,
+    occurredAt: call.endedAt || new Date().toISOString(),
+  }
+}
+
 export const defaultCallContext: CallContextType = {
   activeCall: null,
   incomingCall: null,
@@ -78,6 +119,8 @@ export const defaultCallContext: CallContextType = {
   isCameraOff: false,
   callDuration: 0,
   error: null,
+  lastCallOutcome: null,
+  dismissCallOutcome: () => {},
   syncActiveCalls: () => {},
 }
 
@@ -87,8 +130,15 @@ export function useCall(): CallContextType {
   const [callState, setCallState] = useState<CallContextType['callState']>('idle')
   const [callDuration, setCallDuration] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [lastCallOutcome, setLastCallOutcome] = useState<CallOutcome | null>(null)
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const dismissedCallIdsRef = useRef(new Set<string>())
+  const resolvedCallIdsRef = useRef(new Set<string>())
+  const activeCallRef = useRef<Call | null>(null)
+  const incomingCallRef = useRef<Call | null>(null)
+
+  useEffect(() => { activeCallRef.current = activeCall }, [activeCall])
+  useEffect(() => { incomingCallRef.current = incomingCall }, [incomingCall])
 
   useEffect(() => {
     if (callState !== 'active') return
@@ -102,10 +152,12 @@ export function useCall(): CallContextType {
   const clearActiveCall = useCallback(() => {
     setActiveCall((current) => {
       if (current?.id) dismissedCallIdsRef.current.add(current.id)
+      activeCallRef.current = null
       return null
     })
     setIncomingCall((current) => {
       if (current?.id) dismissedCallIdsRef.current.add(current.id)
+      incomingCallRef.current = null
       return null
     })
     setCallState('idle')
@@ -114,12 +166,16 @@ export function useCall(): CallContextType {
   }, [])
 
   const startCall = useCallback(async (_receiverId: string, chatId: string, type: 'audio' | 'video', options?: { title?: string }) => {
+    if (activeCallRef.current || incomingCallRef.current) throw new Error('Finish the current call before starting another one')
     setError(null)
+    setLastCallOutcome(null)
     setCallState('connecting')
     try {
       const session = normalizeCall(await callService.startRoomCall(chatId, type === 'audio' ? 'voice' : 'video', options?.title))
       dismissedCallIdsRef.current.delete(session.id)
-      setActiveCall({ ...session, roomTitle: options?.title, direction: 'outgoing' })
+      const outgoing = { ...session, roomTitle: options?.title, direction: 'outgoing' as const }
+      activeCallRef.current = outgoing
+      setActiveCall(outgoing)
       setCallState('outgoing_ringing')
       return session
     } catch (cause: any) {
@@ -135,7 +191,10 @@ export function useCall(): CallContextType {
     try {
       const session = normalizeCall(await callService.updateSession(callId, 'accept'))
       dismissedCallIdsRef.current.delete(session.id)
-      setActiveCall({ ...(incomingCall || session), ...session, direction: 'incoming' })
+      const accepted = { ...(incomingCallRef.current || session), ...session, direction: 'incoming' as const }
+      activeCallRef.current = accepted
+      incomingCallRef.current = null
+      setActiveCall(accepted)
       setIncomingCall(null)
       setCallState('active')
     } catch (cause: any) {
@@ -143,7 +202,7 @@ export function useCall(): CallContextType {
       setCallState('ended')
       throw cause
     }
-  }, [incomingCall])
+  }, [])
 
   const rejectCall = useCallback(async (callId: string) => {
     try {
@@ -167,30 +226,69 @@ export function useCall(): CallContextType {
 
   const cancelCall = useCallback((callId: string) => endCall(callId), [endCall])
 
-  const syncActiveCalls = useCallback((calls: Call[]) => {
+  const syncActiveCalls = useCallback((calls: Call[], resolvedCalls: Call[] = []) => {
     const normalized = (calls || [])
       .map(normalizeCall)
       .filter((call) => !dismissedCallIdsRef.current.has(call.id))
+    const resolved = (resolvedCalls || []).map(normalizeCall)
     const active = normalized.find((call) => call.state === 'active')
     if (active) {
-      setActiveCall((current) => current?.id === active.id
+      const current = activeCallRef.current
+      const next = current?.id === active.id
         ? { ...current, ...active, roomTitle: active.roomTitle || current.roomTitle }
-        : active)
+        : active
+      activeCallRef.current = next
+      incomingCallRef.current = null
+      setActiveCall(next)
       setIncomingCall(null)
       setCallState('active')
       return
     }
 
+    const outgoing = normalized.find((call) => call.state === 'ringing' && call.direction === 'outgoing')
+    if (outgoing) {
+      const current = activeCallRef.current
+      const next = current?.id === outgoing.id ? { ...current, ...outgoing, roomTitle: outgoing.roomTitle || current.roomTitle } : outgoing
+      activeCallRef.current = next
+      incomingCallRef.current = null
+      setActiveCall(next)
+      setIncomingCall(null)
+      setCallState('outgoing_ringing')
+      return
+    }
+
     const incoming = normalized.find((call) => call.state === 'ringing' && call.direction === 'incoming')
     if (incoming) {
+      incomingCallRef.current = incoming
       setIncomingCall((current) => current?.id === incoming.id ? current : incoming)
       setCallState((current) => current === 'active' || current === 'outgoing_ringing' ? current : 'incoming_ringing')
       return
     }
 
-    setIncomingCall(null)
-    setCallState((current) => current === 'incoming_ringing' ? 'idle' : current)
+    const currentId = activeCallRef.current?.id || incomingCallRef.current?.id
+    const terminal = currentId ? resolved.find((call) => call.id === currentId) : undefined
+    if (terminal) {
+      if (!resolvedCallIdsRef.current.has(terminal.id) && !dismissedCallIdsRef.current.has(terminal.id)) {
+        resolvedCallIdsRef.current.add(terminal.id)
+        setLastCallOutcome(describeCallOutcome(terminal))
+      }
+      activeCallRef.current = null
+      incomingCallRef.current = null
+      setActiveCall(null)
+      setIncomingCall(null)
+      setCallState('idle')
+      setCallDuration(0)
+      return
+    }
+
+    if (!activeCallRef.current) {
+      incomingCallRef.current = null
+      setIncomingCall(null)
+      setCallState((current) => current === 'incoming_ringing' ? 'idle' : current)
+    }
   }, [])
+
+  const dismissCallOutcome = useCallback(() => setLastCallOutcome(null), [])
 
   return {
     activeCall,
@@ -209,6 +307,8 @@ export function useCall(): CallContextType {
     isCameraOff: false,
     callDuration,
     error,
+    lastCallOutcome,
+    dismissCallOutcome,
     syncActiveCalls,
   }
 }

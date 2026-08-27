@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { ID, Permission, Query, Role } from 'node-appwrite'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireUser } from '@/lib/api-security'
 import { checkDurableRateLimit } from '@/lib/server/rate-limit'
-import { parseStringList } from '@/lib/calls/domain'
+import { CALL_RING_TIMEOUT_MS, parseStringList } from '@/lib/calls/domain'
 import { sendIncomingCallPush } from '@/lib/server/web-push'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
         state: 'ringing',
         startedAt,
         lastActivityAt: startedAt,
-        ringTimeoutAt: new Date(Date.now() + 60_000).toISOString(),
+        ringTimeoutAt: new Date(Date.now() + CALL_RING_TIMEOUT_MS).toISOString(),
         createdAt: startedAt,
         updatedAt: startedAt,
       }, readPermissions)
@@ -150,29 +150,33 @@ export async function POST(req: NextRequest) {
       throw participantError
     }
 
-    await Promise.allSettled(participantIds.map(async (participantId) => {
-      await Promise.allSettled([
-        databases.createDocument(DATABASE_ID, NOTIFICATIONS_COLLECTION_ID, ID.unique(), {
-          userId: participantId,
-          title: `${callerName} is calling`,
-          message: `${callerName} started a ${mediaType} call`,
-          type: 'call',
-          timestamp: startedAt,
-          isRead: false,
-          actionUrl: joinUrl,
-          actorId: auth.userId,
-          actorName: callerName,
-          metadata: JSON.stringify({ roomId, sessionId: session.$id, mediaType }),
-        }),
-        sendIncomingCallPush(users, participantId, {
-          sessionId: session.$id,
-          callerName,
-          callerAvatar,
-          mediaType: mediaType || 'video',
-          joinUrl,
-        }),
-      ])
-    }))
+    // Return the call immediately. Notification storage and web push are useful
+    // recovery paths, but neither should delay realtime ringing in the open app.
+    after(async () => {
+      await Promise.allSettled(participantIds.map(async (participantId) => {
+        await Promise.allSettled([
+          databases.createDocument(DATABASE_ID, NOTIFICATIONS_COLLECTION_ID, ID.unique(), {
+            userId: participantId,
+            title: `${callerName} is calling`,
+            message: `${callerName} started a ${mediaType} call`,
+            type: 'call',
+            timestamp: startedAt,
+            isRead: false,
+            actionUrl: joinUrl,
+            actorId: auth.userId,
+            actorName: callerName,
+            metadata: JSON.stringify({ roomId, sessionId: session.$id, mediaType }),
+          }),
+          sendIncomingCallPush(users, participantId, {
+            sessionId: session.$id,
+            callerName,
+            callerAvatar,
+            mediaType: mediaType || 'video',
+            joinUrl,
+          }),
+        ])
+      }))
+    })
 
     return NextResponse.json({
       success: true,

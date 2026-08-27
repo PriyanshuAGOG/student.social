@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import type { CallOutcome } from '@/hooks/use-call'
 
 let audioContext: AudioContext | null = null
 
@@ -104,4 +105,57 @@ export function useOutgoingCallTone(active: boolean): void {
     const interval = window.setInterval(ring, 3000)
     return () => window.clearInterval(interval)
   }, [active])
+}
+
+function playOutcomeTone(context: AudioContext, kind: CallOutcome['kind']): void {
+  const start = context.currentTime
+  const frequencies = kind === 'declined' ? [330, 277, 220] : kind === 'missed' ? [440, 330] : [392]
+  frequencies.forEach((frequency, index) => {
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    const offset = index * 0.24
+    oscillator.type = 'sine'
+    oscillator.frequency.setValueAtTime(frequency, start + offset)
+    gain.gain.setValueAtTime(0.0001, start + offset)
+    gain.gain.exponentialRampToValueAtTime(0.12, start + offset + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + offset + 0.18)
+    oscillator.connect(gain)
+    gain.connect(context.destination)
+    oscillator.start(start + offset)
+    oscillator.stop(start + offset + 0.2)
+  })
+}
+
+export function playCallParticipantTone(kind: 'joined' | 'left'): void {
+  const context = getAudioContext()
+  if (!context || context.state !== 'running') return
+  const start = context.currentTime
+  const frequencies = kind === 'joined' ? [523.25, 659.25] : [392, 293.66]
+  frequencies.forEach((frequency, index) => {
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    const offset = index * 0.12
+    oscillator.type = 'sine'
+    oscillator.frequency.value = frequency
+    gain.gain.setValueAtTime(0.0001, start + offset)
+    gain.gain.exponentialRampToValueAtTime(0.09, start + offset + 0.015)
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + offset + 0.11)
+    oscillator.connect(gain)
+    gain.connect(context.destination)
+    oscillator.start(start + offset)
+    oscillator.stop(start + offset + 0.13)
+  })
+}
+
+export function useCallOutcomeAlert(outcome: CallOutcome | null): void {
+  useEffect(() => {
+    if (!outcome) return
+    const context = getAudioContext()
+    if (!context) return
+    if (context.state === 'suspended') {
+      void context.resume().then(() => playOutcomeTone(context, outcome.kind)).catch(() => undefined)
+    } else {
+      playOutcomeTone(context, outcome.kind)
+    }
+  }, [outcome])
 }

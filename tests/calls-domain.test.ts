@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 // @ts-expect-error -- Node 22's strip-types test runner requires the explicit .ts suffix.
-import { assertCallActionAllowed, canAccessCall, getSessionUpdates, hasRemainingCallParticipants, isCallExpired, isParticipantInvitationCurrent, parseStringList, shouldSurfaceActiveCall } from '../lib/calls/domain.ts'
+import { CALL_RING_TIMEOUT_MS, assertCallActionAllowed, canAccessCall, getSessionUpdates, hasRemainingCallParticipants, isCallExpired, isParticipantInvitationCurrent, parseStringList, shouldEndCallWhenParticipantLeaves, shouldSurfaceActiveCall } from '../lib/calls/domain.ts'
 // @ts-expect-error -- Node 22's strip-types test runner requires the explicit .ts suffix.
 import { createOutboxMessage, mergeChatMessages } from '../hooks/use-chat-outbox.ts'
 
@@ -47,8 +47,15 @@ test('terminal calls reject joining but allow idempotent leave', () => {
 })
 
 test('ring timeout and serialized member parsing are deterministic', () => {
+  assert.equal(CALL_RING_TIMEOUT_MS, 45_000)
   assert.equal(isCallExpired({ ...base, ringTimeoutAt: '2020-01-01T00:00:00.000Z' }), true)
   assert.deepEqual(parseStringList('["a","a","b"]'), ['a', 'b'])
+})
+
+test('either participant leaving a direct call ends it, while group calls continue', () => {
+  assert.equal(shouldEndCallWhenParticipantLeaves({ callerId: 'caller', participantIds: ['guest'] }, 'guest'), true)
+  assert.equal(shouldEndCallWhenParticipantLeaves({ callerId: 'caller', participantIds: ['guest'] }, 'caller'), true)
+  assert.equal(shouldEndCallWhenParticipantLeaves({ callerId: 'caller', participantIds: ['guest-a', 'guest-b'] }, 'guest-a'), false)
 })
 
 test('stale participant invitations cannot replay as phantom calls after login', () => {

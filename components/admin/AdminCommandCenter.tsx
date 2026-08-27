@@ -709,8 +709,25 @@ export function AdminCommandCenter({ adminEmail }: { adminEmail?: string }) {
                     { key: 'source', label: 'Source' },
                     { key: 'route', label: 'Route' },
                     { key: 'message', label: 'Message' },
+                    { key: 'count', label: 'Occurrences', render: (row) => Number(row.count || 1).toLocaleString() },
                     { key: 'lastSeenAt', label: 'Last seen' },
                     { key: 'status', label: 'Status', render: (row) => <StatusBadge status={row.status} /> },
+                    {
+                      key: 'context',
+                      label: 'Context',
+                      render: (row) => (
+                        <details className="min-w-44 max-w-md text-xs">
+                          <summary className="cursor-pointer font-medium text-primary">Inspect details</summary>
+                          <div className="mt-2 space-y-1 rounded-md border bg-muted/40 p-2">
+                            <p><strong>User:</strong> {row.userId || 'Anonymous'}</p>
+                            <p><strong>Correlation:</strong> {row.correlationId || 'Unavailable'}</p>
+                            <p><strong>Fingerprint:</strong> {row.fingerprint || 'Unavailable'}</p>
+                            {row.stack ? <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-background p-2">{row.stack}</pre> : null}
+                            {row.metadataJson ? <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-background p-2">{row.metadataJson}</pre> : null}
+                          </div>
+                        </details>
+                      ),
+                    },
                   ]}
                 />
               </CardContent>

@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { ID } from 'node-appwrite'
+import { ID, Query } from 'node-appwrite'
 import { z } from 'zod'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/server/appwrite'
@@ -36,7 +36,11 @@ export async function POST(request: NextRequest) {
       route: payload.route,
       userAgent: payload.userAgent || request.headers.get('user-agent') || '',
       userId: auth?.userId || '',
-      metadataJson: JSON.stringify(payload.metadata || {}).slice(0, 5000),
+      metadataJson: JSON.stringify({
+        ...payload.metadata,
+        buildSha: process.env.VERCEL_GIT_COMMIT_SHA || process.env.NEXT_PUBLIC_BUILD_SHA || '',
+        deploymentUrl: process.env.VERCEL_URL || '',
+      }).slice(0, 5000),
       fingerprint,
       status: 'open',
       ownerId: '',
@@ -48,7 +52,28 @@ export async function POST(request: NextRequest) {
 
     try {
       const { databases } = await createAdminClient()
-      await databases.createDocument(DATABASE_ID, ADMIN_COLLECTIONS.clientErrors, ID.unique(), doc)
+      const existing = await databases.listDocuments(DATABASE_ID, ADMIN_COLLECTIONS.clientErrors, [
+        Query.equal('status', 'open'),
+        Query.orderDesc('lastSeenAt'),
+        Query.limit(100),
+      ]).catch(() => ({ documents: [] as any[] }))
+      // Fingerprint may not be indexed on older deployments. Filter the bounded,
+      // indexed open-error result locally so deduplication works during rollout.
+      const match = existing.documents?.find((entry: any) => entry.fingerprint === fingerprint)
+      if (match) {
+        await databases.updateDocument(DATABASE_ID, ADMIN_COLLECTIONS.clientErrors, match.$id, {
+          message: doc.message,
+          stack: doc.stack,
+          userAgent: doc.userAgent,
+          userId: doc.userId,
+          metadataJson: doc.metadataJson,
+          count: Number(match.count || 1) + 1,
+          lastSeenAt: doc.lastSeenAt,
+          correlationId,
+        })
+      } else {
+        await databases.createDocument(DATABASE_ID, ADMIN_COLLECTIONS.clientErrors, ID.unique(), doc)
+      }
     } catch {
       console.info(JSON.stringify({ eventType: 'client_error_fallback', ...doc }))
     }

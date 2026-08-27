@@ -2,21 +2,27 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ControlBar,
   ConnectionState,
   ConnectionStateToast,
   LiveKitRoom,
   MediaDeviceSelect,
+  ParticipantTile,
   RoomAudioRenderer,
   StartAudio,
-  VideoConference,
+  useParticipants,
+  useRoomContext,
+  useTracks,
 } from '@livekit/components-react'
-import { ExternalE2EEKeyProvider, isE2EESupported, type E2EEOptions } from 'livekit-client'
+import { ExternalE2EEKeyProvider, isE2EESupported, RoomEvent, Track, type E2EEOptions } from 'livekit-client'
 import {
   Check,
+  ChevronDown,
   ChevronLeft,
   Copy,
   LoaderCircle,
   LockKeyhole,
+  LayoutGrid,
   Maximize2,
   PhoneOff,
   Search,
@@ -25,6 +31,7 @@ import {
   X,
 } from 'lucide-react'
 import { callService } from '@/lib/appwrite/calls'
+import { playCallParticipantTone } from './use-incoming-call-alerts'
 
 interface LiveKitCallStageProps {
   sessionId: string
@@ -32,6 +39,7 @@ interface LiveKitCallStageProps {
   mediaType?: 'voice' | 'video'
   callState?: 'outgoing_ringing' | 'incoming_ringing' | 'connecting' | 'active' | 'reconnecting' | 'ended' | 'idle'
   direction?: 'incoming' | 'outgoing'
+  callDuration?: number
   onClose: () => void
 }
 
@@ -74,12 +82,94 @@ function CallIdentity({ title, size = 'large' }: { title: string; size?: 'small'
   )
 }
 
+function formatCallDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60)
+  const remainder = seconds % 60
+  return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+}
+
+function StableCallConference({
+  layoutMode,
+  onLayoutModeChange,
+  onDeviceError,
+}: {
+  layoutMode: 'speaker' | 'equal'
+  onLayoutModeChange: () => void
+  onDeviceError: (message: string) => void
+}) {
+  const room = useRoomContext()
+  const participants = useParticipants()
+  const tracks = useTracks([
+    { source: Track.Source.ScreenShare, withPlaceholder: false },
+    { source: Track.Source.Camera, withPlaceholder: true },
+  ])
+  const [participantNotice, setParticipantNotice] = useState<string | null>(null)
+  const noticeTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const showNotice = (message: string, tone: 'joined' | 'left') => {
+      setParticipantNotice(message)
+      playCallParticipantTone(tone)
+      if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current)
+      noticeTimerRef.current = window.setTimeout(() => setParticipantNotice(null), 2800)
+    }
+    const handleConnected = (participant: { name?: string; identity: string }) => showNotice(`${participant.name || participant.identity} joined`, 'joined')
+    const handleDisconnected = (participant: { name?: string; identity: string }) => showNotice(`${participant.name || participant.identity} left`, 'left')
+    room.on(RoomEvent.ParticipantConnected, handleConnected)
+    room.on(RoomEvent.ParticipantDisconnected, handleDisconnected)
+    return () => {
+      room.off(RoomEvent.ParticipantConnected, handleConnected)
+      room.off(RoomEvent.ParticipantDisconnected, handleDisconnected)
+      if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current)
+    }
+  }, [room])
+
+  const localIdentity = room.localParticipant.identity
+  const screenTracks = tracks.filter((track: any) => track.source === Track.Source.ScreenShare)
+  const cameraTracks = tracks.filter((track: any) => track.source === Track.Source.Camera)
+  const orderedTracks = screenTracks.length
+    ? [...screenTracks, ...cameraTracks]
+    : [...cameraTracks.filter((track: any) => track.participant.identity !== localIdentity), ...cameraTracks.filter((track: any) => track.participant.identity === localIdentity)]
+  const isDirectCall = participants.length === 2 && cameraTracks.length <= 2 && screenTracks.length === 0
+
+  return (
+    <div className="peer-call-conference peer-stable-conference" data-layout={isDirectCall ? layoutMode : 'group'} data-participants={participants.length}>
+      <div className="peer-stable-call-grid">
+        {orderedTracks.map((track: any) => {
+          const identity = track.participant.identity
+          const source = track.source || track.publication?.source || Track.Source.Camera
+          return (
+            <div key={`${identity}:${source}`} className="peer-stable-call-tile" data-local={identity === localIdentity} data-source={source}>
+              <ParticipantTile trackRef={track} />
+            </div>
+          )
+        })}
+      </div>
+
+      {isDirectCall ? (
+        <button type="button" onClick={onLayoutModeChange} className="peer-call-layout-toggle" aria-label={layoutMode === 'speaker' ? 'Use equal split view' : 'Use speaker view'}>
+          <LayoutGrid className="h-4 w-4" /> {layoutMode === 'speaker' ? '50 / 50' : 'Speaker'}
+        </button>
+      ) : null}
+
+      {participantNotice ? <div className="peer-call-participant-notice" role="status" aria-live="polite">{participantNotice}</div> : null}
+
+      <ControlBar
+        variation="minimal"
+        controls={{ microphone: true, camera: true, screenShare: true, chat: false, leave: true, settings: false }}
+        onDeviceError={({ source, error }) => onDeviceError(`${source}: ${error.message}`)}
+      />
+    </div>
+  )
+}
+
 export function LiveKitCallStage({
   sessionId,
   roomTitle = 'Student.social call',
   mediaType = 'video',
   callState = 'connecting',
   direction,
+  callDuration = 0,
   onClose,
 }: LiveKitCallStageProps) {
   const [tokenPayload, setTokenPayload] = useState<TokenPayload | null>(null)
@@ -96,6 +186,8 @@ export function LiveKitCallStage({
   const [invitingUserId, setInvitingUserId] = useState('')
   const [supportsAudioOutputSelection, setSupportsAudioOutputSelection] = useState(false)
   const [videoFit, setVideoFit] = useState<'fit' | 'fill'>('fit')
+  const [layoutMode, setLayoutMode] = useState<'speaker' | 'equal'>('speaker')
+  const [isMinimized, setIsMinimized] = useState(false)
   const [copied, setCopied] = useState(false)
   const [e2eeOptions, setE2eeOptions] = useState<E2EEOptions | undefined>()
   const callShellRef = useRef<HTMLDivElement | null>(null)
@@ -105,7 +197,6 @@ export function LiveKitCallStage({
   const autoJoinAttemptedRef = useRef(false)
 
   const effectiveMediaType = tokenPayload?.session?.mediaType || mediaType
-  const isVideoCall = effectiveMediaType === 'video'
   const joinUrl = useMemo(() => {
     if (typeof window === 'undefined') return ''
     const url = new URL(window.location.href)
@@ -124,6 +215,8 @@ export function LiveKitCallStage({
     setInviteQuery('')
     setInviteCandidates([])
     setVideoFit('fit')
+    setLayoutMode('speaker')
+    setIsMinimized(false)
     setE2eeOptions(undefined)
     e2eeWorkerRef.current?.terminate()
     e2eeWorkerRef.current = null
@@ -236,15 +329,6 @@ export function LiveKitCallStage({
     }
   }, [isJoined, videoFit])
 
-  const markSession = useCallback(async (action: 'join' | 'leave' | 'end') => {
-    await fetch(`/api/calls/sessions/${encodeURIComponent(sessionId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ action }),
-    }).catch(() => undefined)
-  }, [sessionId])
-
   const reportCallIssue = useCallback((kind: string, message: string) => {
     const roomId = tokenPayload?.session?.roomId
     const key = `${kind}:${message}`
@@ -268,6 +352,28 @@ export function LiveKitCallStage({
       }),
     }).catch(() => undefined)
   }, [effectiveMediaType, sessionId, tokenPayload?.session?.roomId])
+
+  const markSession = useCallback(async (action: 'join' | 'leave' | 'end', reason?: string) => {
+    let lastError = 'Unable to update the call'
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await fetch(`/api/calls/sessions/${encodeURIComponent(sessionId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          keepalive: action !== 'join',
+          body: JSON.stringify({ action, ...(reason ? { reason } : {}) }),
+        })
+        if (response.ok || response.status === 409) return true
+        const payload = await response.json().catch(() => null)
+        lastError = payload?.error || `Call update failed (${response.status})`
+      } catch (cause) {
+        lastError = cause instanceof Error ? cause.message : lastError
+      }
+    }
+    reportCallIssue('session-update', `${action}: ${lastError}`)
+    return false
+  }, [reportCallIssue, sessionId])
 
   const joinCall = useCallback(async () => {
     setIsJoining(true)
@@ -308,7 +414,8 @@ export function LiveKitCallStage({
     if (leaveInFlightRef.current) return
     leaveInFlightRef.current = true
     const shouldEndForEveryone = endForEveryone || (direction === 'outgoing' && callState === 'outgoing_ringing')
-    await markSession(shouldEndForEveryone ? 'end' : 'leave')
+    const reason = direction === 'outgoing' && callState === 'outgoing_ringing' ? 'caller_cancelled' : undefined
+    await markSession(shouldEndForEveryone ? 'end' : 'leave', reason)
     setIsJoined(false)
     setTokenPayload(null)
     setE2eeOptions(undefined)
@@ -317,10 +424,11 @@ export function LiveKitCallStage({
     onClose()
   }, [callState, direction, markSession, onClose])
 
-  const handleDisconnected = useCallback(() => {
+  const handleDisconnected = useCallback((reason?: unknown) => {
     if (leaveInFlightRef.current) return
+    reportCallIssue('unexpected-disconnect', `LiveKit disconnected${reason == null ? '' : ` (${String(reason)})`}`)
     void leaveCall(false)
-  }, [leaveCall])
+  }, [leaveCall, reportCallIssue])
 
   const inviteParticipant = async (candidate: InviteCandidate) => {
     setInvitingUserId(candidate.userId)
@@ -356,10 +464,10 @@ export function LiveKitCallStage({
   return (
     <div
       ref={callShellRef}
-      className="peer-call-shell fixed inset-0 z-[80] overflow-hidden bg-[#242724] text-white"
+      className={`peer-call-shell fixed inset-0 z-[80] overflow-hidden bg-[#242724] text-white${isMinimized ? ' peer-call-shell--minimized' : ''}`}
       style={{ height: '100dvh', maxHeight: 'none', overflow: 'hidden' }}
       role="dialog"
-      aria-modal="true"
+      aria-modal={!isMinimized}
       aria-label={`${roomTitle} call`}
     >
       <div className="peer-call-ambient" aria-hidden="true" />
@@ -393,7 +501,7 @@ export function LiveKitCallStage({
           serverUrl={tokenPayload.url}
           connect
           audio={micEnabled}
-          video={isVideoCall && cameraEnabled}
+          video={cameraEnabled}
           options={{ adaptiveStream: true, dynacast: true, e2ee: e2eeOptions }}
           connectOptions={{ autoSubscribe: true, maxRetries: 8 }}
           onConnected={() => {
@@ -414,6 +522,14 @@ export function LiveKitCallStage({
           data-video-fit={videoFit}
           data-lk-theme="default"
         >
+          {isMinimized ? (
+            <button type="button" onClick={() => setIsMinimized(false)} className="peer-call-status-strip" aria-label={`Return to ${roomTitle} call`}>
+              <span className="h-2 w-2 animate-pulse rounded-full bg-[#8fbdb7]" />
+              <span className="min-w-0 flex-1 truncate text-left"><strong>{roomTitle}</strong><small>Call in progress</small></span>
+              <span className="font-mono text-xs text-white/65">{formatCallDuration(callDuration)}</span>
+              <Maximize2 className="h-4 w-4" />
+            </button>
+          ) : null}
           <ConnectionStateToast />
           <StartAudio label="Tap to enable call audio" className="peer-start-audio" />
 
@@ -432,18 +548,16 @@ export function LiveKitCallStage({
               </div>
             </div>
             <div className="pointer-events-auto flex items-center gap-2">
-              {isVideoCall ? (
-                <button
-                  type="button"
-                  onClick={() => setVideoFit((current) => current === 'fit' ? 'fill' : 'fit')}
-                  className="peer-call-icon-button"
-                  aria-label={videoFit === 'fit' ? 'Fill tiles with video' : 'Show the complete camera frame'}
-                  aria-pressed={videoFit === 'fill'}
-                  title={videoFit === 'fit' ? 'Fill tiles' : 'Fit full frame'}
-                >
-                  <Maximize2 className="h-5 w-5" />
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => setVideoFit((current) => current === 'fit' ? 'fill' : 'fit')}
+                className="peer-call-icon-button"
+                aria-label={videoFit === 'fit' ? 'Fill tiles with video' : 'Show the complete camera frame'}
+                aria-pressed={videoFit === 'fill'}
+                title={videoFit === 'fit' ? 'Fill tiles' : 'Fit full frame'}
+              >
+                <Maximize2 className="h-5 w-5" />
+              </button>
               <button type="button" onClick={() => { setSettingsOpen(false); setInviteOpen(true) }} className="peer-call-icon-button" aria-label="Add participant">
                 <UserPlus className="h-5 w-5" />
               </button>
@@ -453,11 +567,22 @@ export function LiveKitCallStage({
               <button type="button" onClick={() => setSettingsOpen((open) => !open)} className="peer-call-icon-button" aria-label="Open call settings" aria-expanded={settingsOpen}>
                 <Settings2 className="h-5 w-5" />
               </button>
+              <button type="button" onClick={() => setIsMinimized(true)} className="peer-call-icon-button" aria-label="Minimize call">
+                <ChevronDown className="h-5 w-5" />
+              </button>
             </div>
           </header>
 
           <main className="min-h-0 flex-1">
-            <VideoConference className="peer-call-conference" />
+            <StableCallConference
+              layoutMode={layoutMode}
+              onLayoutModeChange={() => setLayoutMode((current) => current === 'speaker' ? 'equal' : 'speaker')}
+              onDeviceError={(message) => {
+                const friendlyMessage = `Unable to change the call device. ${message}`
+                setError(friendlyMessage)
+                reportCallIssue('media-device-control', friendlyMessage)
+              }}
+            />
           </main>
 
           {waitingForAnswer ? (
@@ -491,12 +616,10 @@ export function LiveKitCallStage({
                     <p className="mb-2 text-xs font-medium uppercase tracking-[0.15em] text-white/35">Speaker</p>
                     <MediaDeviceSelect kind="audiooutput" />
                   </div> : null}
-                  {isVideoCall ? (
-                    <div>
-                      <p className="mb-2 text-xs font-medium uppercase tracking-[0.15em] text-white/35">Camera</p>
-                      <MediaDeviceSelect kind="videoinput" />
-                    </div>
-                  ) : null}
+                  <div>
+                    <p className="mb-2 text-xs font-medium uppercase tracking-[0.15em] text-white/35">Camera</p>
+                    <MediaDeviceSelect kind="videoinput" />
+                  </div>
                   <div className="border-t border-white/[0.08] pt-5">
                     <button type="button" onClick={() => void leaveCall(false)} className="flex h-12 w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.06] font-medium transition hover:bg-white/[0.1]">
                       <PhoneOff className="h-4 w-4" /> Leave call

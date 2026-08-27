@@ -8,6 +8,7 @@ import { subscribeToCallSessions } from '@/lib/appwrite/call-realtime'
 import { closeCallNotification } from '@/lib/pwa/call-notifications'
 import { CallAlertsPrompt } from './CallAlertsPrompt'
 import { useIncomingCallAlerts, useOutgoingCallTone } from './use-incoming-call-alerts'
+import { CallOutcomeToast } from './CallOutcomeToast'
 
 const LiveKitCallStage = dynamic(
   () => import('./LiveKitCallStage').then((module) => module.LiveKitCallStage),
@@ -24,12 +25,15 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const activeFetchFailuresRef = useRef(0)
   const [acceptingCallId, setAcceptingCallId] = useState<string | null>(null)
   const [rejectingCallId, setRejectingCallId] = useState<string | null>(null)
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const pollingIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const callStateRef = useRef(callHook.callState)
+  useEffect(() => { callStateRef.current = callHook.callState }, [callHook.callState])
   useIncomingCallAlerts(Boolean(callHook.incomingCall && callHook.callState === 'incoming_ringing'))
   useOutgoingCallTone(callHook.callState === 'outgoing_ringing')
 
   // Fetch active calls on mount
   useEffect(() => {
+    let stopped = false
     const fetchActiveCalls = async () => {
       try {
         const response = await fetch('/api/calls/active', {
@@ -51,7 +55,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
         activeFetchFailuresRef.current = 0
         const data = await response.json()
-        callHook.syncActiveCalls(data.calls || [])
+        callHook.syncActiveCalls(data.calls || [], data.resolvedCalls || [])
       } catch (error) {
         activeFetchFailuresRef.current += 1
         if (activeFetchFailuresRef.current <= 2) {
@@ -69,20 +73,27 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
     // Appwrite Realtime is the primary signal. A light, visible-tab-only poll
     // recovers missed socket events without creating constant background load.
-    pollingIntervalRef.current = setInterval(() => {
-      if (document.visibilityState === 'visible') void fetchActiveCalls()
-    }, 30_000)
+    const scheduleRecoveryPoll = () => {
+      if (stopped) return
+      const quickState = ['idle', 'outgoing_ringing', 'incoming_ringing', 'connecting'].includes(callStateRef.current)
+      pollingIntervalRef.current = setTimeout(async () => {
+        if (document.visibilityState === 'visible') await fetchActiveCalls()
+        if (!stopped) scheduleRecoveryPoll()
+      }, quickState ? 3_000 : 12_000)
+    }
+    scheduleRecoveryPoll()
     const refreshOnFocus = () => { if (document.visibilityState === 'visible') void fetchActiveCalls() }
     document.addEventListener('visibilitychange', refreshOnFocus)
     window.addEventListener('online', fetchActiveCalls)
 
     return () => {
+      stopped = true
       document.removeEventListener('visibilitychange', refreshOnFocus)
       window.removeEventListener('online', fetchActiveCalls)
       unsubscribeRealtime()
       if (refreshTimer) clearTimeout(refreshTimer)
       if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current)
+        clearTimeout(pollingIntervalRef.current)
       }
     }
   }, [callHook.syncActiveCalls])
@@ -140,6 +151,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         />
       )}
 
+      {callHook.lastCallOutcome ? (
+        <CallOutcomeToast outcome={callHook.lastCallOutcome} onClose={callHook.dismissCallOutcome} />
+      ) : null}
+
       {/* One media implementation for direct, group, pod, and classroom calls. */}
       {callHook.activeCall && ['outgoing_ringing', 'connecting', 'active', 'reconnecting'].includes(callHook.callState) && (
         <LiveKitCallStage
@@ -148,6 +163,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           mediaType={callHook.activeCall.mediaType}
           callState={callHook.callState}
           direction={callHook.activeCall.direction}
+          callDuration={callHook.callDuration}
           onClose={callHook.clearActiveCall}
         />
       )}

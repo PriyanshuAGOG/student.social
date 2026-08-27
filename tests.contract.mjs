@@ -406,6 +406,30 @@ test('installed PWA calls provide foreground ringing and background push actions
   assert.ok(manifest.icons.some((icon) => icon.sizes === '512x512' && icon.purpose === 'maskable'))
 })
 
+test('web calls resolve promptly, support media upgrades, and avoid unstable paginated layouts', () => {
+  const provider = fs.readFileSync('components/call/CallProvider.tsx', 'utf8')
+  const stage = fs.readFileSync('components/call/LiveKitCallStage.tsx', 'utf8')
+  const activeRoute = fs.readFileSync('app/api/calls/active/route.ts', 'utf8')
+  const sessionRoute = fs.readFileSync('app/api/calls/sessions/route.ts', 'utf8')
+  const clientReporter = fs.readFileSync('components/admin/ClientErrorReporter.tsx', 'utf8')
+
+  assert.match(provider, /resolvedCalls/)
+  assert.match(provider, /quickState \? 3_000 : 12_000/)
+  assert.match(stage, /StableCallConference/)
+  assert.match(stage, /camera: true, screenShare: true/)
+  assert.match(stage, /data-layout=/)
+  assert.match(stage, /peer-call-status-strip/)
+  assert.doesNotMatch(stage, /<VideoConference/)
+  assert.match(activeRoute, /state: 'missed'/)
+  assert.match(activeRoute, /resolvedCalls/)
+  assert.match(activeRoute, /asCallerResolved/)
+  assert.match(sessionRoute, /CALL_RING_TIMEOUT_MS/)
+  assert.match(sessionRoute, /after\(async \(\) =>/)
+  assert.match(clientReporter, /securitypolicyviolation/)
+  assert.match(clientReporter, /window\.fetch = async/)
+  assert.match(clientReporter, /breadcrumbs/)
+})
+
 test('PWA and Android releases expose install and versioned update flows', () => {
   const layout = fs.readFileSync('app/layout.tsx', 'utf8')
   const prompt = fs.readFileSync('components/pwa-install-prompt.tsx', 'utf8')

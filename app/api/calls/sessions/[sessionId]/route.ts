@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
 import { z } from 'zod'
 import { parseJsonBody } from '@/lib/api-security'
-import { assertCallActionAllowed, canAccessCall, getSessionUpdates, hasRemainingCallParticipants, parseStringList } from '@/lib/calls/domain'
+import { assertCallActionAllowed, canAccessCall, getSessionUpdates, hasRemainingCallParticipants, parseStringList, shouldEndCallWhenParticipantLeaves } from '@/lib/calls/domain'
 import { checkDurableRateLimit } from '@/lib/server/rate-limit'
 import { sendCallResolvedPush } from '@/lib/server/web-push'
 
@@ -88,7 +88,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ se
       })
 
       if (action === 'leave') {
-        if (!hasRemainingCallParticipants(participants.documents || [], auth.userId)) {
+        if (shouldEndCallWhenParticipantLeaves(session, auth.userId)) {
+          updates = { ...updates, state: 'ended', endedAt: now, endedReason: 'participant_left' }
+        } else if (!hasRemainingCallParticipants(participants.documents || [], auth.userId)) {
           updates = { ...updates, state: 'ended', endedAt: now, endedReason: 'last_participant_left' }
         }
       }
@@ -105,10 +107,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ se
 
     const updatedSession = await databases.updateDocument(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, sessionId, updates)
 
-    if (action === 'end') {
-      await Promise.allSettled(parseStringList(session.participantIds).map((participantId) =>
-        sendCallResolvedPush(users, participantId, { sessionId, roomTitle: session.roomTitle }),
-      ))
+    if (action === 'end' || action === 'decline' || updates.state === 'ended') {
+      const recipients = new Set([session.callerId, ...parseStringList(session.participantIds)])
+      recipients.delete(auth.userId)
+      after(async () => {
+        await Promise.allSettled(Array.from(recipients).map((participantId) =>
+          sendCallResolvedPush(users, participantId, { sessionId, roomTitle: session.roomTitle }),
+        ))
+      })
     }
 
     return NextResponse.json({ success: true, session: updatedSession })

@@ -5,6 +5,7 @@ export type CallAction = (typeof CALL_ACTIONS)[number]
 
 export const TERMINAL_CALL_STATES = new Set<CallState>(['declined', 'ended', 'missed', 'failed'])
 export const PARTICIPANT_INVITE_TTL_MS = 60_000
+export const CALL_RING_TIMEOUT_MS = 45_000
 
 export function parseStringList(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -46,6 +47,13 @@ export function isParticipantInvitationCurrent(participant: any, session: any, n
 export function hasRemainingCallParticipants(participants: any[], departingUserId: string): boolean {
   return (participants || []).some((participant) =>
     participant?.userId !== departingUserId && ['invited', 'joined'].includes(String(participant?.state || '')),
+  )
+}
+
+export function shouldEndCallWhenParticipantLeaves(session: any, departingUserId: string): boolean {
+  const invitedParticipantIds = parseStringList(session?.participantIds)
+  return invitedParticipantIds.length <= 1 && (
+    session?.callerId === departingUserId || invitedParticipantIds.includes(departingUserId)
   )
 }
 
