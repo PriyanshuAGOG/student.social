@@ -1,5 +1,5 @@
 // Service Worker for Student.social PWA
-const CACHE_VERSION = 'student-social-v6';
+const CACHE_VERSION = 'student-social-v8';
 const RUNTIME_CACHE = 'student-social-runtime';
 
 // Assets to cache on install
@@ -8,6 +8,9 @@ const ASSETS_TO_CACHE = [
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/maskable-512.png',
+  '/icons/badge-96.png',
+  '/apple-touch-icon.png',
   '/favicon.ico',
 ];
 
@@ -164,8 +167,8 @@ self.addEventListener('push', (event) => {
   const incomingCall = data.type === 'incoming-call';
   const options = {
     body: data.body || 'New notification from Student.social',
-    icon: data.data?.callerAvatar || '/logo.png',
-    badge: '/favicon.ico',
+    icon: data.data?.callerAvatar || '/icons/icon-192.png',
+    badge: '/icons/badge-96.png',
     tag: data.tag || 'student-social-notification',
     data: data.data || {},
     requireInteraction: incomingCall || Boolean(data.requireInteraction),

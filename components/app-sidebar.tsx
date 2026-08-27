@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { BrandLogo } from "@/components/brand-logo"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -74,10 +75,6 @@ const navigation = [
   },
 ]
 
-function StudentMark() {
-  return <span className="student-app-mark" aria-hidden="true"><i /><i /><i /></span>
-}
-
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const router = useRouter()
@@ -109,7 +106,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild className="student-brand-button h-14 rounded-2xl px-2">
               <Link href="/app/feed" aria-label="Student.social learning feed">
-                <span className="student-brand-mark-wrap"><StudentMark /></span>
+                <span className="student-brand-mark-wrap"><BrandLogo variant="icon" decorative className="h-10 w-10 object-contain" /></span>
                 <span className="grid flex-1 text-left leading-tight">
                   <span className="truncate text-[15px] font-semibold tracking-[-0.02em]">Student.social</span>
                   <span className="truncate text-[10px] uppercase tracking-[0.16em] text-sidebar-foreground/42">Learn together</span>

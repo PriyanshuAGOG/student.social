@@ -30,9 +30,13 @@ export const metadata: Metadata = {
     telephone: false,
   },
   icons: {
-    icon: '/logo.png',
-    shortcut: '/logo.png',
-    apple: '/logo.png',
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icons/icon-192.png', type: 'image/png', sizes: '192x192' },
+      { url: '/icons/icon-512.png', type: 'image/png', sizes: '512x512' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: [{ url: '/apple-touch-icon.png', type: 'image/png', sizes: '180x180' }],
   },
   keywords: [
     'collaborative learning',
@@ -53,9 +57,9 @@ export const metadata: Metadata = {
     description: 'Find study circles, build a shared learning rhythm, and get thoughtful AI support.',
     images: [
       {
-        url: '/logo.png',
+        url: '/brand/student-social-lockup.webp',
         width: 512,
-        height: 512,
+        height: 171,
         alt: 'Student.social logo',
       },
     ],
@@ -64,7 +68,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Student.social — Learning is better with people',
     description: 'Find study circles, build a shared learning rhythm, and get thoughtful AI support.',
-    images: ['/logo.png'],
+    images: ['/brand/student-social-lockup.webp'],
   },
 }
 
@@ -93,9 +97,8 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Student.social" />
-        <meta name="msapplication-TileColor" content="#000000" />
+        <meta name="msapplication-TileColor" content="#fdfaf9" />
         <meta name="msapplication-config" content="/browserconfig.xml" />
-        <link rel="mask-icon" href="/placeholder-icon.png" color="#000000" />
       </head>
       <body className={`${publicSans.variable} ${publicSerif.variable}`}>
         <AuthProvider>
