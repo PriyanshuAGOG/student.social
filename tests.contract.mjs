@@ -472,18 +472,27 @@ test('installed PWA calls provide foreground ringing and background push actions
 test('web calls resolve promptly, support media upgrades, and avoid unstable paginated layouts', () => {
   const provider = fs.readFileSync('components/call/CallProvider.tsx', 'utf8')
   const stage = fs.readFileSync('components/call/LiveKitCallStage.tsx', 'utf8')
+  const callHook = fs.readFileSync('hooks/use-call.ts', 'utf8')
+  const tones = fs.readFileSync('components/call/use-incoming-call-alerts.ts', 'utf8')
   const activeRoute = fs.readFileSync('app/api/calls/active/route.ts', 'utf8')
   const sessionRoute = fs.readFileSync('app/api/calls/sessions/route.ts', 'utf8')
   const clientReporter = fs.readFileSync('components/admin/ClientErrorReporter.tsx', 'utf8')
 
   assert.match(provider, /resolvedCalls/)
   assert.match(provider, /quickState \? 3_000 : 12_000/)
+  assert.match(provider, /confirmCallConnected/)
   assert.match(stage, /StableCallConference/)
+  assert.match(stage, /CallConnectionBridge/)
+  assert.match(stage, /setLogLevel\('warn'\)/)
+  assert.match(stage, /onMediaConnected/)
+  assert.match(callHook, /current\.state === 'active'/)
+  assert.match(tones, /stopCurrentTone\?\.\(\)/)
   assert.match(stage, /camera: true, screenShare: true/)
   assert.match(stage, /data-layout=/)
   assert.match(stage, /peer-call-status-strip/)
   assert.doesNotMatch(stage, /<VideoConference/)
   assert.match(activeRoute, /state: 'missed'/)
+  assert.match(activeRoute, /participant\.state === 'joined'/)
   assert.match(activeRoute, /resolvedCalls/)
   assert.match(activeRoute, /asCallerResolved/)
   assert.match(sessionRoute, /CALL_RING_TIMEOUT_MS/)
@@ -491,6 +500,19 @@ test('web calls resolve promptly, support media upgrades, and avoid unstable pag
   assert.match(clientReporter, /securitypolicyviolation/)
   assert.match(clientReporter, /window\.fetch = async/)
   assert.match(clientReporter, /breadcrumbs/)
+})
+
+test('chat typing and the responsive feed toolbar use human identity and deliberate control order', () => {
+  const chat = fs.readFileSync('app/app/chat/page.tsx', 'utf8')
+  const typing = fs.readFileSync('components/chat/premium/TypingIndicator.tsx', 'utf8')
+  const workspace = fs.readFileSync('components/internal/AppWorkspace.tsx', 'utf8')
+
+  assert.match(chat, /namesById\.get\(userId\)/)
+  assert.match(typing, /is' : 'are'/)
+  assert.match(workspace, /student-global-profile/)
+  assert.doesNotMatch(workspace, /BrandLogo/)
+  assert.ok(workspace.indexOf('student-create-button') < workspace.indexOf('student-global-search'))
+  assert.ok(workspace.indexOf('student-global-search') < workspace.indexOf('student-global-icon'))
 })
 
 test('PWA and Android releases expose install and versioned update flows', () => {

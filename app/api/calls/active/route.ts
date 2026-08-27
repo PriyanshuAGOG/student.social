@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { requireUser, enforceRateLimit, ApiError } from '@/lib/api-security'
-import { isCallExpired, isParticipantInvitationCurrent, parseStringList, shouldSurfaceActiveCall, TERMINAL_CALL_STATES } from '@/lib/calls/domain'
+import { isCallResolutionDue, isParticipantInvitationCurrent, parseStringList, shouldSurfaceActiveCall, TERMINAL_CALL_STATES } from '@/lib/calls/domain'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const CALL_SESSIONS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALL_SESSIONS_COLLECTION_ID || 'call_sessions'
@@ -72,10 +72,28 @@ export async function GET(req: NextRequest) {
     }
 
     // Ring timeouts are resolved lazily by whichever participant checks first.
-    // The update emits a realtime event, so both sides close without a cron job.
+    // Reconcile a guest who has already joined before declaring a missed call;
+    // accepting and polling can otherwise race across two Appwrite documents.
     for (const [sessionId, session] of uniqueSessions) {
-      if (!isCallExpired(session, now)) continue
+      if (!isCallResolutionDue(session, now)) continue
       const endedAt = new Date(now).toISOString()
+      const participants = await databases.listDocuments(DATABASE_ID, CALL_PARTICIPANTS_COLLECTION_ID, [
+        Query.equal('callSessionId', sessionId),
+        Query.limit(100),
+      ]).catch(() => ({ documents: [] as any[] }))
+      const answered = (participants.documents || []).some((participant: any) =>
+        participant.userId !== session.callerId && participant.state === 'joined',
+      )
+      if (answered) {
+        const reconciled = await databases.updateDocument(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, sessionId, {
+          state: 'active',
+          acceptedAt: session.acceptedAt || endedAt,
+          lastActivityAt: endedAt,
+          updatedAt: endedAt,
+        }).catch(() => null)
+        if (reconciled) uniqueSessions.set(sessionId, reconciled)
+        continue
+      }
       const resolved = await databases.updateDocument(DATABASE_ID, CALL_SESSIONS_COLLECTION_ID, sessionId, {
         state: 'missed',
         endedAt,

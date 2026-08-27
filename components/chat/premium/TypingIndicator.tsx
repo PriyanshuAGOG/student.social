@@ -34,7 +34,7 @@ export function TypingIndicator({ names = [], isTyping = false }: TypingIndicato
             ))}
           </div>
         </div>
-        <p className="text-xs text-slate-400">{displayName} typing...</p>
+        <p className="text-xs text-slate-400">{displayName} {names.length === 1 ? 'is' : 'are'} typing…</p>
       </div>
       <style>{`
         @keyframes bounce {

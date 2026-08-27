@@ -6,6 +6,7 @@ export type CallAction = (typeof CALL_ACTIONS)[number]
 export const TERMINAL_CALL_STATES = new Set<CallState>(['declined', 'ended', 'missed', 'failed'])
 export const PARTICIPANT_INVITE_TTL_MS = 60_000
 export const CALL_RING_TIMEOUT_MS = 45_000
+export const CALL_ACCEPTANCE_GRACE_MS = 12_000
 
 export function parseStringList(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -31,13 +32,36 @@ export function isCallExpired(session: any, now = Date.now()): boolean {
   return Number.isFinite(timeout) && timeout <= now
 }
 
+export function isCallResolutionDue(session: any, now = Date.now()): boolean {
+  if (session?.state !== 'ringing' || !session?.ringTimeoutAt) return false
+  const timeout = Date.parse(String(session.ringTimeoutAt))
+  return Number.isFinite(timeout) && timeout + CALL_ACCEPTANCE_GRACE_MS <= now
+}
+
+export function canRecoverTimedOutCall(session: any, now = Date.now()): boolean {
+  if (session?.state !== 'missed' || session?.endedReason !== 'no_answer') return false
+  const endedAt = Date.parse(String(session?.endedAt || session?.updatedAt || ''))
+  return Number.isFinite(endedAt) && now - endedAt >= 0 && now - endedAt <= CALL_ACCEPTANCE_GRACE_MS
+}
+
+export function getRecoveredCallUpdates(now: string) {
+  return {
+    state: 'active' as const,
+    acceptedAt: now,
+    endedAt: '',
+    endedReason: '',
+    lastActivityAt: now,
+    updatedAt: now,
+  }
+}
+
 export function isParticipantInvitationCurrent(participant: any, session: any, now = Date.now()): boolean {
   if (participant?.state === 'joined') return true
   if (participant?.state !== 'invited') return false
 
   if (session?.state === 'ringing') {
     const ringTimeout = Date.parse(String(session?.ringTimeoutAt || ''))
-    return Number.isFinite(ringTimeout) && ringTimeout > now
+    return Number.isFinite(ringTimeout) && ringTimeout + CALL_ACCEPTANCE_GRACE_MS > now
   }
 
   const invitedAt = Date.parse(String(participant?.updatedAt || participant?.createdAt || ''))
@@ -62,7 +86,7 @@ export function shouldSurfaceActiveCall(session: any, activeParticipantSessionId
     session?.$id &&
     activeParticipantSessionIds.has(session.$id) &&
     ['ringing', 'active'].includes(String(session?.state || '')) &&
-    !isCallExpired(session, now),
+    !isCallResolutionDue(session, now),
   )
 }
 

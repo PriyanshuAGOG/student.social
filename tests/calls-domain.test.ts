@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 // @ts-expect-error -- Node 22's strip-types test runner requires the explicit .ts suffix.
-import { CALL_RING_TIMEOUT_MS, assertCallActionAllowed, canAccessCall, getSessionUpdates, hasRemainingCallParticipants, isCallExpired, isParticipantInvitationCurrent, parseStringList, shouldEndCallWhenParticipantLeaves, shouldSurfaceActiveCall } from '../lib/calls/domain.ts'
+import { CALL_ACCEPTANCE_GRACE_MS, CALL_RING_TIMEOUT_MS, assertCallActionAllowed, canAccessCall, canRecoverTimedOutCall, getRecoveredCallUpdates, getSessionUpdates, hasRemainingCallParticipants, isCallExpired, isCallResolutionDue, isParticipantInvitationCurrent, parseStringList, shouldEndCallWhenParticipantLeaves, shouldSurfaceActiveCall } from '../lib/calls/domain.ts'
 // @ts-expect-error -- Node 22's strip-types test runner requires the explicit .ts suffix.
 import { createOutboxMessage, mergeChatMessages } from '../hooks/use-chat-outbox.ts'
 
@@ -49,7 +49,26 @@ test('terminal calls reject joining but allow idempotent leave', () => {
 test('ring timeout and serialized member parsing are deterministic', () => {
   assert.equal(CALL_RING_TIMEOUT_MS, 45_000)
   assert.equal(isCallExpired({ ...base, ringTimeoutAt: '2020-01-01T00:00:00.000Z' }), true)
+  const timeout = '2026-08-27T10:00:00.000Z'
+  assert.equal(isCallResolutionDue({ ...base, ringTimeoutAt: timeout }, Date.parse(timeout) + CALL_ACCEPTANCE_GRACE_MS - 1), false)
+  assert.equal(isCallResolutionDue({ ...base, ringTimeoutAt: timeout }, Date.parse(timeout) + CALL_ACCEPTANCE_GRACE_MS), true)
   assert.deepEqual(parseStringList('["a","a","b"]'), ['a', 'b'])
+})
+
+test('a timeout race can be recovered briefly without reviving old calls', () => {
+  const endedAt = '2026-08-27T10:00:00.000Z'
+  const missed = { ...base, state: 'missed', endedReason: 'no_answer', endedAt }
+  assert.equal(canRecoverTimedOutCall(missed, Date.parse(endedAt) + CALL_ACCEPTANCE_GRACE_MS - 1), true)
+  assert.equal(canRecoverTimedOutCall(missed, Date.parse(endedAt) + CALL_ACCEPTANCE_GRACE_MS + 1), false)
+  assert.equal(canRecoverTimedOutCall({ ...missed, endedReason: 'caller_cancelled' }, Date.parse(endedAt) + 1), false)
+  assert.deepEqual(getRecoveredCallUpdates('2026-08-27T10:00:01.000Z'), {
+    state: 'active',
+    acceptedAt: '2026-08-27T10:00:01.000Z',
+    endedAt: '',
+    endedReason: '',
+    lastActivityAt: '2026-08-27T10:00:01.000Z',
+    updatedAt: '2026-08-27T10:00:01.000Z',
+  })
 })
 
 test('either participant leaving a direct call ends it, while group calls continue', () => {
@@ -65,7 +84,7 @@ test('stale participant invitations cannot replay as phantom calls after login',
   assert.equal(isParticipantInvitationCurrent({ state: 'invited', updatedAt: '2026-08-26T11:58:59.000Z' }, activeSession, now), false)
   assert.equal(isParticipantInvitationCurrent({ state: 'joined', updatedAt: '2020-01-01T00:00:00.000Z' }, activeSession, now), true)
   assert.equal(isParticipantInvitationCurrent({ state: 'declined', updatedAt: '2026-08-26T11:59:59.000Z' }, activeSession, now), false)
-  assert.equal(isParticipantInvitationCurrent({ state: 'invited' }, { state: 'ringing', ringTimeoutAt: '2026-08-26T11:59:59.000Z' }, now), false)
+  assert.equal(isParticipantInvitationCurrent({ state: 'invited' }, { state: 'ringing', ringTimeoutAt: '2026-08-26T11:59:47.000Z' }, now), false)
 })
 
 test('leaving participants are not resurfaced and solo rooms can terminate', () => {

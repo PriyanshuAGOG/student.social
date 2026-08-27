@@ -13,7 +13,14 @@ function getAudioContext(): AudioContext | null {
   return audioContext
 }
 
-function playRingtone(context: AudioContext): void {
+function silenceGain(context: AudioContext, gain: GainNode): void {
+  const now = context.currentTime
+  gain.gain.cancelScheduledValues(now)
+  gain.gain.setValueAtTime(0.0001, now)
+  window.setTimeout(() => gain.disconnect(), 40)
+}
+
+function playRingtone(context: AudioContext): () => void {
   const start = context.currentTime
   const master = context.createGain()
   master.gain.setValueAtTime(0.0001, start)
@@ -39,9 +46,10 @@ function playRingtone(context: AudioContext): void {
     oscillator.start(start + offset)
     oscillator.stop(start + offset + 0.4)
   }
+  return () => silenceGain(context, master)
 }
 
-function playRingbackTone(context: AudioContext): void {
+function playRingbackTone(context: AudioContext): () => void {
   const start = context.currentTime
   const master = context.createGain()
   master.gain.setValueAtTime(0.0001, start)
@@ -58,6 +66,7 @@ function playRingbackTone(context: AudioContext): void {
     oscillator.start(start)
     oscillator.stop(start + 0.92)
   }
+  return () => silenceGain(context, master)
 }
 
 export function useIncomingCallAlerts(active: boolean): void {
@@ -77,8 +86,12 @@ export function useIncomingCallAlerts(active: boolean): void {
   useEffect(() => {
     if (!active) return
     const context = getAudioContext()
+    let cancelled = false
+    let stopCurrentTone: (() => void) | undefined
     const ring = () => {
-      if (context?.state === 'running') playRingtone(context)
+      if (cancelled) return
+      stopCurrentTone?.()
+      if (context?.state === 'running') stopCurrentTone = playRingtone(context)
       if ('vibrate' in navigator) navigator.vibrate([420, 160, 420, 720])
     }
 
@@ -86,7 +99,9 @@ export function useIncomingCallAlerts(active: boolean): void {
     else ring()
     const interval = window.setInterval(ring, 3000)
     return () => {
+      cancelled = true
       window.clearInterval(interval)
+      stopCurrentTone?.()
       if ('vibrate' in navigator) navigator.vibrate(0)
     }
   }, [active])
@@ -96,14 +111,22 @@ export function useOutgoingCallTone(active: boolean): void {
   useEffect(() => {
     if (!active) return
     const context = getAudioContext()
+    let cancelled = false
+    let stopCurrentTone: (() => void) | undefined
     const ring = () => {
-      if (context?.state === 'running') playRingbackTone(context)
+      if (cancelled) return
+      stopCurrentTone?.()
+      if (context?.state === 'running') stopCurrentTone = playRingbackTone(context)
     }
 
     if (context?.state === 'suspended') void context.resume().then(ring).catch(() => undefined)
     else ring()
     const interval = window.setInterval(ring, 3000)
-    return () => window.clearInterval(interval)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+      stopCurrentTone?.()
+    }
   }, [active])
 }
 

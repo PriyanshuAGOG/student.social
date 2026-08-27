@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -154,7 +154,18 @@ export default function PremiumChatPage() {
   activeRoomIdRef.current = selectedRoom?.$id || "";
   const outbox = useChatOutbox(selectedRoom?.$id || "");
   const chatPresence = useChatPresence(selectedRoom?.$id || "", user?.$id);
-  const typingUsers = chatPresence.otherTypingEntries.map((entry) => entry.userId || "Someone");
+  const typingUsers = useMemo(() => {
+    const namesById = new Map(roomMemberProfiles.map((member) => [member.userId, member.name || member.username || ""]))
+    return Array.from(new Set(chatPresence.otherTypingEntries.map((entry) => {
+      const userId = entry.userId || ""
+      const resolvedName = namesById.get(userId)
+      if (resolvedName) return resolvedName
+      if (selectedRoom?.type === "direct" && selectedRoom.name && !/^(student|direct messages?|dm)$/i.test(selectedRoom.name.trim())) {
+        return selectedRoom.name
+      }
+      return "Someone"
+    })))
+  }, [chatPresence.otherTypingEntries, roomMemberProfiles, selectedRoom?.name, selectedRoom?.type]);
 
   useEffect(() => () => {
     const recorder = mediaRecorderRef.current;
@@ -405,7 +416,7 @@ export default function PremiumChatPage() {
           return next;
         });
         if (user?.$id && normalized.authorId !== user.$id && document.visibilityState === 'visible') {
-          void chatService.markRoomMessages(roomId, [normalized.$id], "read");
+          void chatService.markRoomMessages(roomId, [normalized.$id], "read").catch(() => undefined);
         }
       },
     );
@@ -522,7 +533,9 @@ export default function PremiumChatPage() {
       const unreadIds = normalized
         .filter((message: any) => message.authorId !== user?.$id && !(message.readBy || []).includes(user?.$id))
         .map((message: any) => message.$id);
-      if (unreadIds.length > 0) void chatService.markRoomMessages(roomId, unreadIds, "read");
+      if (unreadIds.length > 0) {
+        void chatService.markRoomMessages(roomId, unreadIds, "read").catch(() => undefined);
+      }
     } catch (error: any) {
       if (!options.silent) {
         toast({

@@ -2554,10 +2554,18 @@ export const chatService = {
    */
   async markRoomMessages(roomId: string, messageIds: string[], state: 'delivered' | 'read' = 'read') {
     if (!roomId || !Array.isArray(messageIds) || messageIds.length === 0) return { success: true, updated: 0 }
-    return apiJson(`/api/messages/room/${encodeURIComponent(roomId)}/receipts`, {
+    const request = () => apiJson(`/api/messages/room/${encodeURIComponent(roomId)}/receipts`, {
       method: 'POST',
       body: JSON.stringify({ messageIds: Array.from(new Set(messageIds)).slice(0, 200), state }),
     })
+
+    try {
+      return await request()
+    } catch (error: any) {
+      if (![429, 500, 502, 503, 504].includes(Number(error?.status))) throw error
+      await new Promise((resolve) => window.setTimeout(resolve, 300))
+      return request()
+    }
   },
 
   subscribeToReceipts(roomId: string, callback: (receipt: any) => void) {

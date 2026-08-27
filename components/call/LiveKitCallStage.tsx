@@ -14,7 +14,7 @@ import {
   useRoomContext,
   useTracks,
 } from '@livekit/components-react'
-import { ExternalE2EEKeyProvider, isE2EESupported, RoomEvent, Track, type E2EEOptions } from 'livekit-client'
+import { ExternalE2EEKeyProvider, isE2EESupported, RoomEvent, setLogLevel, Track, type E2EEOptions } from 'livekit-client'
 import {
   Check,
   ChevronDown,
@@ -41,6 +41,29 @@ interface LiveKitCallStageProps {
   direction?: 'incoming' | 'outgoing'
   callDuration?: number
   onClose: () => void
+  onMediaConnected?: () => void
+}
+
+function CallConnectionBridge({ onRemoteParticipantConnected }: { onRemoteParticipantConnected: () => void }) {
+  const room = useRoomContext()
+  const notifiedRef = useRef(false)
+
+  useEffect(() => {
+    const confirmRemoteParticipant = () => {
+      if (notifiedRef.current || room.remoteParticipants.size === 0) return
+      notifiedRef.current = true
+      onRemoteParticipantConnected()
+    }
+    confirmRemoteParticipant()
+    room.on(RoomEvent.ParticipantConnected, confirmRemoteParticipant)
+    room.on(RoomEvent.TrackSubscribed, confirmRemoteParticipant)
+    return () => {
+      room.off(RoomEvent.ParticipantConnected, confirmRemoteParticipant)
+      room.off(RoomEvent.TrackSubscribed, confirmRemoteParticipant)
+    }
+  }, [onRemoteParticipantConnected, room])
+
+  return null
 }
 
 interface TokenPayload {
@@ -171,6 +194,7 @@ export function LiveKitCallStage({
   direction,
   callDuration = 0,
   onClose,
+  onMediaConnected,
 }: LiveKitCallStageProps) {
   const [tokenPayload, setTokenPayload] = useState<TokenPayload | null>(null)
   const [isJoining, setIsJoining] = useState(false)
@@ -203,6 +227,12 @@ export function LiveKitCallStage({
     url.searchParams.set('call', sessionId)
     return url.toString()
   }, [sessionId])
+
+  useEffect(() => {
+    // LiveKit's connection lifecycle is expected during every call. Production
+    // consoles should surface warnings and failures, not normal publish noise.
+    if (process.env.NODE_ENV === 'production') setLogLevel('warn')
+  }, [])
 
   useEffect(() => {
     setTokenPayload(null)
@@ -249,6 +279,7 @@ export function LiveKitCallStage({
   }, [inviteOpen, inviteQuery, isJoined, sessionId])
 
   useEffect(() => () => {
+    leaveInFlightRef.current = true
     e2eeWorkerRef.current?.terminate()
     e2eeWorkerRef.current = null
   }, [])
@@ -356,24 +387,39 @@ export function LiveKitCallStage({
   const markSession = useCallback(async (action: 'join' | 'leave' | 'end', reason?: string) => {
     let lastError = 'Unable to update the call'
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      const controller = new AbortController()
+      const timeout = window.setTimeout(() => controller.abort(), 8_000)
       try {
         const response = await fetch(`/api/calls/sessions/${encodeURIComponent(sessionId)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           keepalive: action !== 'join',
+          signal: controller.signal,
           body: JSON.stringify({ action, ...(reason ? { reason } : {}) }),
         })
-        if (response.ok || response.status === 409) return true
         const payload = await response.json().catch(() => null)
+        if (response.ok) return true
+        if (response.status === 409 && ['leave', 'end'].includes(action) && payload?.code === 'CALL_ALREADY_FINISHED') return true
         lastError = payload?.error || `Call update failed (${response.status})`
+        if (response.status < 500 && response.status !== 429) break
       } catch (cause) {
-        lastError = cause instanceof Error ? cause.message : lastError
+        lastError = cause instanceof DOMException && cause.name === 'AbortError'
+          ? 'The call service timed out'
+          : cause instanceof Error ? cause.message : lastError
+      } finally {
+        window.clearTimeout(timeout)
       }
+      if (attempt === 0) await new Promise((resolve) => window.setTimeout(resolve, 300))
     }
     reportCallIssue('session-update', `${action}: ${lastError}`)
     return false
   }, [reportCallIssue, sessionId])
+
+  const handleRemoteParticipantConnected = useCallback(() => {
+    onMediaConnected?.()
+    void markSession('join')
+  }, [markSession, onMediaConnected])
 
   const joinCall = useCallback(async () => {
     setIsJoining(true)
@@ -522,6 +568,7 @@ export function LiveKitCallStage({
           data-video-fit={videoFit}
           data-lk-theme="default"
         >
+          <CallConnectionBridge onRemoteParticipantConnected={handleRemoteParticipantConnected} />
           {isMinimized ? (
             <button type="button" onClick={() => setIsMinimized(false)} className="peer-call-status-strip" aria-label={`Return to ${roomTitle} call`}>
               <span className="h-2 w-2 animate-pulse rounded-full bg-[#8fbdb7]" />

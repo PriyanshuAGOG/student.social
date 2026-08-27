@@ -29,6 +29,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const [acceptingCallId, setAcceptingCallId] = useState<string | null>(null)
   const [rejectingCallId, setRejectingCallId] = useState<string | null>(null)
   const pollingIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const activeRequestSequenceRef = useRef(0)
+  const latestAppliedSequenceRef = useRef(0)
   const callStateRef = useRef(callHook.callState)
   useEffect(() => { callStateRef.current = callHook.callState }, [callHook.callState])
   useIncomingCallAlerts(Boolean(callHook.incomingCall && callHook.callState === 'incoming_ringing'))
@@ -41,6 +43,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     authorizationRejectedRef.current = false
     const fetchActiveCalls = async () => {
       if (stopped || authorizationRejectedRef.current) return
+      const requestSequence = ++activeRequestSequenceRef.current
       try {
         const response = await fetch('/api/calls/active', {
           credentials: 'include',
@@ -63,6 +66,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
         activeFetchFailuresRef.current = 0
         const data = await response.json()
+        if (requestSequence < latestAppliedSequenceRef.current) return
+        latestAppliedSequenceRef.current = requestSequence
         callHook.syncActiveCalls(data.calls || [], data.resolvedCalls || [])
       } catch (error) {
         activeFetchFailuresRef.current += 1
@@ -93,11 +98,13 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     const refreshOnFocus = () => { if (document.visibilityState === 'visible') void fetchActiveCalls() }
     document.addEventListener('visibilitychange', refreshOnFocus)
     window.addEventListener('online', fetchActiveCalls)
+    window.addEventListener('student-social:call-sync', fetchActiveCalls)
 
     return () => {
       stopped = true
       document.removeEventListener('visibilitychange', refreshOnFocus)
       window.removeEventListener('online', fetchActiveCalls)
+      window.removeEventListener('student-social:call-sync', fetchActiveCalls)
       unsubscribeRealtime()
       if (refreshTimer) clearTimeout(refreshTimer)
       if (pollingIntervalRef.current) {
@@ -141,6 +148,12 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const value: CallContextType = {
     ...callHook,
   }
+  const activeCallId = callHook.activeCall?.id || ''
+  const handleMediaConnected = useCallback(() => {
+    if (!activeCallId) return
+    callHook.confirmCallConnected(activeCallId)
+    window.dispatchEvent(new CustomEvent('student-social:call-sync'))
+  }, [activeCallId, callHook.confirmCallConnected])
 
   return (
     <CallContext.Provider value={value}>
@@ -173,6 +186,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           direction={callHook.activeCall.direction}
           callDuration={callHook.callDuration}
           onClose={callHook.clearActiveCall}
+          onMediaConnected={handleMediaConnected}
         />
       )}
     </CallContext.Provider>

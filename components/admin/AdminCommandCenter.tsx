@@ -699,7 +699,7 @@ export function AdminCommandCenter({ adminEmail }: { adminEmail?: string }) {
             <Card>
               <CardHeader>
                 <CardTitle>Error and bug center</CardTitle>
-                <CardDescription>Client runtime failures, API errors, fingerprints, owners, and lifecycle state.</CardDescription>
+                <CardDescription>Client, API, and call-transport failures with fingerprints, owners, and lifecycle context.</CardDescription>
               </CardHeader>
               <CardContent>
                 <DataTable

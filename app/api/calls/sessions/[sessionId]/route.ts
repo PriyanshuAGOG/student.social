@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/server/appwrite'
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
 import { z } from 'zod'
 import { parseJsonBody } from '@/lib/api-security'
-import { assertCallActionAllowed, canAccessCall, getSessionUpdates, hasRemainingCallParticipants, parseStringList, shouldEndCallWhenParticipantLeaves } from '@/lib/calls/domain'
+import { assertCallActionAllowed, canAccessCall, canRecoverTimedOutCall, getRecoveredCallUpdates, getSessionUpdates, hasRemainingCallParticipants, parseStringList, shouldEndCallWhenParticipantLeaves } from '@/lib/calls/domain'
 import { checkDurableRateLimit } from '@/lib/server/rate-limit'
 import { sendCallResolvedPush } from '@/lib/server/web-push'
 
@@ -59,10 +59,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ se
     }
 
     const now = new Date().toISOString()
+    const recoverTimedOutAccept = action === 'accept' && session.callerId !== auth.userId && canRecoverTimedOutCall(session, Date.parse(now))
     let updates: Record<string, any>
     try {
-      assertCallActionAllowed(session, auth.userId, action)
-      updates = getSessionUpdates(session, auth.userId, action, now, body.reason)
+      if (!recoverTimedOutAccept) assertCallActionAllowed(session, auth.userId, action)
+      updates = recoverTimedOutAccept
+        ? getRecoveredCallUpdates(now)
+        : getSessionUpdates(session, auth.userId, action, now, body.reason)
     } catch (transitionError: any) {
       const code = String(transitionError?.message || '')
       if (code === 'CALL_ACCESS_DENIED') throw new ApiError(403, 'FORBIDDEN', 'You are not allowed to update this call session')
@@ -117,7 +120,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ se
       })
     }
 
-    return NextResponse.json({ success: true, session: updatedSession })
+    return NextResponse.json({ success: true, session: updatedSession, recovered: recoverTimedOutAccept })
   } catch (error: any) {
     if (error instanceof ApiError) {
       return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })

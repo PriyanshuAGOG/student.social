@@ -16,7 +16,6 @@ import {
 } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { BrandLogo } from "@/components/brand-logo"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { CreatePostModal } from "@/components/create-post-modal"
@@ -92,15 +91,13 @@ export function AppWorkspace({ children }: { children: React.ReactNode }) {
     <div className={`student-workspace${immersive ? " is-immersive" : ""}`}>
       {!immersive ? (
         <header className="student-global-bar">
-          <Link href="/app/feed" prefetch={false} className="student-global-brand md:hidden" aria-label="Student.social home">
-            <BrandLogo variant="icon" decorative className="h-10 w-10 object-contain dark:hidden" />
-            <BrandLogo variant="icon" tone="inverse" decorative className="hidden h-10 w-10 object-contain dark:block" />
+          <Link href="/app/profile" prefetch={false} className="student-global-profile" aria-label={`Open ${displayName}'s profile`}>
+            <Avatar><AvatarImage src={profile?.avatar || "/placeholder.svg"} alt={displayName} /><AvatarFallback>{initials}</AvatarFallback></Avatar>
+            <span className="student-global-greeting">
+              <span>{greeting},</span><strong>{firstName}</strong><small>{title}</small>
+            </span>
           </Link>
-          <div className="student-global-greeting hidden md:flex">
-            <span>{greeting},</span><strong>{firstName}</strong><small>{title}</small>
-          </div>
-          <Button asChild variant="ghost" className="student-global-search"><Link href="/app/search" prefetch={false} aria-label="Search posts, pods, and people"><Search aria-hidden="true" /><span>Search posts, pods, or people…</span><kbd>⌘K</kbd></Link></Button>
-          <div className="student-global-actions">
+          <div className="student-global-tools">
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button className="student-create-button"><Plus />Create</Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -113,8 +110,8 @@ export function AppWorkspace({ children }: { children: React.ReactNode }) {
                 <DropdownMenuItem asChild><Link href="/app/ai" prefetch={false}><Bot />Ask the AI tutor</Link></DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <Button asChild variant="ghost" className="student-global-search"><Link href="/app/search" prefetch={false} aria-label="Search posts, pods, and people"><Search aria-hidden="true" /><span>Search posts, pods, or people…</span><kbd>⌘K</kbd></Link></Button>
             <Button asChild variant="ghost" size="icon" className="student-global-icon"><Link href="/app/notifications" prefetch={false} aria-label="Notifications"><Bell /></Link></Button>
-            <Button asChild variant="ghost" size="icon" className="student-global-avatar"><Link href="/app/profile" prefetch={false} aria-label="Open profile"><Avatar><AvatarImage src={profile?.avatar || "/placeholder.svg"} alt={displayName} /><AvatarFallback>{initials}</AvatarFallback></Avatar></Link></Button>
           </div>
         </header>
       ) : null}

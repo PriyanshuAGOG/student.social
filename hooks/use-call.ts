@@ -51,6 +51,7 @@ export interface CallContextType {
   error: string | null
   lastCallOutcome: CallOutcome | null
   dismissCallOutcome: () => void
+  confirmCallConnected: (callId: string) => void
   syncActiveCalls: (calls: Call[], resolvedCalls?: Call[]) => void
 }
 
@@ -121,6 +122,7 @@ export const defaultCallContext: CallContextType = {
   error: null,
   lastCallOutcome: null,
   dismissCallOutcome: () => {},
+  confirmCallConnected: () => {},
   syncActiveCalls: () => {},
 }
 
@@ -198,8 +200,19 @@ export function useCall(): CallContextType {
       setIncomingCall(null)
       setCallState('active')
     } catch (cause: any) {
+      if (['CALL_ALREADY_FINISHED', 'CALL_EXPIRED', 'CALL_FINISHED'].includes(String(cause?.code || ''))) {
+        const endedCall = normalizeCall({ ...(incomingCallRef.current || {}), id: callId, state: 'missed', endedReason: 'no_answer', direction: 'incoming' })
+        resolvedCallIdsRef.current.add(callId)
+        incomingCallRef.current = null
+        activeCallRef.current = null
+        setIncomingCall(null)
+        setActiveCall(null)
+        setCallState('idle')
+        setLastCallOutcome({ ...describeCallOutcome(endedCall), title: 'Call no longer available', message: 'This call ended before it could be answered.' })
+        return
+      }
       setError(cause?.message || 'Failed to accept call')
-      setCallState('ended')
+      setCallState('incoming_ringing')
       throw cause
     }
   }, [])
@@ -226,6 +239,23 @@ export function useCall(): CallContextType {
 
   const cancelCall = useCallback((callId: string) => endCall(callId), [endCall])
 
+  const confirmCallConnected = useCallback((callId: string) => {
+    const current = activeCallRef.current
+    if (!current || current.id !== callId) return
+    const connected = {
+      ...current,
+      state: 'active' as const,
+      status: 'accepted' as const,
+      acceptedAt: current.acceptedAt || new Date().toISOString(),
+    }
+    activeCallRef.current = connected
+    incomingCallRef.current = null
+    setActiveCall(connected)
+    setIncomingCall(null)
+    setError(null)
+    setCallState('active')
+  }, [])
+
   const syncActiveCalls = useCallback((calls: Call[], resolvedCalls: Call[] = []) => {
     const normalized = (calls || [])
       .map(normalizeCall)
@@ -248,6 +278,15 @@ export function useCall(): CallContextType {
     const outgoing = normalized.find((call) => call.state === 'ringing' && call.direction === 'outgoing')
     if (outgoing) {
       const current = activeCallRef.current
+      // Transport confirmation is monotonic. An older polling response must not
+      // move a connected call backwards and restart the caller's ringback tone.
+      if (current?.id === outgoing.id && current.state === 'active') {
+        const connected = { ...outgoing, ...current, roomTitle: current.roomTitle || outgoing.roomTitle }
+        activeCallRef.current = connected
+        setActiveCall(connected)
+        setCallState('active')
+        return
+      }
       const next = current?.id === outgoing.id ? { ...current, ...outgoing, roomTitle: outgoing.roomTitle || current.roomTitle } : outgoing
       activeCallRef.current = next
       incomingCallRef.current = null
@@ -309,6 +348,7 @@ export function useCall(): CallContextType {
     error,
     lastCallOutcome,
     dismissCallOutcome,
+    confirmCallConnected,
     syncActiveCalls,
   }
 }

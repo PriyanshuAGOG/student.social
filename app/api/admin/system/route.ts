@@ -13,6 +13,7 @@ export const GET = withAdminApi('system.manage', async ({ correlationId }) => {
       ['content_reports', ADMIN_COLLECTIONS.contentReports],
       ['admin_audit_logs', ADMIN_COLLECTIONS.auditLogs],
       ['client_errors', ADMIN_COLLECTIONS.clientErrors],
+      ['call_diagnostics', ADMIN_COLLECTIONS.callDiagnostics],
       ['feature_flags', ADMIN_COLLECTIONS.featureFlags],
       ['admin_broadcasts', ADMIN_COLLECTIONS.broadcasts],
     ].map(async ([name, collectionId]) => {

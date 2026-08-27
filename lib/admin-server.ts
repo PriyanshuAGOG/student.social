@@ -18,6 +18,7 @@ export const ADMIN_COLLECTIONS = {
   moderationActions: process.env.MODERATION_ACTIONS_COLLECTION_ID || 'moderation_actions',
   clientErrors: process.env.CLIENT_ERRORS_COLLECTION_ID || 'client_errors',
   apiErrors: process.env.API_ERROR_EVENTS_COLLECTION_ID || 'api_error_events',
+  callDiagnostics: process.env.NEXT_PUBLIC_CALL_DIAGNOSTICS_COLLECTION_ID || 'call_diagnostics',
   systemHealth: process.env.SYSTEM_HEALTH_EVENTS_COLLECTION_ID || 'system_health_events',
   featureFlags: process.env.FEATURE_FLAGS_COLLECTION_ID || 'feature_flags',
   adminNotes: process.env.ADMIN_NOTES_COLLECTION_ID || 'admin_notes',
