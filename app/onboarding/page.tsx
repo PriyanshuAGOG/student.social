@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import Image from "next/image"
+import { BrandLogo } from "@/components/brand-logo"
 import { useAuth } from "@/lib/auth-context"
 import { podService, profileService } from "@/lib/appwrite"
 import { rankPodsForUser } from "@/lib/pod-matching"
@@ -289,7 +289,7 @@ export default function OnboardingPage() {
       const matchResult = await podService.autoMatchAndJoin(activeUser.$id, matchProfile, { matchLimit: 5, joinLimit: 3 })
 
       toast({
-        title: "Welcome to PeerSpark! 🎉",
+        title: "Welcome to Student.social! 🎉",
         description: matchResult.joined.length
           ? `We auto-joined you to ${matchResult.joined.length} pods to get you started.`
           : "Your learning journey starts now! Recommendations are ready.",
@@ -665,10 +665,7 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-background flex items-start md:items-center justify-center p-2 sm:p-4 py-4 overflow-auto">
       <div className="w-full max-w-4xl">
         <div className="flex items-center justify-center mb-4 md:mb-8">
-          <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg overflow-hidden flex items-center justify-center mr-2 md:mr-3">
-            <Image src="/logo.png" alt="PeerSpark" width={40} height={40} className="object-cover" />
-          </div>
-          <span className="text-xl md:text-2xl font-bold">PeerSpark</span>
+          <BrandLogo variant="lockup" priority className="h-auto w-[190px] md:w-[240px] object-contain" />
         </div>
 
         <Card className="border-0 shadow-lg">
