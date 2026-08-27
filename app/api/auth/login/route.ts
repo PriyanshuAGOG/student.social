@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { getAppwriteServerConfig, getSessionCookieSecret } from '@/lib/env'
 import { authErrorResponse, authSuccessResponse, AUTH_COOKIE_NAME, JWT_COOKIE_NAME, signCookiePayload, getClientIP, getUserAgent, makeErrorId, addRateLimitHeaders } from '@/lib/auth-route-utils'
 import { checkRateLimit, getRateLimitConfig, isAccountLocked, recordFailedLoginAttempt, clearLoginAttempts, generateJWT, registerDevice, generateDeviceFingerprint } from '@/lib/auth-security'
@@ -6,6 +6,7 @@ import { logAuthEvent, logLoginSuccess, logLoginFailed, logAccountLockout, logDe
 import { z } from 'zod'
 import { Client, Users, Query, Account } from 'node-appwrite'
 import { sendAppwriteVerificationEmail } from '@/lib/appwrite-verification'
+import { sendSessionSecurityEmail } from '@/lib/server/security-email'
 
 const schema = z.object({
   email: z.string().email('Invalid email format'),
@@ -354,6 +355,17 @@ export async function POST(req: Request) {
 
     const duration = Date.now() - startTime
     logLoginSuccess(matchedUser.$id, email, clientIP, userAgent, duration, deviceFingerprint, session.$id)
+
+    after(async () => {
+      await sendSessionSecurityEmail({
+        email: matchedUser.email,
+        name: matchedUser.name,
+        sessionId: session.$id,
+        ipAddress: clientIP,
+        userAgent,
+        method: 'password',
+      }).catch((emailError) => console.warn('[auth/login] Security alert email was not sent:', emailError?.message))
+    })
 
     return response
   } catch (error: any) {

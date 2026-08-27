@@ -9,6 +9,7 @@ import { closeCallNotification } from '@/lib/pwa/call-notifications'
 import { CallAlertsPrompt } from './CallAlertsPrompt'
 import { useIncomingCallAlerts, useOutgoingCallTone } from './use-incoming-call-alerts'
 import { CallOutcomeToast } from './CallOutcomeToast'
+import { useAuth } from '@/lib/auth-context'
 
 const LiveKitCallStage = dynamic(
   () => import('./LiveKitCallStage').then((module) => module.LiveKitCallStage),
@@ -22,7 +23,9 @@ export const CallContext = createContext<CallContextType>(defaultCallContext)
 
 export function CallProvider({ children }: { children: React.ReactNode }) {
   const callHook = useCall()
+  const { isAuthenticated, loading: authLoading } = useAuth()
   const activeFetchFailuresRef = useRef(0)
+  const authorizationRejectedRef = useRef(false)
   const [acceptingCallId, setAcceptingCallId] = useState<string | null>(null)
   const [rejectingCallId, setRejectingCallId] = useState<string | null>(null)
   const pollingIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -33,14 +36,19 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   // Fetch active calls on mount
   useEffect(() => {
+    if (authLoading || !isAuthenticated) return
     let stopped = false
+    authorizationRejectedRef.current = false
     const fetchActiveCalls = async () => {
+      if (stopped || authorizationRejectedRef.current) return
       try {
         const response = await fetch('/api/calls/active', {
           credentials: 'include',
         })
 
         if (response.status === 401) {
+          authorizationRejectedRef.current = true
+          window.dispatchEvent(new CustomEvent('student-social:session-expired'))
           return
         }
 
@@ -74,11 +82,11 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     // Appwrite Realtime is the primary signal. A light, visible-tab-only poll
     // recovers missed socket events without creating constant background load.
     const scheduleRecoveryPoll = () => {
-      if (stopped) return
+      if (stopped || authorizationRejectedRef.current) return
       const quickState = ['idle', 'outgoing_ringing', 'incoming_ringing', 'connecting'].includes(callStateRef.current)
       pollingIntervalRef.current = setTimeout(async () => {
         if (document.visibilityState === 'visible') await fetchActiveCalls()
-        if (!stopped) scheduleRecoveryPoll()
+        if (!stopped && !authorizationRejectedRef.current) scheduleRecoveryPoll()
       }, quickState ? 3_000 : 12_000)
     }
     scheduleRecoveryPoll()
@@ -96,7 +104,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         clearTimeout(pollingIntervalRef.current)
       }
     }
-  }, [callHook.syncActiveCalls])
+  }, [authLoading, callHook.syncActiveCalls, isAuthenticated])
 
   // Handle incoming call acceptance
   const handleAcceptCall = useCallback(

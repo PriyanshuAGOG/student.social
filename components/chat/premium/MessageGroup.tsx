@@ -20,6 +20,9 @@ interface Message {
   deliveryState?: "sending" | "sent" | "delivered" | "read" | "failed";
   metadata?: Record<string, any>;
   deletedAt?: string | null;
+  readBy?: string[];
+  deliveredBy?: string[];
+  receipts?: Array<{ userId: string; deliveredAt?: string | null; readAt?: string | null }>;
 }
 
 interface MessageGroupProps {
@@ -32,6 +35,7 @@ interface MessageGroupProps {
   onReact?: (messageId: string, emoji: string) => void
   showDateDivider?: boolean
   highlightQuery?: string
+  onShowReceiptDetails?: (message: Message) => void
 }
 
 export function MessageGroup({
@@ -44,6 +48,7 @@ export function MessageGroup({
   onReact,
   showDateDivider = true,
   highlightQuery = '',
+  onShowReceiptDetails,
 }: MessageGroupProps) {
   if (messages.length === 0) return null;
 
@@ -90,6 +95,7 @@ export function MessageGroup({
               onEdit={() => onEdit?.(message)}
               onReact={(emoji) => onReact?.(message.$id, emoji)}
               highlightQuery={highlightQuery}
+              onDeliveryDetails={isOwn ? () => onShowReceiptDetails?.(message) : undefined}
             />
           </Fragment>
         );

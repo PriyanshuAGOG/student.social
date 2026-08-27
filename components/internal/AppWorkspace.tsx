@@ -92,14 +92,14 @@ export function AppWorkspace({ children }: { children: React.ReactNode }) {
     <div className={`student-workspace${immersive ? " is-immersive" : ""}`}>
       {!immersive ? (
         <header className="student-global-bar">
-          <Link href="/app/feed" className="student-global-brand md:hidden" aria-label="Student.social home">
+          <Link href="/app/feed" prefetch={false} className="student-global-brand md:hidden" aria-label="Student.social home">
             <BrandLogo variant="icon" decorative className="h-10 w-10 object-contain dark:hidden" />
             <BrandLogo variant="icon" tone="inverse" decorative className="hidden h-10 w-10 object-contain dark:block" />
           </Link>
           <div className="student-global-greeting hidden md:flex">
             <span>{greeting},</span><strong>{firstName}</strong><small>{title}</small>
           </div>
-          <Button asChild variant="ghost" className="student-global-search"><Link href="/app/search" aria-label="Search posts, pods, and people"><Search aria-hidden="true" /><span>Search posts, pods, or people…</span><kbd>⌘K</kbd></Link></Button>
+          <Button asChild variant="ghost" className="student-global-search"><Link href="/app/search" prefetch={false} aria-label="Search posts, pods, and people"><Search aria-hidden="true" /><span>Search posts, pods, or people…</span><kbd>⌘K</kbd></Link></Button>
           <div className="student-global-actions">
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button className="student-create-button"><Plus />Create</Button></DropdownMenuTrigger>
@@ -107,21 +107,21 @@ export function AppWorkspace({ children }: { children: React.ReactNode }) {
                 <DropdownMenuLabel>Start something</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={() => setCreatePostOpen(true)}><FileText />Create a post</DropdownMenuItem>
-                <DropdownMenuItem asChild><Link href="/app/pods/create"><Users />Create a study pod</Link></DropdownMenuItem>
-                <DropdownMenuItem asChild><Link href="/app/calendar"><CalendarDays />Schedule a session</Link></DropdownMenuItem>
-                <DropdownMenuItem asChild><Link href="/app/vault"><FileUp />Share a resource</Link></DropdownMenuItem>
-                <DropdownMenuItem asChild><Link href="/app/ai"><Bot />Ask the AI tutor</Link></DropdownMenuItem>
+                <DropdownMenuItem asChild><Link href="/app/pods/create" prefetch={false}><Users />Create a study pod</Link></DropdownMenuItem>
+                <DropdownMenuItem asChild><Link href="/app/calendar" prefetch={false}><CalendarDays />Schedule a session</Link></DropdownMenuItem>
+                <DropdownMenuItem asChild><Link href="/app/vault" prefetch={false}><FileUp />Share a resource</Link></DropdownMenuItem>
+                <DropdownMenuItem asChild><Link href="/app/ai" prefetch={false}><Bot />Ask the AI tutor</Link></DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button asChild variant="ghost" size="icon" className="student-global-icon"><Link href="/app/notifications" aria-label="Notifications"><Bell /></Link></Button>
-            <Button asChild variant="ghost" size="icon" className="student-global-avatar"><Link href="/app/profile" aria-label="Open profile"><Avatar><AvatarImage src={profile?.avatar || "/placeholder.svg"} alt={displayName} /><AvatarFallback>{initials}</AvatarFallback></Avatar></Link></Button>
+            <Button asChild variant="ghost" size="icon" className="student-global-icon"><Link href="/app/notifications" prefetch={false} aria-label="Notifications"><Bell /></Link></Button>
+            <Button asChild variant="ghost" size="icon" className="student-global-avatar"><Link href="/app/profile" prefetch={false} aria-label="Open profile"><Avatar><AvatarImage src={profile?.avatar || "/placeholder.svg"} alt={displayName} /><AvatarFallback>{initials}</AvatarFallback></Avatar></Link></Button>
           </div>
         </header>
       ) : null}
 
       <AppPageTransition>{children}</AppPageTransition>
 
-      {showTutorLauncher ? <Link href="/app/ai" className="student-ai-launcher" aria-label="Open AI Tutor"><span><Bot aria-hidden="true" /></span><strong>AI Tutor</strong></Link> : null}
+      {showTutorLauncher ? <Link href="/app/ai" prefetch={false} className="student-ai-launcher" aria-label="Open AI Tutor"><span><Bot aria-hidden="true" /></span><strong>AI Tutor</strong></Link> : null}
 
       <CreatePostModal
         trigger={false}

@@ -7,6 +7,7 @@ import { ProtectRoute } from "@/lib/protect-route"
 import { CallProvider } from "@/components/call/CallProvider"
 import { AppWorkspace } from "@/components/internal/AppWorkspace"
 import "@/components/internal/internal-app.css"
+import { MessageNotificationProvider } from "@/components/chat/MessageNotificationProvider"
 
 export default function AppLayout({
   children,
@@ -16,22 +17,24 @@ export default function AppLayout({
   return (
     <ProtectRoute>
       <CallProvider>
-        <SidebarProvider className="student-app-shell">
-          <a className="student-app-skip" href="#student-app-content">Skip to content</a>
-          <div className="flex min-h-dvh w-full overflow-x-hidden">
-            {/* Desktop Sidebar */}
-            <AppSidebar className="hidden md:flex" />
+        <MessageNotificationProvider>
+          <SidebarProvider className="student-app-shell">
+            <a className="student-app-skip" href="#student-app-content">Skip to content</a>
+            <div className="flex min-h-dvh w-full overflow-x-hidden">
+              {/* Desktop Sidebar */}
+              <AppSidebar className="hidden md:flex" />
 
-            {/* Main Content */}
-            <main id="student-app-content" className="student-app-main min-w-0 flex-1 overflow-x-hidden pb-safe-nav md:pb-0">
-              <AppWorkspace>{children}</AppWorkspace>
-            </main>
+              {/* Main Content */}
+              <main id="student-app-content" className="student-app-main min-w-0 flex-1 overflow-x-hidden pb-safe-nav md:pb-0">
+                <AppWorkspace>{children}</AppWorkspace>
+              </main>
 
-            {/* Mobile Navigation */}
-            <MobileNavigation />
-          </div>
-          <Toaster />
-        </SidebarProvider>
+              {/* Mobile Navigation */}
+              <MobileNavigation />
+            </div>
+            <Toaster />
+          </SidebarProvider>
+        </MessageNotificationProvider>
       </CallProvider>
     </ProtectRoute>
   )

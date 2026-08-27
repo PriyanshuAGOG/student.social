@@ -2,6 +2,8 @@ import { NextResponse, NextRequest } from 'next/server'
 import { normalizeAppwriteEndpoint } from '@/lib/env'
 import { z } from 'zod'
 import { authSuccessResponse, authErrorResponse, getClientIP, getUserAgent, makeErrorId } from '@/lib/auth-route-utils'
+import { ApiError, enforceRateLimit, enforceSameOrigin } from '@/lib/api-security'
+import { createAdminClient } from '@/lib/server/appwrite'
 
 const verifySchema = z.object({
   userId: z.string().min(1, 'User ID is required'),
@@ -18,6 +20,8 @@ export async function POST(req: NextRequest) {
   const userAgent = getUserAgent(req)
 
   try {
+    enforceSameOrigin(req)
+    enforceRateLimit(req, { key: 'auth:verify-email', max: 12, windowMs: 15 * 60 * 1000 })
     let payload: any
     try {
       payload = await req.json()
@@ -73,6 +77,19 @@ export async function POST(req: NextRequest) {
       const errorMessage = errorData?.message || 'Email verification failed'
       const status = response.status
 
+      // Verification links are one-use. A retry, a double-render, or a lost
+      // response can reach us after Appwrite has already applied the change.
+      // Treat the authoritative verified account state as success.
+      const existingUser = await createAdminClient().users.get({ userId }).catch(() => null)
+      if (existingUser?.emailVerification) {
+        return authSuccessResponse({
+          message: 'Email is already verified. You can now sign in.',
+          userId,
+          verified: true,
+          recovered: true,
+        })
+      }
+
       console.log('[v0] Appwrite email verification failed:', {
         userId,
         status,
@@ -115,12 +132,24 @@ export async function POST(req: NextRequest) {
 
     console.log('[v0] Email verified successfully for user:', userId)
 
+    const verifiedUser = await createAdminClient().users.get({ userId }).catch(() => null)
+    if (verifiedUser && !verifiedUser.emailVerification) {
+      return authErrorResponse({
+        status: 409,
+        code: 'VERIFICATION_PENDING',
+        message: 'Verification is still being applied. Please wait a moment and try again.',
+      })
+    }
+
     return authSuccessResponse({
       message: 'Email verified successfully. You can now log in.',
       userId,
       verified: true,
     })
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return authErrorResponse({ status: error.status, code: error.code, message: error.message })
+    }
     console.error('[v0] Unexpected email verification error:', error)
     return authErrorResponse({
       status: 500,

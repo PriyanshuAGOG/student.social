@@ -49,6 +49,13 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Cache Storage only supports GET. Pass form submissions, Server Actions,
+  // uploads, and every other mutation straight through to the network.
+  if (request.method !== 'GET') {
+    event.respondWith(fetch(request));
+    return;
+  }
+
   // Skip cross-origin requests
   if (url.origin !== location.origin) {
     return;
@@ -96,7 +103,7 @@ async function cacheFirst(request) {
   try {
     const response = await fetch(request);
     if (response.ok) {
-      cache.add(request);
+      await cache.put(request, response.clone());
     }
     return response;
   } catch {
@@ -164,27 +171,41 @@ self.addEventListener('push', (event) => {
     data = { title: 'Student.social', body: event.data.text() };
   }
 
-  const incomingCall = data.type === 'incoming-call';
-  const options = {
-    body: data.body || 'New notification from Student.social',
-    icon: data.data?.callerAvatar || '/icons/icon-192.png',
-    badge: '/icons/badge-96.png',
-    tag: data.tag || 'student-social-notification',
-    data: data.data || {},
-    requireInteraction: incomingCall || Boolean(data.requireInteraction),
-    renotify: incomingCall,
-    silent: false,
-    vibrate: incomingCall ? [420, 160, 420, 720, 420, 160, 420] : [180, 90, 180],
-    timestamp: Date.now(),
-    actions: incomingCall ? [
-      { action: 'accept-call', title: 'Answer' },
-      { action: 'decline-call', title: 'Decline' },
-    ] : [],
-  };
+  event.waitUntil((async () => {
+    const incomingCall = data.type === 'incoming-call';
+    const newMessage = data.type === 'new-message';
+    const windowClients = newMessage
+      ? await clients.matchAll({ type: 'window', includeUncontrolled: true })
+      : [];
+    const visibleClient = windowClients.find((client) => client.visibilityState === 'visible');
 
-  const tasks = [self.registration.showNotification(data.title || 'Student.social', options)];
-  if (incomingCall && self.navigator?.setAppBadge) tasks.push(self.navigator.setAppBadge(1));
-  event.waitUntil(Promise.all(tasks));
+    // A visible app renders its own richer message strip. Avoid showing a
+    // second operating-system notification for the same message.
+    if (newMessage && visibleClient) {
+      visibleClient.postMessage({ type: 'NEW_MESSAGE_PUSH', payload: data });
+      return;
+    }
+
+    const options = {
+      body: data.body || 'New notification from Student.social',
+      icon: data.data?.callerAvatar || data.data?.senderAvatar || '/icons/icon-192.png',
+      badge: '/icons/badge-96.png',
+      tag: data.tag || 'student-social-notification',
+      data: data.data || {},
+      requireInteraction: incomingCall || Boolean(data.requireInteraction),
+      renotify: incomingCall || newMessage,
+      silent: false,
+      vibrate: incomingCall ? [420, 160, 420, 720, 420, 160, 420] : [140, 70, 210],
+      timestamp: Date.now(),
+      actions: incomingCall ? [
+        { action: 'accept-call', title: 'Answer' },
+        { action: 'decline-call', title: 'Decline' },
+      ] : [],
+    };
+
+    await self.registration.showNotification(data.title || 'Student.social', options);
+    if ((incomingCall || newMessage) && self.navigator?.setAppBadge) await self.navigator.setAppBadge(1);
+  })());
 });
 
 // Handle notification clicks

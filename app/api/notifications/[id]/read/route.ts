@@ -32,8 +32,6 @@ export async function PATCH(
 
     const result = await databases.updateDocument(DATABASE_ID, NOTIFICATIONS_COLLECTION_ID, notificationId, {
       isRead: true,
-      read: true,
-      readAt: new Date().toISOString(),
     })
 
     return NextResponse.json({

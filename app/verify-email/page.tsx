@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useMemo, useState, Suspense } from "react"
+import React, { useEffect, useMemo, useRef, useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { CheckCircle2, Mail, ShieldAlert } from "lucide-react"
@@ -22,6 +22,7 @@ function VerifyEmailContent() {
   const [isSending, setIsSending] = useState(false)
   const [verifyState, setVerifyState] = useState<VerifyState>("idle")
   const [message, setMessage] = useState("")
+  const verificationStartedRef = useRef(false)
 
   const userId = searchParams?.get("userId") || ""
   const secret = searchParams?.get("secret") || ""
@@ -36,14 +37,15 @@ function VerifyEmailContent() {
 
   useEffect(() => {
     if (isEmailVerified) {
-      router.replace("/feed")
+      router.replace("/app/feed")
     }
   }, [isEmailVerified, router])
 
   useEffect(() => {
     const confirmVerification = async () => {
-      if (!userId || !secret || verifyState !== "idle") return
+      if (!userId || !secret || verifyState !== "idle" || verificationStartedRef.current) return
 
+      verificationStartedRef.current = true
       setVerifyState("verifying")
       try {
         await authService.confirmEmailVerification(userId, secret)

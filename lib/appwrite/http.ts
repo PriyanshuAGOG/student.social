@@ -5,6 +5,8 @@ type ApiErrorPayload = {
   message?: string
 }
 
+let sessionExpiryDispatched = false
+
 export async function apiJson<T = any>(url: string, init?: RequestInit): Promise<T> {
   if (typeof window === 'undefined') {
     throw new Error('API helpers are only available in the browser')
@@ -16,6 +18,10 @@ export async function apiJson<T = any>(url: string, init?: RequestInit): Promise
   })
   const payload = await response.json().catch(() => ({})) as ApiErrorPayload & T
   if (!response.ok) {
+    if (response.status === 401 && !sessionExpiryDispatched) {
+      sessionExpiryDispatched = true
+      window.dispatchEvent(new CustomEvent('student-social:session-expired'))
+    }
     const nestedMessage = typeof payload.error === 'object' ? payload.error?.message : payload.error
     const error = new Error(nestedMessage || payload.message || `Request failed (${response.status})`) as Error & {
       status?: number
@@ -27,5 +33,6 @@ export async function apiJson<T = any>(url: string, init?: RequestInit): Promise
     error.details = payload.details || payload
     throw error
   }
+  sessionExpiryDispatched = false
   return payload
 }

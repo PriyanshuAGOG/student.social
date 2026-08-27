@@ -170,6 +170,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initAuth()
   }, [checkSession])
 
+  useEffect(() => {
+    const handleExpiredSession = () => {
+      sessionCheckPromise = null
+      setUser(null)
+      setProfile(null)
+      setHasActiveSession(false)
+      setIsEmailVerified(false)
+      setError('Your session expired. Please sign in again.')
+      if (window.location.pathname.startsWith('/app')) {
+        window.location.replace('/login?session=expired')
+      }
+    }
+
+    window.addEventListener('student-social:session-expired', handleExpiredSession)
+    return () => window.removeEventListener('student-social:session-expired', handleExpiredSession)
+  }, [])
+
   const refreshUser = useCallback(async () => {
     try {
       const snapshot = await fetchSessionSnapshot()

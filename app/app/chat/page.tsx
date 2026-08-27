@@ -15,8 +15,11 @@ import { ChatHeader } from "@/components/chat/premium/ChatHeader";
 import { MessageGroup } from "@/components/chat/premium/MessageGroup";
 import { ChatComposer } from "@/components/chat/premium/ChatComposer";
 import { TypingIndicator } from "@/components/chat/premium/TypingIndicator";
+import { MessageReceiptDetails } from "@/components/chat/premium/MessageReceiptDetails";
 import { createOutboxMessage, useChatOutbox } from "@/hooks/use-chat-outbox";
 import { useChatPresence } from "@/hooks/use-chat-presence";
+import { deriveDeliveryState, mergeReceipt, receiptAudience } from "@/lib/chat-receipts";
+import { setActiveChatRoom } from "@/lib/chat-runtime";
 import { Check, MessageCircleMore, Plus, UserRound, UsersRound, X } from "lucide-react";
 
 interface ChatRoom {
@@ -64,6 +67,13 @@ interface ChatProfile {
   name?: string;
   username?: string;
   email?: string;
+}
+
+interface RoomMemberProfile {
+  userId: string;
+  name: string;
+  username?: string;
+  avatar?: string;
 }
 
 const MESSAGE_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -130,6 +140,8 @@ export default function PremiumChatPage() {
   const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
   const [availableProfiles, setAvailableProfiles] = useState<ChatProfile[]>([]);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [roomMemberProfiles, setRoomMemberProfiles] = useState<RoomMemberProfile[]>([]);
+  const [receiptMessage, setReceiptMessage] = useState<StandardizedMessage | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -216,7 +228,23 @@ export default function PremiumChatPage() {
   // Load rooms on mount
   useEffect(() => {
     if (!user?.$id) return;
-    loadRooms();
+    void loadRooms();
+  }, [user?.$id]);
+
+  useEffect(() => {
+    if (!user?.$id) return;
+    let refreshTimer = 0;
+    const scheduleRefresh = () => {
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => void loadRooms(true), 180);
+    };
+    const unsubscribe = chatService.subscribeToChatRooms(user.$id, scheduleRefresh);
+    window.addEventListener('student-social:notifications-changed', scheduleRefresh);
+    return () => {
+      window.clearTimeout(refreshTimer);
+      unsubscribe?.();
+      window.removeEventListener('student-social:notifications-changed', scheduleRefresh);
+    };
   }, [user?.$id]);
 
   // Canonical entry point for profile -> message links. Resolve the user to a
@@ -360,6 +388,7 @@ export default function PremiumChatPage() {
   useEffect(() => {
     if (!selectedRoom?.$id) return;
     const roomId = selectedRoom.$id;
+    setActiveChatRoom(roomId);
     const cacheKey = `${user?.$id || "anonymous"}:${roomId}`;
     const cached = messageCache.get(cacheKey);
     const hasFreshCache = Boolean(cached && Date.now() - cached.cachedAt < MESSAGE_CACHE_TTL_MS);
@@ -375,28 +404,47 @@ export default function PremiumChatPage() {
           messageCache.set(cacheKey, { messages: next, cachedAt: Date.now() });
           return next;
         });
-        if (user?.$id && normalized.authorId !== user.$id) {
+        if (user?.$id && normalized.authorId !== user.$id && document.visibilityState === 'visible') {
           void chatService.markRoomMessages(roomId, [normalized.$id], "read");
         }
       },
     );
 
     const unsubscribeReceipts = chatService.subscribeToReceipts(roomId, (receipt: any) => {
-      if (!receipt?.readAt || !receipt?.messageId || !receipt?.userId) return;
+      if (!receipt?.messageId || !receipt?.userId || (!receipt?.deliveredAt && !receipt?.readAt)) return;
       setMessages((prev) => {
-        const next = prev.map((message) => message.$id === receipt.messageId
-          ? { ...message, readBy: Array.from(new Set([...(message.readBy || []), receipt.userId])) }
-          : message);
+        const next = prev.map((message) => {
+          if (message.$id !== receipt.messageId) return message;
+          const receipts = mergeReceipt(message.receipts || [], receipt);
+          const audience = receiptAudience(receipts);
+          return {
+            ...message,
+            receipts,
+            deliveredBy: audience.deliveredBy,
+            readBy: Array.from(new Set([...(message.readBy || []), ...audience.readBy])),
+            deliveryState: deriveDeliveryState(receipts, message.deliveryState),
+          };
+        });
         messageCache.set(cacheKey, { messages: next, cachedAt: Date.now() });
         return next;
       });
     });
 
     void loadMessages(roomId);
+    const recover = () => void loadMessages(roomId, { silent: true });
+    const interval = window.setInterval(recover, 3000);
+    window.addEventListener('focus', recover);
+    window.addEventListener('online', recover);
+    document.addEventListener('visibilitychange', recover);
 
     return () => {
+      setActiveChatRoom('');
       unsubscribe?.();
       unsubscribeReceipts?.();
+      window.clearInterval(interval);
+      window.removeEventListener('focus', recover);
+      window.removeEventListener('online', recover);
+      document.removeEventListener('visibilitychange', recover);
     };
   }, [selectedRoom?.$id, user?.$id]);
 
@@ -405,9 +453,9 @@ export default function PremiumChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const loadRooms = async () => {
+  const loadRooms = async (silent = false) => {
     if (!user?.$id) return;
-    setIsLoadingRooms(true);
+    if (!silent) setIsLoadingRooms(true);
     try {
       const [res, podsResponse] = await Promise.all([
         chatService.getUserChatRooms(user.$id),
@@ -441,21 +489,24 @@ export default function PremiumChatPage() {
       });
       setRooms(normalizedRooms);
     } catch (error: any) {
-      toast({
-        title: "Failed to load conversations",
-        description: error.message,
-        variant: "destructive",
-      });
+      if (!silent) {
+        toast({
+          title: "Failed to load conversations",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     } finally {
-      setIsLoadingRooms(false);
+      if (!silent) setIsLoadingRooms(false);
     }
   };
 
-  const loadMessages = async (roomId: string) => {
+  const loadMessages = async (roomId: string, options: { silent?: boolean } = {}) => {
     if (!roomId) return;
     const cacheKey = `${user?.$id || "anonymous"}:${roomId}`;
     try {
       const res = await chatService.getMessages(roomId, 50);
+      if (Array.isArray(res.members)) setRoomMemberProfiles(res.members);
       const normalized = (res.documents || [])
         .map((msg: any) => normalizeMessage(msg, user?.$id))
         .sort(
@@ -473,11 +524,13 @@ export default function PremiumChatPage() {
         .map((message: any) => message.$id);
       if (unreadIds.length > 0) void chatService.markRoomMessages(roomId, unreadIds, "read");
     } catch (error: any) {
-      toast({
-        title: "Failed to load messages",
-        description: error.message,
-        variant: "destructive",
-      });
+      if (!options.silent) {
+        toast({
+          title: "Failed to load messages",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     } finally {
       if (activeRoomIdRef.current === roomId) setIsLoading(false);
     }
@@ -985,6 +1038,7 @@ export default function PremiumChatPage() {
                     handleEditMessage(message as StandardizedMessage)
                   }
                   onReact={handleReact}
+                  onShowReceiptDetails={(message: any) => setReceiptMessage(message as StandardizedMessage)}
                 />
                 {typingUsers.length > 0 && (
                   <TypingIndicator names={typingUsers} isTyping={true} />
@@ -1131,6 +1185,13 @@ export default function PremiumChatPage() {
           <p className="mt-2 max-w-sm text-sm leading-6">Message a peer, plan with your group, or jump into a Pod study session.</p>
         </div>
       )}
+      <MessageReceiptDetails
+        open={Boolean(receiptMessage)}
+        onOpenChange={(open) => { if (!open) setReceiptMessage(null); }}
+        message={receiptMessage}
+        members={roomMemberProfiles}
+        currentUserId={user?.$id || ""}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { Channel, Realtime } from 'appwrite'
-import { client, DATABASE_ID } from '@/lib/appwrite'
+import { client, DATABASE_ID, ensureRealtimeAuthenticated } from '@/lib/appwrite'
 import { reportClientError } from '@/components/admin/ClientErrorReporter'
 
 const CALL_SESSIONS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALL_SESSIONS_COLLECTION_ID || 'call_sessions'
@@ -17,7 +17,9 @@ export function subscribeToCallSessions(onChange: (session: any) => void) {
   let closed = false
   let subscription: { close?: () => Promise<void> | void } | null = null
 
-  realtime.subscribe(
+  void ensureRealtimeAuthenticated().then((authenticated) => {
+    if (!authenticated || closed) return null
+    return realtime.subscribe(
     [
       Channel.database(DATABASE_ID).collection(CALL_SESSIONS_COLLECTION_ID).document(),
       Channel.database(DATABASE_ID).collection(CALL_PARTICIPANTS_COLLECTION_ID).document(),
@@ -25,7 +27,9 @@ export function subscribeToCallSessions(onChange: (session: any) => void) {
     (event) => {
       if (!closed) onChange(event.payload)
     },
-  ).then((next) => {
+    )
+  }).then((next) => {
+    if (!next) return
     if (closed) {
       void next.close()
       return

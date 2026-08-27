@@ -3,6 +3,8 @@ import type { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { getSessionCookieSecret } from '@/lib/env'
 import { createSessionClient } from '@/lib/server/appwrite'
+import { AUTH_COOKIE_NAME, JWT_COOKIE_NAME, getClientIP, getUserAgent, signCookiePayload } from '@/lib/auth-route-utils'
+import { generateDeviceFingerprint, generateJWT } from '@/lib/auth-security'
 import crypto from 'crypto'
 
 type SessionCookie = {
@@ -64,12 +66,48 @@ export async function GET(request: NextRequest) {
       if (accountUser?.$id) {
         const { databases } = createAdminClient()
         const profile = await databases.getDocument(process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || '', 'profiles', accountUser.$id).catch(() => null)
-
-        return NextResponse.json({
+        const currentSession = await account.getSession({ sessionId: 'current' }).catch(() => null)
+        const response = noStoreJson({
           authenticated: true,
           user: sanitizeAccountUser(accountUser),
           profile,
-        }, { status: 200, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', Pragma: 'no-cache', Expires: '0' } })
+        })
+
+        // Upgrade legacy OAuth sessions that predate the signed application
+        // cookie. This makes existing Google logins valid for every protected
+        // API without asking the person to sign out and back in.
+        if (currentSession?.$id && (!request.cookies.get(AUTH_COOKIE_NAME)?.value || !request.cookies.get(JWT_COOKIE_NAME)?.value)) {
+          const deviceFingerprint = generateDeviceFingerprint(getUserAgent(request), getClientIP(request))
+          const cookiePayload = JSON.stringify({
+            sessionId: currentSession.$id,
+            secret: appwriteSession,
+            userId: accountUser.$id,
+            email: accountUser.email,
+            deviceFingerprint,
+            expire: currentSession.expire,
+          })
+          const encodedPayload = Buffer.from(cookiePayload).toString('base64url')
+          response.cookies.set(AUTH_COOKIE_NAME, `${encodedPayload}.${signCookiePayload(encodedPayload, getSessionCookieSecret())}`, {
+            path: '/',
+            httpOnly: true,
+            sameSite: 'strict',
+            secure: process.env.NODE_ENV === 'production',
+            maxAge: 60 * 60 * 24 * 30,
+          })
+          response.cookies.set(JWT_COOKIE_NAME, generateJWT({
+            userId: accountUser.$id,
+            sessionId: currentSession.$id,
+            deviceFingerprint,
+          }), {
+            path: '/',
+            httpOnly: true,
+            sameSite: 'strict',
+            secure: process.env.NODE_ENV === 'production',
+            maxAge: 30 * 60,
+          })
+        }
+
+        return response
       }
     }
 

@@ -8,10 +8,13 @@ import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/server/appwrite';
 import { withErrorHandling, validateInput } from '@/lib/error-handler';
 import { ApiError, requireOwnership, requireUser } from '@/lib/api-security';
+import { deriveDeliveryState, receiptAudience } from '@/lib/chat-receipts';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const MESSAGES_COLLECTION_ID = (process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID || 'messages');
 const CHAT_ROOMS_COLLECTION_ID = (process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms');
+const MESSAGE_RECEIPTS_COLLECTION_ID = (process.env.NEXT_PUBLIC_MESSAGE_RECEIPTS_COLLECTION_ID || 'message_receipts');
+const PROFILES_COLLECTION_ID = (process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles');
 
 export async function GET(
   request: NextRequest,
@@ -60,12 +63,54 @@ export async function GET(
       ]
     );
 
+    const messageIds = messages.documents.map((message: any) => message.$id).filter(Boolean)
+    const [receiptResponse, profileResponse] = await Promise.all([
+      messageIds.length > 0
+        ? databases.listDocuments(DATABASE_ID, MESSAGE_RECEIPTS_COLLECTION_ID, [
+            Query.equal('messageId', messageIds),
+            Query.limit(Math.min(Math.max(messageIds.length * Math.max(members.length - 1, 1), 100), 5000)),
+          ]).catch(() => ({ documents: [] } as any))
+        : Promise.resolve({ documents: [] } as any),
+      members.length > 0
+        ? databases.listDocuments(DATABASE_ID, PROFILES_COLLECTION_ID, [
+            Query.equal('$id', members),
+            Query.limit(Math.min(members.length, 100)),
+          ]).catch(() => ({ documents: [] } as any))
+        : Promise.resolve({ documents: [] } as any),
+    ])
+
+    const receiptsByMessage = new Map<string, any[]>()
+    for (const receipt of receiptResponse.documents || []) {
+      const existing = receiptsByMessage.get(receipt.messageId) || []
+      existing.push({
+        userId: receipt.userId,
+        deliveredAt: receipt.deliveredAt || null,
+        readAt: receipt.readAt || null,
+      })
+      receiptsByMessage.set(receipt.messageId, existing)
+    }
+
+    const enrichedMessages = messages.documents.reverse().map((message: any) => {
+      const receipts = receiptsByMessage.get(message.$id) || []
+      const audience = receiptAudience(receipts)
+      return {
+        ...message,
+        receipts,
+        deliveredBy: audience.deliveredBy,
+        readBy: Array.from(new Set([...(Array.isArray(message.readBy) ? message.readBy : []), ...audience.readBy])),
+        deliveryState: deriveDeliveryState(receipts, message.deliveryState || 'sent'),
+      }
+    })
+
     return {
       success: true,
-      // Receipt updates travel on their own realtime channel. Keeping that
-      // enrichment off the critical path makes opening a conversation one
-      // database query instead of two, while the UI still converges live.
-      messages: messages.documents.reverse(), // Oldest first
+      messages: enrichedMessages,
+      members: (profileResponse.documents || []).map((profile: any) => ({
+        userId: profile.$id,
+        name: profile.name || profile.username || 'Student',
+        username: profile.username || '',
+        avatar: profile.avatar || profile.profilePictureUrl || '',
+      })),
       total: messages.total,
       limit,
       offset,

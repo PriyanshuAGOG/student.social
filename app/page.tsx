@@ -14,7 +14,7 @@ export default function HomePage() {
   useEffect(() => {
     if (loading || !hasActiveSession) return
     if (isAuthenticated && isEmailVerified) {
-      router.replace("/feed")
+      router.replace("/app/feed")
       return
     }
     if (!isEmailVerified) router.replace("/verify-email?required=1")
@@ -22,4 +22,3 @@ export default function HomePage() {
 
   return <LandingPage />
 }
-

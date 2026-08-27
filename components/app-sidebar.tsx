@@ -105,7 +105,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild className="student-brand-button h-14 rounded-2xl px-2">
-              <Link href="/app/feed" aria-label="Student.social learning feed">
+              <Link href="/app/feed" prefetch={false} aria-label="Student.social learning feed">
                 <span className="student-brand-mark-wrap" style={{ border: 0, background: "transparent" }}><BrandLogo variant="icon" tone="inverse" decorative className="h-10 w-10 object-contain" /></span>
                 <span className="grid flex-1 text-left leading-tight">
                   <span className="truncate text-[15px] font-semibold tracking-[-0.02em]">Student.social</span>
@@ -131,7 +131,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   return (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton asChild isActive={active} tooltip={item.title} className="student-sidebar-link h-10 rounded-xl px-3">
-                        <Link href={item.url} aria-current={active ? "page" : undefined}>
+                        <Link href={item.url} prefetch={false} aria-current={active ? "page" : undefined}>
                           <span className={item.accent ? "student-nav-icon student-nav-icon-ai" : "student-nav-icon"}><item.icon /></span>
                           <span>{item.title}</span>
                           {item.accent ? <Sparkles className="ml-auto size-3 text-[#d99a80]" aria-hidden="true" /> : null}
@@ -154,7 +154,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
 
       <SidebarFooter className="gap-2 p-3">
-        <Link href="/app/ai" className="student-focus-card group-data-[collapsible=icon]:hidden">
+        <Link href="/app/ai" prefetch={false} className="student-focus-card group-data-[collapsible=icon]:hidden">
           <span><Flame className="size-4" /> Focus companion</span>
           <strong>Turn “stuck” into a next step.</strong>
           <small>Ask the tutor →</small>
@@ -184,7 +184,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => router.push("/app/profile")}><User />Profile</DropdownMenuItem>
                 <DropdownMenuItem asChild><Link href="/app/settings"><Settings />Settings</Link></DropdownMenuItem>
-                <DropdownMenuItem asChild><Link href="/app/notifications"><Bell />Notifications</Link></DropdownMenuItem>
+                <DropdownMenuItem asChild><Link href="/app/notifications" prefetch={false}><Bell />Notifications</Link></DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}><LogOut />Log out</DropdownMenuItem>
               </DropdownMenuContent>

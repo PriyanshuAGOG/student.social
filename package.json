@@ -19,7 +19,7 @@
     "test:contracts": "node --test tests.contract.mjs",
     "test:smoke": "node --test tests.e2e-smoke.mjs",
     "test:e2e": "playwright test",
-    "test:communications": "node --experimental-strip-types --test tests/calls-domain.test.ts",
+    "test:communications": "node --experimental-strip-types --test tests/calls-domain.test.ts tests/chat-receipts.test.ts",
     "test:backend": "node --experimental-strip-types --test tests/backend-reliability.test.ts",
     "test:pods": "node --test tests.pods.mjs",
     "audit:mutations": "node scripts/audit-mutations.mjs --strict",

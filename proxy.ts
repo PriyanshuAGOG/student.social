@@ -161,9 +161,9 @@ export async function proxy(req: NextRequest) {
   
   // Content Security Policy
   const production = process.env.NODE_ENV === 'production'
-  const appwriteOrigin = (() => { try { return new URL(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || '').origin } catch { return '' } })()
+  const appwriteOrigins = getLiveKitConnectOrigins(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT)
   const liveKitOrigins = getLiveKitConnectOrigins(process.env.NEXT_PUBLIC_LIVEKIT_URL)
-  const connectSources = [...new Set(["'self'", appwriteOrigin, ...liveKitOrigins, ...(production ? [] : ['http:', 'https:', 'ws:', 'wss:'])].filter(Boolean))]
+  const connectSources = [...new Set(["'self'", ...appwriteOrigins, ...liveKitOrigins, ...(production ? [] : ['http:', 'https:', 'ws:', 'wss:'])].filter(Boolean))]
   res.headers.set(
     'Content-Security-Policy',
     [

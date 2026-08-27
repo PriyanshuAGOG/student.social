@@ -9,6 +9,7 @@ test-results/
 
 # Next.js
 .next/
+.next-*/
 out/
 build/
 dist/

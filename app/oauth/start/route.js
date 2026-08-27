@@ -6,14 +6,18 @@ import { OAuthProvider } from "node-appwrite";
 
 export async function GET(request) {
   const providerParam = (request.nextUrl.searchParams.get("provider") || "google").toLowerCase();
-  const provider = providerParam === "github" ? OAuthProvider.Github : OAuthProvider.Google;
+  if (providerParam !== "google") {
+    return NextResponse.redirect(`${request.nextUrl.origin}/login?error=unsupported_provider`);
+  }
+  const provider = OAuthProvider.Google;
 
   try {
-    const { account } = await createAdminClient();
+    const { account } = createAdminClient();
+    const configuredOrigin = (process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin).replace(/\/$/, "");
     const redirectUrl = await account.createOAuth2Token({
       provider,
-      success: `${request.nextUrl.origin}/oauth`,
-      failure: `${request.nextUrl.origin}/login`,
+      success: `${configuredOrigin}/oauth`,
+      failure: `${configuredOrigin}/login?error=oauth_failed`,
     });
 
     return NextResponse.redirect(redirectUrl);

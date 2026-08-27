@@ -238,6 +238,7 @@ export default function FeedPage() {
         const merged = [...podAchievements, ...mapped].sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""))
         setPosts(merged)
       } catch (e: any) {
+        if (e?.status === 401 || e?.code === 401) return
         console.error(e)
         toast({ title: "Failed to load feed", description: e?.message, variant: "destructive" })
       } finally {

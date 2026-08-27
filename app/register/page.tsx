@@ -10,14 +10,14 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
-import { Eye, EyeOff, Github, Mail, Check, X, AlertCircle } from "lucide-react"
+import { Eye, EyeOff, Check, X, AlertCircle } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { AuthShell } from "@/components/public/AuthShell"
 import { authService } from "@/lib/appwrite"
 import { getPasswordRequirements } from "@/lib/password-security"
-import { signInWithGoogle, signInWithGitHub } from "@/lib/server/oauth"
+import { signInWithGoogle } from "@/lib/server/oauth"
 
 export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false)
@@ -47,7 +47,7 @@ export default function RegisterPage() {
           title: "Welcome back!",
           description: "You already have an active session.",
         })
-        router.replace("/feed")
+        router.replace("/app/feed")
         return
       }
 
@@ -318,17 +318,11 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div className="auth-oauth grid grid-cols-2 gap-4">
+            <div className="auth-oauth">
               <form action={signInWithGoogle}>
                 <Button variant="outline" type="submit" className="w-full" disabled={isLoading}>
-                  <Mail className="mr-2 h-4 w-4" />
-                  Google
-                </Button>
-              </form>
-              <form action={signInWithGitHub}>
-                <Button variant="outline" type="submit" className="w-full" disabled={isLoading}>
-                  <Github className="mr-2 h-4 w-4" />
-                  GitHub
+                  <span className="mr-2 grid h-5 w-5 place-items-center rounded-full bg-white text-sm font-bold text-[#76556d] shadow-sm" aria-hidden>G</span>
+                  Continue with Google
                 </Button>
               </form>
             </div>

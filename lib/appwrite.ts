@@ -35,7 +35,7 @@ export function isAppwriteEmailVerified(user: any): boolean {
 
 function isNoActiveSessionError(error: any): boolean {
   const message = String(error?.message || '').toLowerCase()
-  return error?.code === 401 || message.includes('missing scope') || message.includes('unauthorized') || message.includes('guests')
+  return error?.status === 401 || error?.code === 401 || message.includes('missing scope') || message.includes('unauthorized') || message.includes('guests')
 }
 
 function normalizeUsername(input: string): string {
@@ -80,6 +80,40 @@ export const avatars = new Avatars(client)
 export const functions = new Functions(client)
 export const messaging = new Messaging(client)
 const realtime = new Realtime(client)
+let realtimeIdentity: { userId: string; expiresAt: number } | null = null
+let realtimeIdentityPromise: Promise<boolean> | null = null
+
+export async function ensureRealtimeAuthenticated(): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (realtimeIdentity && Date.now() < realtimeIdentity.expiresAt - 60_000) return true
+  if (realtimeIdentityPromise) return realtimeIdentityPromise
+
+  realtimeIdentityPromise = (async () => {
+    const response = await fetch('/api/realtime/token', {
+      credentials: 'include',
+      cache: 'no-store',
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok || !payload?.jwt || !payload?.userId) {
+      throw new Error(payload?.error || 'Unable to authenticate live updates')
+    }
+
+    if (realtimeIdentity) await realtime.disconnect().catch(() => undefined)
+    client.setJWT(payload.jwt)
+    realtimeIdentity = {
+      userId: String(payload.userId),
+      expiresAt: new Date(payload.expiresAt || Date.now() + 55 * 60_000).getTime(),
+    }
+    return true
+  })().catch((error) => {
+    if (process.env.NODE_ENV === 'development') console.warn('Realtime authentication unavailable:', error)
+    return false
+  }).finally(() => {
+    realtimeIdentityPromise = null
+  })
+
+  return realtimeIdentityPromise
+}
 const matchCache = new Map<string, { timestamp: number; data: any[] }>()
 const MATCH_CACHE_TTL = 1000 * 60 * 5 // 5 minutes
 
@@ -394,7 +428,7 @@ export const authService = {
     }
   },
 
-  // OAuth login (Google, GitHub, etc.)
+  // Google OAuth login
   async loginWithOAuth(provider: string) {
     try {
       if (typeof window === "undefined") {
@@ -402,7 +436,7 @@ export const authService = {
       }
 
       const normalizedProvider = provider.toLowerCase()
-      const supportedProviders = new Set(["google", "github"])
+      const supportedProviders = new Set(["google"])
 
       if (!supportedProviders.has(normalizedProvider)) {
         throw new Error(`Unsupported OAuth provider: ${provider}`)
@@ -1006,7 +1040,7 @@ export const profileService = {
       const response = await apiJson(`/api/profiles/list?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`)
       return { documents: response.profiles || [], total: response.total || 0 }
     } catch (error) {
-      console.error("Get all profiles error:", error)
+      if (!isNoActiveSessionError(error)) console.error("Get all profiles error:", error)
       throw error
     }
   },
@@ -2341,10 +2375,11 @@ export const chatService = {
       return {
         documents: response.messages || response.documents || [],
         total: response.total || 0,
+        members: response.members || [],
       }
     } catch (error) {
-      console.error("Get messages error:", error)
-      return { documents: [], total: 0 }
+      if (!isNoActiveSessionError(error)) console.error("Get messages error:", error)
+      throw error
     }
   },
 
@@ -2373,9 +2408,12 @@ export const chatService = {
       }
     }
 
-    realtime
-      .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.MESSAGES}.documents`, pushIfRelevant, [Query.equal('roomId', roomId)])
+    void ensureRealtimeAuthenticated().then((authenticated) => {
+      if (!authenticated || closed) return null
+      return realtime.subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.MESSAGES}.documents`, pushIfRelevant)
+    })
       .then((nextSubscription) => {
+        if (!nextSubscription) return
         if (closed) {
           Promise.resolve(nextSubscription.close?.()).catch(() => undefined)
           return
@@ -2408,9 +2446,12 @@ export const chatService = {
       }
     }
 
-    realtime
-      .subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_ROOMS}.documents`, pushIfRelevant)
+    void ensureRealtimeAuthenticated().then((authenticated) => {
+      if (!authenticated || closed) return null
+      return realtime.subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.CHAT_ROOMS}.documents`, pushIfRelevant)
+    })
       .then((nextSubscription) => {
+        if (!nextSubscription) return
         if (closed) {
           Promise.resolve(nextSubscription.close?.()).catch(() => undefined)
           return
@@ -2522,12 +2563,15 @@ export const chatService = {
   subscribeToReceipts(roomId: string, callback: (receipt: any) => void) {
     let closed = false
     let subscription: { close?: () => Promise<void> | void } | null = null
-    realtime
-      .subscribe(`databases.${DATABASE_ID}.collections.message_receipts.documents`, (event: any) => {
+    void ensureRealtimeAuthenticated().then((authenticated) => {
+      if (!authenticated || closed) return null
+      return realtime.subscribe(`databases.${DATABASE_ID}.collections.message_receipts.documents`, (event: any) => {
         const receipt = event?.payload || event?.data || event
         if (!closed && receipt?.roomId === roomId) callback(receipt)
-      }, [Query.equal('roomId', roomId)])
+      })
+    })
       .then((nextSubscription) => {
+        if (!nextSubscription) return
         if (closed) void nextSubscription.close?.()
         else subscription = nextSubscription
       })
@@ -3142,7 +3186,7 @@ export const feedService = {
         total: response.total || 0,
       }
     } catch (error) {
-      console.error("Get saved posts error:", error)
+      if (!isNoActiveSessionError(error)) console.error("Get saved posts error:", error)
       return { documents: [], total: 0 }
     }
   },
@@ -3738,20 +3782,25 @@ export const notificationService = {
 
   // Subscribe to real-time notifications
   subscribeToNotifications(userId: string, callback: (notification: any) => void) {
-    // For now, we'll use polling instead of real-time subscriptions
-    const pollNotifications = async () => {
-      try {
-        const notifications = await this.getUserNotifications(userId, 1)
-        if (notifications.documents.length > 0) {
-          callback(notifications.documents[0])
-        }
-      } catch (error) {
-        console.error("Poll notifications error:", error)
-      }
+    let closed = false
+    let subscription: { close?: () => Promise<void> | void } | null = null
+    void ensureRealtimeAuthenticated().then((authenticated) => {
+      if (!authenticated || closed) return null
+      return realtime.subscribe(`databases.${DATABASE_ID}.collections.${COLLECTIONS.NOTIFICATIONS}.documents`, (event: any) => {
+        const notification = event?.payload || event?.data || event
+        if (!closed && notification?.userId === userId) callback(notification)
+      })
+    }).then((nextSubscription) => {
+      if (!nextSubscription) return
+      if (closed) void nextSubscription.close?.()
+      else subscription = nextSubscription
+    }).catch((error) => {
+      if (!closed && process.env.NODE_ENV === 'development') console.warn('Realtime notification subscription unavailable:', error)
+    })
+    return () => {
+      closed = true
+      void subscription?.close?.()
     }
-
-    const interval = setInterval(pollNotifications, 10000) // Poll every 10 seconds
-    return () => clearInterval(interval)
   },
 }
 

@@ -45,6 +45,14 @@ export async function GET(req: NextRequest) {
       imageUrl: doc.imageUrl,
       ctaLabel: doc.actionText,
       ctaUrl: doc.actionUrl,
+      actorId: doc.actorId,
+      actorName: doc.actorName,
+      actorAvatar: doc.actorAvatar,
+      metadata: (() => {
+        if (!doc.metadata) return null
+        if (typeof doc.metadata !== 'string') return doc.metadata
+        try { return JSON.parse(doc.metadata) } catch { return null }
+      })(),
       isRead: doc.isRead ?? doc.read ?? false,
       readAt: doc.readAt,
       expiresAt: doc.expiresAt,

@@ -66,3 +66,8 @@
   .ss-public .footer-brand{grid-column:auto}
   .ss-public .quick-links a{border-right:0;border-bottom:1px solid rgba(255,255,255,.2)}
 }
+
+/* Canonical icon artwork and logo-led blue/mint primary actions. */
+.ss-public .mark{display:block;width:32px;height:32px;flex:0 0 auto;object-fit:contain;transform:none}
+.ss-public .brand sup{background:var(--paper);color:var(--ink)}
+.ss-public .button.rust,.ss-public .join-search button,.ss-public .newsletter button,.ss-public .auth-primary,.ss-public .public-form button,.ss-public .help-search button,.ss-public .journal-signup button{background:#5865f2;color:#fff}

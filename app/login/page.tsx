@@ -10,13 +10,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Eye, EyeOff, Github, Mail } from "lucide-react"
+import { Eye, EyeOff } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { AuthShell } from "@/components/public/AuthShell"
 import { authService } from "@/lib/appwrite"
-import { signInWithGoogle, signInWithGitHub } from "@/lib/server/oauth"
+import { signInWithGoogle } from "@/lib/server/oauth"
 
 function LoginPageContent() {
   const [showPassword, setShowPassword] = useState(false)
@@ -44,7 +44,7 @@ function LoginPageContent() {
             title: "Welcome back!",
             description: "You already have an active session.",
           })
-          router.replace("/feed")
+          router.replace("/app/feed")
           return
         }
 
@@ -86,6 +86,21 @@ function LoginPageContent() {
           description: "Please log in again to continue.",
         })
       }
+      const oauthError = searchParams?.get("error")
+      if (oauthError) {
+        const descriptions: Record<string, string> = {
+          oauth_failed: "Google sign-in was cancelled or could not be completed.",
+          oauth_start_failed: "Google sign-in could not be started. Please try again.",
+          session_failed: "Google approved the sign-in, but the secure session could not be created. Please try again.",
+          missing_params: "The Google sign-in response was incomplete. Please start again.",
+          unsupported_provider: "That sign-in provider is not available.",
+        }
+        toast({
+          title: "Google sign-in needs another try",
+          description: descriptions[oauthError] || "We could not complete Google sign-in. Please try again.",
+          variant: "destructive",
+        })
+      }
     } catch (err) {
       // ignore
     }
@@ -114,7 +129,7 @@ function LoginPageContent() {
             title: "Already logged in",
             description: "You already have an active session. Redirecting...",
           })
-          router.replace("/feed")
+          router.replace("/app/feed")
         } else {
           toast({
             title: "Email verification required",
@@ -143,7 +158,7 @@ function LoginPageContent() {
         description: "You've been successfully logged in.",
       })
 
-      router.replace("/feed")
+      router.replace("/app/feed")
     } catch (error: any) {
       console.error("Login error:", error)
       let errorMessage = error?.message || error?.toString() || "Login failed. Please check your credentials."
@@ -166,7 +181,7 @@ function LoginPageContent() {
           description: "You already have an active session. Redirecting...",
         })
         await refreshUser()
-        router.replace(isEmailVerified ? "/feed" : "/verify-email?required=1")
+        router.replace(isEmailVerified ? "/app/feed" : "/verify-email?required=1")
         return
       }
       
@@ -261,17 +276,11 @@ function LoginPageContent() {
               </div>
             </div>
 
-            <div className="auth-oauth grid grid-cols-2 gap-4">
+            <div className="auth-oauth">
               <form action={signInWithGoogle}>
                 <Button variant="outline" type="submit" className="w-full">
-                  <Mail className="mr-2 h-4 w-4" />
-                  Google
-                </Button>
-              </form>
-              <form action={signInWithGitHub}>
-                <Button variant="outline" type="submit" className="w-full">
-                  <Github className="mr-2 h-4 w-4" />
-                  GitHub
+                  <span className="mr-2 grid h-5 w-5 place-items-center rounded-full bg-white text-sm font-bold text-[#76556d] shadow-sm" aria-hidden>G</span>
+                  Continue with Google
                 </Button>
               </form>
             </div>

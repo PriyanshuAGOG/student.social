@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Check, CheckCheck, CircleAlert, Clock3, Edit3, MoreHorizontal, Pause, Play, Reply, Smile, Trash2 } from "lucide-react";
+import { CircleAlert, Edit3, MoreHorizontal, Pause, Play, Reply, Smile, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🔥", "👏", "🎉"];
@@ -29,14 +29,24 @@ interface ChatBubbleProps {
   reactions?: Record<string, string[]>;
   highlightQuery?: string;
   currentUserId?: string;
+  onDeliveryDetails?: () => void;
 }
 
-function DeliveryIcon({ state }: { state?: ChatBubbleProps["deliveryState"] }) {
-  if (state === "read") return <CheckCheck className="h-3.5 w-3.5 text-sky-500" aria-label="Read" />;
-  if (state === "delivered") return <CheckCheck className="h-3.5 w-3.5" aria-label="Delivered" />;
-  if (state === "failed") return <CircleAlert className="h-3.5 w-3.5 text-red-500" aria-label="Failed" />;
-  if (state === "sending") return <Clock3 className="h-3.5 w-3.5" aria-label="Sending" />;
-  return <Check className="h-3.5 w-3.5" aria-label="Sent" />;
+function DeliverySignal({ state, onClick }: { state?: ChatBubbleProps["deliveryState"]; onClick?: () => void }) {
+  if (state === "failed") return <span className="inline-flex items-center gap-1 text-red-600"><CircleAlert className="h-3 w-3" /> Failed</span>;
+  const reached = state === 'delivered' || state === 'read'
+  const seen = state === 'read'
+  const label = state === 'sending' ? 'Sending' : seen ? 'Seen' : reached ? 'Reached' : 'Sent'
+  return (
+    <button type="button" onClick={onClick} disabled={!onClick || state === 'sending'} className="inline-flex items-center gap-1 rounded-full px-0.5 font-medium disabled:cursor-default" aria-label={`${label}${onClick ? ', open message journey' : ''}`}>
+      <span className="inline-flex items-center gap-[2px]" aria-hidden>
+        <span className={`h-1.5 w-1.5 rounded-full ${state === 'sending' ? 'animate-pulse bg-current/35' : 'bg-current/80'}`} />
+        <span className={`h-1.5 w-1.5 rounded-full ${reached ? (seen ? 'bg-[#76556d]' : 'bg-[#6f6a4f]') : 'border border-current/45'}`} />
+        <span className={`h-1.5 w-1.5 rounded-full ${seen ? 'bg-[#76556d]' : 'border border-current/45'}`} />
+      </span>
+      <span>{label}</span>
+    </button>
+  );
 }
 
 export function ChatBubble({
@@ -58,6 +68,7 @@ export function ChatBubble({
   reactions,
   highlightQuery = "",
   currentUserId = "",
+  onDeliveryDetails,
 }: ChatBubbleProps) {
   const [showActions, setShowActions] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
@@ -129,7 +140,7 @@ export function ChatBubble({
               <span className="ml-2 inline-flex translate-y-[2px] items-center gap-0.5 whitespace-nowrap text-[10px] opacity-55">
                 {isEdited ? <span>edited ·</span> : null}
                 {timeFormatted}
-                {isOwn ? <DeliveryIcon state={deliveryState} /> : null}
+                {isOwn ? <DeliverySignal state={deliveryState} onClick={onDeliveryDetails} /> : null}
               </span>
             </p>
           </div>

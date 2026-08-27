@@ -77,9 +77,9 @@ export default function PWAInstallPrompt() {
 
     const handleInstallPrompt = (event: Event) => {
       const installEvent = event as BeforeInstallPromptEvent
+      if (!androidMobile || isStandalone() || getAndroidWrapperVersion() !== null) return
       installEvent.preventDefault()
       deferredWebInstall.current = installEvent
-      if (!androidMobile || isStandalone() || getAndroidWrapperVersion() !== null) return
       if (sessionStorage.getItem(INSTALL_DISMISSED_KEY) === 'true') return
       setBanner((current) => current ?? { kind: 'web-install', event: installEvent })
     }

@@ -43,9 +43,10 @@ export function BrandLogo({
   style,
 }: BrandLogoProps) {
   const asset = brandAssets[variant]
-  const src = variant === "icon" && tone === "inverse"
-    ? "/brand/student-social-icon-inverse.webp"
-    : asset.src
+  // The supplied inverse WebP is not decodable in Chromium. The canonical
+  // full-color icon is transparent and retains strong contrast on both dark
+  // and light surfaces, so inverse placements safely reuse the exact asset.
+  const src = asset.src
 
   return (
     <Image
@@ -55,6 +56,7 @@ export function BrandLogo({
       sizes={asset.sizes}
       alt={decorative ? "" : "Student.social"}
       aria-hidden={decorative || undefined}
+      data-tone={tone}
       className={className}
       style={style}
       priority={priority}

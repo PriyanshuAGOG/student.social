@@ -22,6 +22,12 @@ export interface StandardizedMessage {
   deletedAt?: string | null
   deliveryState: 'sending' | 'sent' | 'delivered' | 'read' | 'failed'
   readBy?: string[]
+  deliveredBy?: string[]
+  receipts?: Array<{
+    userId: string
+    deliveredAt?: string | null
+    readAt?: string | null
+  }>
   metadata?: {
     reactions?: Record<string, string[]>
     pinnedBy?: string[]
@@ -138,6 +144,16 @@ export function normalizeMessage(raw: any, currentUserId?: string): Standardized
 
   // Parse readBy field
   const readBy = parseList(raw.readBy || raw.read_by || [])
+  const deliveredBy = parseList(raw.deliveredBy || raw.delivered_by || [])
+  const receipts = Array.isArray(raw.receipts)
+    ? raw.receipts
+        .filter((receipt: any) => receipt?.userId)
+        .map((receipt: any) => ({
+          userId: String(receipt.userId),
+          deliveredAt: receipt.deliveredAt || null,
+          readAt: receipt.readAt || null,
+        }))
+    : []
 
   return {
     $id: raw.$id || raw.id || `msg-${Date.now()}-${Math.random()}`,
@@ -158,6 +174,8 @@ export function normalizeMessage(raw: any, currentUserId?: string): Standardized
     deletedAt,
     deliveryState,
     readBy,
+    deliveredBy,
+    receipts,
     metadata,
     clientMessageId: raw.clientMessageId || raw.client_message_id,
   }

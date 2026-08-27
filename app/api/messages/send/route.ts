@@ -5,13 +5,14 @@
  * GET  /api/messages/rooms - Get user's DM rooms
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { ID, Permission, Query, Role } from 'node-appwrite';
 import { z } from 'zod';
 import { createAdminClient } from '@/lib/server/appwrite';
 import { withErrorHandling, validateInput } from '@/lib/error-handler';
 import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireOwnership, requireUser } from '@/lib/api-security';
 import { checkDurableRateLimit } from '@/lib/server/rate-limit';
+import { sendNewMessagePush } from '@/lib/server/web-push';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const CHAT_ROOMS_COLLECTION_ID = (process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms');
@@ -63,6 +64,13 @@ function internalError(message: string, error: any) {
   )
 }
 
+function notificationPreview(type: string, content: string, fileName?: string | null): string {
+  if (type === 'voice') return 'Voice message'
+  if (type === 'image') return 'Photo'
+  if (type === 'file') return fileName ? `File: ${fileName}` : 'Shared a file'
+  return content.replace(/\s+/g, ' ').trim().slice(0, 160)
+}
+
 /**
  * POST /api/messages/send - Send a direct message
  */
@@ -86,7 +94,7 @@ export async function POST(request: NextRequest) {
     )
     requireOwnership(senderId, auth.userId)
 
-    const { databases } = await createAdminClient()
+    const { databases, users } = await createAdminClient()
 
     let room: any = null
 
@@ -227,29 +235,45 @@ export async function POST(request: NextRequest) {
     }
 
     const notificationRecipients = parseMembers(room).filter((memberId) => memberId !== senderId)
-    for (const notificationRecipientId of notificationRecipients) {
-      try {
-        await databases.createDocument(
-          DATABASE_ID,
-          NOTIFICATIONS_COLLECTION_ID,
-          'unique()',
-          {
-            userId: notificationRecipientId,
-            type: 'message',
-            title: 'New message',
-            actorId: senderId,
-            actorName: senderName,
-            actorAvatar: senderAvatar,
-            message: `${senderName} sent you a message`,
-            isRead: false,
-            timestamp: new Date().toISOString(),
-            actionUrl: `/app/chat?room=${encodeURIComponent(room.$id)}`,
-          }
-        )
-      } catch (notifError) {
-        console.error('Failed to create message notification:', notifError)
-      }
-    }
+    const preview = notificationPreview(type, String(content), metadata.fileName)
+    const actionUrl = `/app/chat?room=${encodeURIComponent(room.$id)}&message=${encodeURIComponent(message.$id)}`
+
+    // Message persistence is the critical path. Inbox storage and background
+    // push complete after the response so pressing Send remains immediate.
+    after(async () => {
+      await Promise.allSettled(notificationRecipients.map(async (notificationRecipientId) => {
+        await Promise.allSettled([
+          databases.createDocument(
+            DATABASE_ID,
+            NOTIFICATIONS_COLLECTION_ID,
+            ID.unique(),
+            {
+              userId: notificationRecipientId,
+              type: 'message',
+              title: senderName,
+              actorId: senderId,
+              actorName: senderName,
+              actorAvatar: senderAvatar,
+              message: preview,
+              isRead: false,
+              timestamp: new Date().toISOString(),
+              actionUrl,
+              metadata: JSON.stringify({ roomId: room.$id, messageId: message.$id, senderId }),
+            },
+            [Permission.read(Role.user(notificationRecipientId))],
+          ),
+          sendNewMessagePush(users, notificationRecipientId, {
+            roomId: room.$id,
+            messageId: message.$id,
+            senderId,
+            senderName,
+            senderAvatar,
+            preview,
+            actionUrl,
+          }),
+        ])
+      }))
+    })
 
     return NextResponse.json({ success: true, message, roomId: room.$id }, { status: 201 })
   } catch (error: any) {
