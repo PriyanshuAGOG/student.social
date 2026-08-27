@@ -30,9 +30,13 @@ export const metadata: Metadata = {
     telephone: false,
   },
   icons: {
-    icon: '/brand/student-social-icon.webp',
-    shortcut: '/brand/student-social-icon.webp',
-    apple: '/brand/student-social-icon.webp',
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icons/icon-192.png', type: 'image/png', sizes: '192x192' },
+      { url: '/icons/icon-512.png', type: 'image/png', sizes: '512x512' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: [{ url: '/apple-touch-icon.png', type: 'image/png', sizes: '180x180' }],
   },
   keywords: [
     'collaborative learning',
@@ -93,7 +97,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Student.social" />
-        <meta name="msapplication-TileColor" content="#071b4d" />
+        <meta name="msapplication-TileColor" content="#fdfaf9" />
         <meta name="msapplication-config" content="/browserconfig.xml" />
       </head>
       <body className={`${publicSans.variable} ${publicSerif.variable}`}>
