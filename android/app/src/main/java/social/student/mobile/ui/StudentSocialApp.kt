@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -78,7 +79,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -86,6 +87,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import social.student.mobile.BuildConfig
+import social.student.mobile.R
 import social.student.mobile.calls.IncomingCallNotifier
 import social.student.mobile.data.NativeItem
 import social.student.mobile.update.AppUpdateManager
@@ -508,8 +510,18 @@ private fun CreatePostDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) 
 @Composable
 private fun BrandMark() {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(38.dp).background(Olive, RoundedCornerShape(13.dp)), contentAlignment = Alignment.Center) { Text("s.", fontWeight = FontWeight.Black, fontSize = 19.sp) }
-        Text("student.social", color = WarmWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp, fontFamily = FontFamily.SansSerif, modifier = Modifier.padding(start = 10.dp))
+        Image(
+            painter = painterResource(R.drawable.student_social_icon),
+            contentDescription = null,
+            modifier = Modifier.size(44.dp),
+        )
+        Text(
+            "student.social",
+            color = WarmWhite,
+            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp,
+            modifier = Modifier.padding(start = 10.dp),
+        )
     }
 }
 
