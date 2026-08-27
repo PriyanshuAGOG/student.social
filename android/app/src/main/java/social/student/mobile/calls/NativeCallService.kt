@@ -25,7 +25,7 @@ class NativeCallService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification: Notification = NotificationCompat.Builder(this, StudentSocialApplication.CALL_CHANNEL)
-            .setSmallIcon(R.drawable.ic_notification_icon)
+            .setSmallIcon(R.drawable.student_social_icon)
             .setContentTitle(title)
             .setContentText("Native $mediaType call in progress")
             .setCategory(NotificationCompat.CATEGORY_CALL)
