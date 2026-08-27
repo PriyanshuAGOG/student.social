@@ -2,6 +2,7 @@
 
 import { Download, RefreshCw, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { BrandLogo } from '@/components/brand-logo'
 
 const INSTALL_DISMISSED_KEY = 'student-social-install-dismissed'
 const SW_UPDATE_DISMISSED_KEY = 'student-social-sw-update-dismissed'
@@ -34,8 +35,6 @@ type Banner =
 
 export function isAndroidMobileDevice(value: NavigatorWithUserAgentData): boolean {
   if (!/android/i.test(value.userAgent || '')) return false
-  // Android browsers can expose stale desktop-like Client Hints after UA or
-  // desktop-site mode changes, so require the Android UA plus touch capability.
   return value.maxTouchPoints > 0
 }
 
@@ -175,7 +174,10 @@ export default function PWAInstallPrompt() {
   return (
     <aside aria-live="polite" className="fixed inset-x-3 top-[max(.75rem,env(safe-area-inset-top))] z-[120] mx-auto max-w-xl overflow-hidden rounded-[1.35rem] border border-[#d8d0c3] bg-[#f7f2e9]/[.98] text-[#25241f] shadow-[0_22px_60px_rgba(25,24,21,.24)] backdrop-blur-xl">
       <div className="flex items-start gap-3 p-3.5 sm:p-4">
-        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#34382f] text-[#f7f2e9] shadow-sm"><Icon aria-hidden="true" className="size-[18px]" strokeWidth={1.8} /></div>
+        <div className="relative grid size-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-[#d8d0c3]/70">
+          <BrandLogo variant="icon" decorative className="size-10 object-contain" />
+          <span className="absolute bottom-0.5 right-0.5 grid size-4 place-items-center rounded-full bg-[#34382f] text-[#f7f2e9] ring-2 ring-white"><Icon aria-hidden="true" className="size-2.5" strokeWidth={2} /></span>
+        </div>
         <div className="min-w-0 flex-1 pt-0.5">
           <p className="text-[13px] font-semibold tracking-[-.01em] sm:text-sm">{title}</p>
           <p className="mt-1 max-w-md text-[11px] leading-[1.45] text-[#68645b] sm:text-xs">{description}</p>
