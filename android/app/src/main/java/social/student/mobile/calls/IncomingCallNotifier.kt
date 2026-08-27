@@ -25,7 +25,7 @@ object IncomingCallNotifier {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = NotificationCompat.Builder(context, StudentSocialApplication.CALL_CHANNEL)
-            .setSmallIcon(R.drawable.ic_notification_icon)
+            .setSmallIcon(R.drawable.student_social_icon)
             .setContentTitle("${call.callerName} is calling")
             .setContentText("Incoming ${if (call.mediaType == "video") "video" else "voice"} call")
             .setCategory(NotificationCompat.CATEGORY_CALL)
