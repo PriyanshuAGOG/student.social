@@ -93,7 +93,8 @@ export function AppWorkspace({ children }: { children: React.ReactNode }) {
       {!immersive ? (
         <header className="student-global-bar">
           <Link href="/app/feed" className="student-global-brand md:hidden" aria-label="Student.social home">
-            <BrandLogo variant="wordmark" decorative className="h-auto w-[118px] object-contain" />
+            <BrandLogo variant="icon" decorative className="h-10 w-10 object-contain dark:hidden" />
+            <BrandLogo variant="icon" tone="inverse" decorative className="hidden h-10 w-10 object-contain dark:block" />
           </Link>
           <div className="student-global-greeting hidden md:flex">
             <span>{greeting},</span><strong>{firstName}</strong><small>{title}</small>

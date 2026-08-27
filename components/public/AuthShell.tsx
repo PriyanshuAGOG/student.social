@@ -22,7 +22,7 @@ export function AuthShell({ children, note = "Secure account access for your stu
         </section>
         <section className="auth-card">
           <Link href="/" className="auth-back">← Back home</Link>
-          <BrandLogo variant="wordmark" className="h-auto w-[176px] max-w-[62%]" />
+          <BrandLogo variant="icon" className="h-16 w-16 object-contain" />
           {children}
           <div className="preview-form-note">Your existing secure account flow remains connected.</div>
         </section>
@@ -30,4 +30,3 @@ export function AuthShell({ children, note = "Secure account access for your stu
     </main>
   )
 }
-

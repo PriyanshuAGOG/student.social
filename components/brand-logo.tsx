@@ -2,6 +2,7 @@ import Image from "next/image"
 import type { CSSProperties } from "react"
 
 type BrandLogoVariant = "icon" | "lockup" | "wordmark"
+type BrandLogoTone = "default" | "inverse"
 
 const brandAssets = {
   icon: {
@@ -26,6 +27,7 @@ const brandAssets = {
 
 interface BrandLogoProps {
   variant?: BrandLogoVariant
+  tone?: BrandLogoTone
   className?: string
   priority?: boolean
   decorative?: boolean
@@ -33,17 +35,21 @@ interface BrandLogoProps {
 }
 
 export function BrandLogo({
-  variant = "lockup",
+  variant = "icon",
+  tone = "default",
   className,
   priority = false,
   decorative = false,
   style,
 }: BrandLogoProps) {
   const asset = brandAssets[variant]
+  const src = variant === "icon" && tone === "inverse"
+    ? "/brand/student-social-icon-inverse.webp"
+    : asset.src
 
   return (
     <Image
-      src={asset.src}
+      src={src}
       width={asset.width}
       height={asset.height}
       sizes={asset.sizes}
