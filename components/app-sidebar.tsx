@@ -184,7 +184,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => router.push("/app/profile")}><User />Profile</DropdownMenuItem>
                 <DropdownMenuItem asChild><Link href="/app/settings"><Settings />Settings</Link></DropdownMenuItem>
-                <DropdownMenuItem asChild><Link href="/app/notifications"><Bell />Notifications</DropdownMenuItem>
+                <DropdownMenuItem asChild><Link href="/app/notifications"><Bell />Notifications</Link></DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}><LogOut />Log out</DropdownMenuItem>
               </DropdownMenuContent>
