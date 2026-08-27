@@ -1,5 +1,5 @@
 // Service Worker for Student.social PWA
-const CACHE_VERSION = 'student-social-v7';
+const CACHE_VERSION = 'student-social-v8';
 const RUNTIME_CACHE = 'student-social-runtime';
 
 // Assets to cache on install
