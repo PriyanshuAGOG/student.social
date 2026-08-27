@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react"
 import Link from "next/link"
+import { BrandLogo } from "@/components/brand-logo"
 import { PublicNav } from "./ui"
 
 export function AuthShell({ children, note = "Secure account access for your study circles, shared resources, and learning momentum." }: { children: ReactNode; note?: string }) {
@@ -21,7 +22,7 @@ export function AuthShell({ children, note = "Secure account access for your stu
         </section>
         <section className="auth-card">
           <Link href="/" className="auth-back">← Back home</Link>
-          <span className="eyebrow">STUDENT.SOCIAL</span>
+          <BrandLogo variant="wordmark" className="h-auto w-[176px] max-w-[62%]" />
           {children}
           <div className="preview-form-note">Your existing secure account flow remains connected.</div>
         </section>
