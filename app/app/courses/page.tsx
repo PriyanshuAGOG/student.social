@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation"
+import { LearningTrackHub } from "@/components/pods3/LearningTrackHub"
 
-export default function AppCoursesRedirectPage() {
-  redirect("/courses")
+export default function AppCoursesPage() {
+  return <LearningTrackHub />
 }
