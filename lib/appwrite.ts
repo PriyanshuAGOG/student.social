@@ -1007,27 +1007,19 @@ export const profileService = {
   // Upload avatar
   async uploadAvatar(file: File, userId: string) {
     try {
-      // Delete old avatar if exists
-      try {
-        const profile = await this.getProfile(userId)
-        if (profile?.avatarFileId) {
-          await storage.deleteFile(BUCKETS.AVATARS, profile.avatarFileId)
-        }
-      } catch (e) {
-        // Ignore if no old avatar
-      }
-
-      // Upload new avatar
-      const uploaded = await storage.createFile(BUCKETS.AVATARS, "unique()", file)
-      const avatarUrl = storage.getFileView(BUCKETS.AVATARS, uploaded.$id)
-
-      // Update profile with new avatar
-      await this.updateProfile(userId, {
-        avatar: avatarUrl.toString(),
-        avatarFileId: uploaded.$id,
+      const form = new FormData()
+      form.append('file', file)
+      const response = await fetch('/api/profiles/avatar', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'x-user-id': userId },
+        body: form,
       })
-
-      return avatarUrl.toString()
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.avatar) {
+        throw new Error(payload?.error || 'Could not update the profile picture')
+      }
+      return String(payload.avatar)
     } catch (error) {
       console.error("Upload avatar error:", error)
       throw error
@@ -2226,6 +2218,8 @@ export const chatService = {
       fileUrl?: string
       fileName?: string
       fileSize?: number
+      fileId?: string
+      fileType?: string
       clientMessageId?: string
     } = "text",
     metadata: {
@@ -2235,6 +2229,8 @@ export const chatService = {
       fileUrl?: string
       fileName?: string
       fileSize?: number
+      fileId?: string
+      fileType?: string
       clientMessageId?: string
     } = {}
   ) {
@@ -2290,6 +2286,8 @@ export const chatService = {
             fileUrl: metadata.fileUrl || null,
             fileName: metadata.fileName || null,
             fileSize: metadata.fileSize || null,
+            fileId: metadata.fileId || null,
+            fileType: metadata.fileType || null,
           },
         }),
       })
@@ -2471,7 +2469,7 @@ export const chatService = {
   // Upload file attachment through the authenticated server route so storage
   // permissions are applied by the Appwrite Server SDK instead of relying on a
   // public bucket-level create grant.
-  async uploadAttachment(file: File, userId: string) {
+  async uploadAttachment(file: File, userId: string, roomId = '') {
     try {
       if (!file) throw new Error('File is required')
       if (!userId) throw new Error('User ID is required')
@@ -2479,6 +2477,7 @@ export const chatService = {
       const sessionUser = await fetchSessionUser()
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('roomId', roomId)
 
       const response = await fetch('/api/messages/attachments', {
         method: 'POST',
@@ -2765,17 +2764,30 @@ export const resourceService = {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.ms-excel",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/json",
+        "application/zip",
         "image/webp",
         "image/svg+xml",
         "text/plain",
         "text/csv",
+        "text/markdown",
         "image/jpeg",
         "image/png",
         "image/gif",
+        "video/mp4",
+        "video/webm",
+        "audio/mpeg",
+        "audio/mp4",
+        "audio/webm",
+        "audio/ogg",
+        "audio/wav",
       ]
 
-      if (!allowedTypes.includes(file.type)) {
-        throw new Error(`File type not allowed. Allowed: PDF, Word, Excel, Images, TXT`)
+      const broadlySupported = ["text/", "image/", "video/", "audio/"].some((prefix) => file.type.startsWith(prefix))
+      if (!allowedTypes.includes(file.type) && !broadlySupported) {
+        throw new Error(`File type not allowed. Use a document, image, video, audio, archive, or text/code file.`)
       }
 
       // Validate file size (50MB max)

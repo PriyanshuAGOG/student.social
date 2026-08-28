@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, Bot, User, Sparkles, BookOpen, Calculator, Code, Lightbulb, Mic, Paperclip, MoreVertical, Copy, ThumbsUp, ThumbsDown, RefreshCw, ArrowLeft, Plus } from 'lucide-react'
+import { Send, Bot, User, Sparkles, BookOpen, Calculator, Code, Lightbulb, Mic, Paperclip, MoreVertical, Copy, ThumbsUp, ThumbsDown, RefreshCw, ArrowLeft, Plus, Loader2, X } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { toast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
@@ -20,6 +20,16 @@ interface Message {
   sender: "user" | "ai"
   timestamp: Date
   type?: "text" | "code" | "math" | "suggestion"
+  attachmentName?: string
+}
+
+interface AIAttachment {
+  fileId: string
+  fileUrl: string
+  fileName: string
+  fileType: string
+  fileSize: number
+  extractedText: string
 }
 
 interface Suggestion {
@@ -75,9 +85,15 @@ export default function AIAssistantPage() {
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isListening, setIsListening] = useState(false)
+  const [voiceSeconds, setVoiceSeconds] = useState(0)
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
+  const [pendingAttachment, setPendingAttachment] = useState<AIAttachment | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const attachmentInputRef = useRef<HTMLInputElement>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const discardVoiceRef = useRef(false)
   const router = useRouter()
 
   const scrollToBottom = () => {
@@ -88,25 +104,50 @@ export default function AIAssistantPage() {
     scrollToBottom()
   }, [messages])
 
+  useEffect(() => {
+    if (!isListening) return
+    const startedAt = Date.now()
+    setVoiceSeconds(0)
+    const timer = window.setInterval(() => setVoiceSeconds(Math.floor((Date.now() - startedAt) / 1000)), 250)
+    return () => window.clearInterval(timer)
+  }, [isListening])
+
+  useEffect(() => () => {
+    const recorder = mediaRecorderRef.current
+    if (!recorder) return
+    discardVoiceRef.current = true
+    recorder.ondataavailable = null
+    recorder.onstop = null
+    recorder.onerror = null
+    if (recorder.state !== 'inactive') recorder.stop()
+    recorder.stream.getTracks().forEach((track) => track.stop())
+  }, [])
+
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading) return
+    if ((!inputValue.trim() && !pendingAttachment) || isLoading) return
+
+    const visibleContent = inputValue.trim() || `Please help me understand ${pendingAttachment?.fileName}.`
+    const tutorContent = pendingAttachment
+      ? `${visibleContent}\n\n[Attachment: ${pendingAttachment.fileName}, ${pendingAttachment.fileType}]\n${pendingAttachment.extractedText}`
+      : visibleContent
 
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: inputValue,
+      content: visibleContent,
       sender: "user",
       timestamp: new Date(),
+      attachmentName: pendingAttachment?.fileName,
     }
 
     setMessages((prev) => [...prev, userMessage])
-    const userInput = inputValue
     setInputValue("")
+    setPendingAttachment(null)
     setIsLoading(true)
 
     try {
       // Call the real AI API
       const payload = {
-        messages: [...messages, userMessage].map((m) => ({
+        messages: [...messages, { ...userMessage, content: tutorContent }].map((m) => ({
           role: m.sender === "ai" ? "assistant" : "user",
           content: m.content,
         })),
@@ -222,61 +263,80 @@ export default function AIAssistantPage() {
     }
   }
 
-  const handleAttachmentSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
+  const processAIAttachment = async (file: File) => {
     if (file.size > 10 * 1024 * 1024) {
       toast({ title: "Attachment too large", description: "AI attachments must be 10 MB or smaller.", variant: "destructive" })
       return
     }
-    const attachmentPrompt = `Analyze this attachment: ${file.name} (${file.type || "unknown type"}, ${(file.size / 1024 / 1024).toFixed(2)} MB). Summarize key ideas, risks, and next study steps.`
-    setInputValue((prev) => prev ? `${prev}
-
-${attachmentPrompt}` : attachmentPrompt)
-    toast({ title: "Attachment queued", description: "Send the prompt to ask the AI to analyze the selected file metadata." })
-    event.target.value = ""
+    setIsUploadingAttachment(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const response = await fetch('/api/ai/attachments', { method: 'POST', credentials: 'include', body: form })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.attachment) throw new Error(payload?.error || 'Could not process the attachment')
+      setPendingAttachment(payload.attachment as AIAttachment)
+      toast({ title: "Attachment ready", description: `${file.name} is ready for the AI tutor.` })
+    } catch (error: any) {
+      toast({ title: "Attachment failed", description: error?.message || "Please try another file.", variant: "destructive" })
+    } finally {
+      setIsUploadingAttachment(false)
+    }
   }
 
-  const startVoiceInput = () => {
-    if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
-      const recognition = new SpeechRecognition()
+  const handleAttachmentSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (file) void processAIAttachment(file)
+  }
 
-      recognition.continuous = false
-      recognition.interimResults = false
-      recognition.lang = "en-US"
-
-      recognition.onstart = () => {
-        setIsListening(true)
-      }
-
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript
-        setInputValue(transcript)
-        setIsListening(false)
-      }
-
-      recognition.onerror = () => {
-        setIsListening(false)
-        toast({
-          title: "Voice input error",
-          description: "Could not recognize speech. Please try again.",
-          variant: "destructive",
-        })
-      }
-
-      recognition.onend = () => {
-        setIsListening(false)
-      }
-
-      recognition.start()
-    } else {
-      toast({
-        title: "Voice input not supported",
-        description: "Your browser doesn't support voice input.",
-        variant: "destructive",
-      })
+  const startVoiceInput = async () => {
+    if (isListening) {
+      mediaRecorderRef.current?.stop()
+      return
     }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      toast({ title: "Voice recording unavailable", description: "This browser cannot record audio messages.", variant: "destructive" })
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      const candidates = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus']
+      const mimeType = candidates.find((type) => MediaRecorder.isTypeSupported(type)) || ''
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 64_000 }) : new MediaRecorder(stream)
+      audioChunksRef.current = []
+      discardVoiceRef.current = false
+      mediaRecorderRef.current = recorder
+      recorder.ondataavailable = (event) => { if (event.data.size > 0) audioChunksRef.current.push(event.data) }
+      recorder.onerror = () => {
+        stream.getTracks().forEach((track) => track.stop())
+        setIsListening(false)
+        toast({ title: "Recording stopped", description: "The browser could not continue recording.", variant: "destructive" })
+      }
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop())
+        mediaRecorderRef.current = null
+        setIsListening(false)
+        setVoiceSeconds(0)
+        const type = recorder.mimeType || 'audio/webm'
+        const blob = new Blob(audioChunksRef.current, { type })
+        if (!discardVoiceRef.current && blob.size > 0) {
+          const extension = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm'
+          void processAIAttachment(new File([blob], `ai-voice-${Date.now()}.${extension}`, { type }))
+        }
+      }
+      recorder.start(750)
+      setIsListening(true)
+    } catch (error: any) {
+      toast({ title: "Microphone unavailable", description: error?.message || "Allow microphone access and try again.", variant: "destructive" })
+    }
+  }
+
+  const discardVoiceInput = () => {
+    discardVoiceRef.current = true
+    mediaRecorderRef.current?.stop()
+    setIsListening(false)
+    setVoiceSeconds(0)
   }
 
   return (
@@ -371,6 +431,7 @@ ${attachmentPrompt}` : attachmentPrompt)
                     : "bg-muted rounded-2xl rounded-bl-md"
                 } p-3 relative group`}
               >
+                {message.attachmentName ? <div className="mb-2 inline-flex max-w-full items-center gap-2 rounded-xl bg-black/10 px-2.5 py-1.5 text-xs"><Paperclip className="h-3.5 w-3.5" /><span className="truncate">{message.attachmentName}</span></div> : null}
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
                 <p className="text-xs opacity-70 mt-2">
                   {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -471,6 +532,22 @@ ${attachmentPrompt}` : attachmentPrompt)
           )}
 
           {/* Message Input */}
+          {isListening ? (
+            <div className="mb-2 flex min-h-12 items-center gap-2 rounded-2xl border border-[#76556d]/25 bg-[#76556d]/[0.07] px-3 py-2 text-xs" role="status">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-[#76556d]" />
+              <span className="font-semibold tabular-nums text-[#76556d]">{Math.floor(voiceSeconds / 60)}:{String(voiceSeconds % 60).padStart(2, '0')}</span>
+              <div className="flex h-7 min-w-0 flex-1 items-center justify-center gap-[3px] overflow-hidden" aria-hidden>{Array.from({ length: 24 }, (_, index) => <span key={index} className="w-[3px] animate-pulse rounded-full bg-[#76556d]/75" style={{ height: `${7 + ((index * 9) % 19)}px`, animationDelay: `${(index % 6) * 95}ms` }} />)}</div>
+              <button type="button" onClick={discardVoiceInput} className="rounded-full p-1.5 text-muted-foreground hover:bg-background hover:text-destructive" aria-label="Discard AI voice message"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={startVoiceInput} className="rounded-full bg-[#76556d] px-3 py-1.5 font-semibold text-white" aria-label="Finish AI voice message">Use</button>
+            </div>
+          ) : null}
+          {pendingAttachment || isUploadingAttachment ? (
+            <div className="mb-2 flex items-center gap-2 rounded-2xl border border-border/60 bg-muted/45 px-3 py-2 text-xs">
+              {isUploadingAttachment ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <Paperclip className="h-4 w-4 text-primary" />}
+              <span className="min-w-0 flex-1 truncate">{isUploadingAttachment ? "Reading attachment…" : pendingAttachment?.fileName}</span>
+              {pendingAttachment ? <button type="button" onClick={() => setPendingAttachment(null)} className="rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground" aria-label="Remove AI attachment"><X className="h-3.5 w-3.5" /></button> : null}
+            </div>
+          ) : null}
           <div className="flex gap-2 items-end">
             <div className="flex-1 relative">
               <Textarea
@@ -486,7 +563,7 @@ ${attachmentPrompt}` : attachmentPrompt)
                 ref={attachmentInputRef}
                 type="file"
                 className="sr-only"
-                accept="image/*,application/pdf,text/*,.js,.ts,.tsx,.py,.java,.cpp,.md"
+                accept="image/*,audio/*,application/pdf,text/*,.js,.ts,.tsx,.py,.java,.cpp,.md"
                 onChange={handleAttachmentSelected}
               />
               <div className="absolute right-2 bottom-2 flex gap-0.5 md:gap-1">
@@ -495,17 +572,17 @@ ${attachmentPrompt}` : attachmentPrompt)
                   size="sm"
                   className="h-7 w-7 md:h-8 md:w-8 p-0"
                   onClick={startVoiceInput}
-                  disabled={isLoading || isListening}
-                  aria-label={isListening ? "Listening for your question" : "Ask with your voice"}
+                  disabled={isLoading || isUploadingAttachment}
+                  aria-label={isListening ? "Finish voice message" : "Record a voice message for the AI tutor"}
                 >
                   <Mic className={`h-4 w-4 ${isListening ? "text-red-500" : ""}`} />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-7 w-7 md:h-8 md:w-8 p-0 hidden sm:flex" disabled={isLoading} onClick={() => attachmentInputRef.current?.click()} aria-label="Attach a file for AI analysis">
+                <Button variant="ghost" size="sm" className="flex h-7 w-7 p-0 md:h-8 md:w-8" disabled={isLoading || isUploadingAttachment} onClick={() => attachmentInputRef.current?.click()} aria-label="Attach a file for AI analysis">
                   <Paperclip className="h-4 w-4" />
                 </Button>
               </div>
             </div>
-            <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isLoading} className="h-11 w-11 md:w-auto md:px-4 flex-shrink-0" aria-label="Send question to AI tutor">
+            <Button onClick={handleSendMessage} disabled={(!inputValue.trim() && !pendingAttachment) || isLoading || isUploadingAttachment} className="h-11 w-11 md:w-auto md:px-4 flex-shrink-0" aria-label="Send question to AI tutor">
               <Send className="h-4 w-4" />
             </Button>
           </div>

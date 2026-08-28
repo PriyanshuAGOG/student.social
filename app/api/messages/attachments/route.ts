@@ -3,21 +3,16 @@ import { ID, Permission, Role } from 'node-appwrite'
 import { InputFile } from 'node-appwrite/file'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
-import { normalizeAppwriteEndpoint } from '@/lib/env'
+import { scanUploadMeta } from '@/lib/upload-security'
 
 const ATTACHMENTS_BUCKET_ID = process.env.NEXT_PUBLIC_ATTACHMENTS_BUCKET_ID || 'attachments'
-const APPWRITE_ENDPOINT = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT) || 'https://fra.cloud.appwrite.io/v1'
-const APPWRITE_PROJECT_ID = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID || ''
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || 'peerspark-main-db'
+const CHAT_ROOMS_COLLECTION_ID = process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms'
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 
 function safeFileName(input: string): string {
   const fallback = `attachment-${Date.now()}`
   return (input || fallback).replace(/[\r\n]/g, ' ').replace(/[\\/]/g, '-').slice(0, 180) || fallback
-}
-
-function fileViewUrl(fileId: string): string {
-  const endpoint = APPWRITE_ENDPOINT.replace(/\/$/, '')
-  return `${endpoint}/storage/buckets/${encodeURIComponent(ATTACHMENTS_BUCKET_ID)}/files/${encodeURIComponent(fileId)}/view?project=${encodeURIComponent(APPWRITE_PROJECT_ID)}`
 }
 
 function internalError(message: string, error: any) {
@@ -30,6 +25,19 @@ function internalError(message: string, error: any) {
   )
 }
 
+function parseMembers(room: any): string[] {
+  if (Array.isArray(room?.members)) return room.members.filter(Boolean).map(String)
+  if (typeof room?.members === 'string') {
+    try {
+      const parsed = JSON.parse(room.members)
+      return Array.isArray(parsed) ? parsed.filter(Boolean).map(String) : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
 export async function POST(req: NextRequest) {
   try {
     enforceSameOrigin(req)
@@ -38,6 +46,7 @@ export async function POST(req: NextRequest) {
     const auth = requireUser(req)
     const formData = await req.formData().catch(() => null)
     const file = formData?.get('file')
+    const roomId = String(formData?.get('roomId') || '')
 
     if (!(file instanceof File)) {
       throw new ApiError(400, 'INVALID_INPUT', 'A file is required')
@@ -50,15 +59,20 @@ export async function POST(req: NextRequest) {
     if (file.size > MAX_ATTACHMENT_BYTES) {
       throw new ApiError(413, 'PAYLOAD_TOO_LARGE', 'Attachments must be 25MB or smaller')
     }
+    const scan = scanUploadMeta(file, { maxBytes: MAX_ATTACHMENT_BYTES })
+    if (!scan.ok) throw new ApiError(400, 'INVALID_UPLOAD', scan.reason || 'This attachment cannot be uploaded')
 
-    const { storage } = await createAdminClient()
+    if (!roomId) throw new ApiError(400, 'INVALID_INPUT', 'Choose a conversation before attaching a file')
+    const { databases, storage } = await createAdminClient()
+    const room = await databases.getDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, roomId)
+    if (!parseMembers(room).includes(auth.userId)) throw new ApiError(403, 'FORBIDDEN', 'You do not have access to this conversation')
     const fileName = safeFileName(file.name)
     const uploaded = await storage.createFile(
       ATTACHMENTS_BUCKET_ID,
       ID.unique(),
       InputFile.fromBuffer(Buffer.from(await file.arrayBuffer()), fileName),
       [
-        Permission.read(Role.users()),
+        Permission.read(Role.user(auth.userId)),
         Permission.update(Role.user(auth.userId)),
         Permission.delete(Role.user(auth.userId)),
       ],
@@ -68,7 +82,7 @@ export async function POST(req: NextRequest) {
       success: true,
       attachment: {
         fileId: uploaded.$id,
-        fileUrl: fileViewUrl(uploaded.$id),
+        fileUrl: `/api/messages/attachments/${encodeURIComponent(uploaded.$id)}?roomId=${encodeURIComponent(roomId)}`,
         fileName,
         fileSize: file.size,
         fileType: file.type || 'application/octet-stream',

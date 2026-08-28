@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -13,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Heart, MessageCircle, Share2, Bookmark, Search, Users, MoreHorizontal, User, Flag, Sparkles, Flame, Clock, Trophy } from 'lucide-react'
+import { Heart, MessageCircle, Share2, Bookmark, Search, Users, MoreHorizontal, User, Flag, Sparkles, Flame, Clock, Trophy, ChevronLeft, ChevronRight, FileText } from 'lucide-react'
 import { CommentsSection } from "@/components/comments-section"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
@@ -72,6 +73,46 @@ function parsePostAttachments(value: unknown): PostAttachment[] {
       return item as PostAttachment
     })
     .filter((item): item is PostAttachment => Boolean(item?.fileUrl && item?.fileName))
+}
+
+function PostMediaCarousel({ attachments }: { attachments: PostAttachment[] }) {
+  const [activeIndex, setActiveIndex] = useState(0)
+  const active = attachments[Math.min(activeIndex, attachments.length - 1)]
+  const isImage = active.fileType?.startsWith("image/")
+  const isVideo = active.fileType?.startsWith("video/")
+  const move = (direction: number) => setActiveIndex((current) => (current + direction + attachments.length) % attachments.length)
+
+  return (
+    <div className="student-post-media" aria-label={`${attachments.length} post attachment${attachments.length === 1 ? "" : "s"}`}>
+      <div className="student-post-media-stage">
+        {isImage ? (
+          <a href={active.fileUrl} target="_blank" rel="noreferrer" className="relative block h-full w-full">
+            <Image src={active.fileUrl} alt={active.fileName || "Post image"} fill unoptimized sizes="(max-width: 768px) 100vw, 680px" className="object-contain" />
+          </a>
+        ) : isVideo ? (
+          <video src={active.fileUrl} controls playsInline preload="metadata" className="h-full w-full object-contain" aria-label={active.fileName || "Post video"} />
+        ) : (
+          <a href={active.fileUrl} target="_blank" rel="noreferrer" className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center">
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-background/85 text-primary"><FileText className="h-5 w-5" /></span>
+            <span className="max-w-full truncate text-sm font-semibold">{active.fileName}</span>
+            {active.fileSize ? <span className="text-xs text-muted-foreground">{(active.fileSize / 1024 / 1024).toFixed(2)} MB · Open attachment</span> : null}
+          </a>
+        )}
+        {attachments.length > 1 ? (
+          <>
+            <button type="button" onClick={() => move(-1)} className="student-post-media-nav is-left" aria-label="Previous attachment"><ChevronLeft /></button>
+            <button type="button" onClick={() => move(1)} className="student-post-media-nav is-right" aria-label="Next attachment"><ChevronRight /></button>
+            <span className="student-post-media-count">{activeIndex + 1} / {attachments.length}</span>
+          </>
+        ) : null}
+      </div>
+      {attachments.length > 1 ? (
+        <div className="student-post-media-dots" aria-label="Choose attachment">
+          {attachments.map((attachment, index) => <button type="button" key={attachment.fileId || attachment.fileUrl} onClick={() => setActiveIndex(index)} className={index === activeIndex ? "is-active" : ""} aria-label={`Show attachment ${index + 1}`} aria-current={index === activeIndex ? "true" : undefined} />)}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 const INITIAL_POSTS: Post[] = []
@@ -614,29 +655,13 @@ export default function FeedPage() {
                   <CardContent className="pt-0 px-4 md:px-6">
                     {post.title && <h3 className="font-semibold text-lg mb-2">{post.title}</h3>}
                     <div className={`student-post-copy whitespace-pre-wrap ${expandedPostIds.has(post.id) ? "is-expanded" : ""}`}>{post.content}</div>
-                    {post.content.length > 520 ? (
+                    {post.content.length > 260 ? (
                       <button type="button" className="student-post-more" onClick={() => togglePostExpansion(post.id)}>
                         {expandedPostIds.has(post.id) ? "Show less" : "Continue reading"}
                       </button>
                     ) : null}
 
-                    {post.attachments && post.attachments.length > 0 && (
-                      <div className="mb-4 grid gap-2 sm:grid-cols-2">
-                        {post.attachments.map((attachment) => {
-                          const isImage = attachment.fileType?.startsWith("image/")
-                          return isImage ? (
-                            <a key={attachment.fileId || attachment.fileUrl} href={attachment.fileUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border">
-                              <img src={attachment.fileUrl} alt={attachment.fileName || "Post attachment"} className="h-40 w-full object-cover" />
-                            </a>
-                          ) : (
-                            <a key={attachment.fileId || attachment.fileUrl} href={attachment.fileUrl} target="_blank" rel="noreferrer" className="rounded-lg border bg-muted/40 px-3 py-2 text-sm hover:bg-muted">
-                              <span className="font-medium">{attachment.fileName}</span>
-                              {attachment.fileSize ? <span className="text-muted-foreground"> · {(attachment.fileSize / 1024 / 1024).toFixed(2)} MB</span> : null}
-                            </a>
-                          )
-                        })}
-                      </div>
-                    )}
+                    {post.attachments && post.attachments.length > 0 ? <PostMediaCarousel attachments={post.attachments} /> : null}
 
                     {post.tags.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-4">

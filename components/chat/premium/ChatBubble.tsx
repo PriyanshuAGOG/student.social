@@ -74,7 +74,7 @@ export function ChatBubble({
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const date = new Date(timestamp);
   const timeFormatted = Number.isNaN(date.getTime()) ? "" : format(date, "HH:mm");
-  const isImage = Boolean(fileUrl && /\.(jpg|jpeg|png|gif|webp|avif|bmp)(\?|$)/i.test(fileUrl));
+  const isImage = Boolean(fileUrl && (type === "image" || /\.(jpg|jpeg|png|gif|webp|avif|bmp)(\?|$)/i.test(fileUrl)));
   const isVoice = Boolean(fileUrl && type === "voice");
   const normalizedReactions = useMemo(
     () =>

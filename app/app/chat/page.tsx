@@ -125,6 +125,7 @@ export default function PremiumChatPage() {
   );
   const [showMobileChatList, setShowMobileChatList] = useState(true);
   const [isListening, setIsListening] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
   const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -146,6 +147,7 @@ export default function PremiumChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const discardRecordingRef = useRef(false);
   const activeRoomIdRef = useRef<string>("");
   const deepLinkedUserRef = useRef<string>("");
   const deepLinkedPodRef = useRef<string>("");
@@ -177,6 +179,14 @@ export default function PremiumChatPage() {
     recorder.stream.getTracks().forEach((track) => track.stop());
     mediaRecorderRef.current = null;
   }, []);
+
+  useEffect(() => {
+    if (!isListening) return;
+    const startedAt = Date.now();
+    setRecordingSeconds(0);
+    const timer = window.setInterval(() => setRecordingSeconds(Math.floor((Date.now() - startedAt) / 1000)), 250);
+    return () => window.clearInterval(timer);
+  }, [isListening]);
 
   useEffect(() => {
     const queued = outbox.outboxMessages.find((message) => message.deliveryState === "queued");
@@ -653,7 +663,7 @@ export default function PremiumChatPage() {
     setIsUploadingAttachment(true);
     setUploadStatus(`Uploading ${file.name}...`);
     try {
-      const attachment = await chatService.uploadAttachment(file, user.$id);
+      const attachment = await chatService.uploadAttachment(file, user.$id, selectedRoom.$id);
       const type = file.type.startsWith("audio/")
         ? "voice"
         : file.type.startsWith("image/")
@@ -668,6 +678,8 @@ export default function PremiumChatPage() {
           fileUrl: attachment.fileUrl,
           fileName: attachment.fileName,
           fileSize: attachment.fileSize,
+          fileId: attachment.fileId,
+          fileType: attachment.fileType,
         },
       );
       setMessages((prev) => [...prev, normalizeMessage(response, user.$id)]);
@@ -705,6 +717,7 @@ export default function PremiumChatPage() {
       return;
     }
     try {
+      discardRecordingRef.current = false;
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
@@ -727,10 +740,11 @@ export default function PremiumChatPage() {
         stream.getTracks().forEach((track) => track.stop());
         mediaRecorderRef.current = null;
         setIsListening(false);
+        setRecordingSeconds(0);
         const blob = new Blob(audioChunksRef.current, {
           type: recorder.mimeType || "audio/webm",
         });
-        if (blob.size > 0) {
+        if (!discardRecordingRef.current && blob.size > 0) {
           const extension = voiceFileExtension(blob.type);
           void sendAttachmentMessage(
             new File([blob], `voice-${Date.now()}.${extension}`, { type: blob.type || "audio/webm" }),
@@ -742,7 +756,7 @@ export default function PremiumChatPage() {
       setIsListening(true);
       toast({
         title: "Recording voice message",
-        description: "Tap the mic again to send.",
+        description: "Tap send when you are ready, or discard it without posting.",
       });
     } catch (error: any) {
       setIsListening(false);
@@ -753,6 +767,13 @@ export default function PremiumChatPage() {
         variant: "destructive",
       });
     }
+  };
+
+  const handleCancelVoiceRecording = () => {
+    discardRecordingRef.current = true;
+    mediaRecorderRef.current?.stop();
+    setIsListening(false);
+    setRecordingSeconds(0);
   };
 
   const handleStartRoomCall = async (mediaType: "voice" | "video") => {
@@ -1082,6 +1103,8 @@ export default function PremiumChatPage() {
             // should be available immediately after the room opens.
             isLoading={isUploadingAttachment}
             isListening={isListening}
+            recordingSeconds={recordingSeconds}
+            onCancelVoice={handleCancelVoiceRecording}
             replyingTo={replyingTo}
             onCancelReply={() => setReplyingTo(null)}
             placeholder="Type a message..."

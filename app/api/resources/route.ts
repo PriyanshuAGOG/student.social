@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Query } from 'node-appwrite'
+import { ID, Permission, Query, Role } from 'node-appwrite'
+import { InputFile } from 'node-appwrite/file'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { getEnv } from '@/lib/env'
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
 import { scanUploadMeta } from '@/lib/upload-security'
+import { canAccessResource } from '@/lib/server/resource-access'
 
 const DATABASE_ID = getEnv().NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db'
 const RESOURCES_COLLECTION_ID = process.env.NEXT_PUBLIC_RESOURCES_COLLECTION_ID || 'resources'
@@ -11,6 +13,7 @@ const RESOURCES_BUCKET_ID = process.env.NEXT_PUBLIC_RESOURCES_BUCKET_ID || 'reso
 
 export async function GET(request: NextRequest) {
   try {
+    const { userId } = requireUser(request)
     const { databases } = await createAdminClient()
     const params = request.nextUrl.searchParams
     const podId = params.get('podId')
@@ -27,7 +30,9 @@ export async function GET(request: NextRequest) {
     if (search) queries.push(Query.search('title', search))
 
     const response = await databases.listDocuments(DATABASE_ID, RESOURCES_COLLECTION_ID, queries)
-    return NextResponse.json({ success: true, documents: response.documents, total: response.total })
+    const access = await Promise.all(response.documents.map((resource) => canAccessResource(databases, userId, resource)))
+    const documents = response.documents.filter((_, index) => access[index])
+    return NextResponse.json({ success: true, documents, total: documents.length })
   } catch (error: any) {
     console.error('[API] Error listing resources:', error)
     return NextResponse.json({ error: 'Failed to list resources' }, { status: 500 })
@@ -35,6 +40,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  let uploadedFileId = ''
   try {
     enforceSameOrigin(request)
     enforceRateLimit(request, { key: 'resources:upload', max: 20, windowMs: 60_000 })
@@ -46,7 +52,7 @@ export async function POST(request: NextRequest) {
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'File is required' }, { status: 400 })
     }
-    const scan = scanUploadMeta(file)
+    const scan = scanUploadMeta(file, { maxBytes: 50 * 1024 * 1024 })
     if (!scan.ok) throw new ApiError(400, 'INVALID_UPLOAD', scan.reason || 'File is not allowed')
 
     const title = String(form.get('title') || file.name).trim().slice(0, 180)
@@ -58,11 +64,23 @@ export async function POST(request: NextRequest) {
     let tags: string[] = []
     try { tags = JSON.parse(tagsRaw) } catch { tags = [] }
 
-    const upload = await storage.createFile(RESOURCES_BUCKET_ID, 'unique()', file)
-    const fileUrl = storage.getFileView(RESOURCES_BUCKET_ID, upload.$id).toString()
+    const readPermission = visibility === 'public' ? Permission.read(Role.any()) : visibility === 'pod' ? Permission.read(Role.users()) : Permission.read(Role.user(userId))
+    const upload = await storage.createFile(
+      RESOURCES_BUCKET_ID,
+      ID.unique(),
+      InputFile.fromBuffer(Buffer.from(await file.arrayBuffer()), file.name.replace(/[\r\n\\/]/g, '-').slice(0, 180)),
+      [
+        readPermission,
+        Permission.update(Role.user(userId)),
+        Permission.delete(Role.user(userId)),
+      ],
+    )
+    uploadedFileId = upload.$id
+    const resourceId = ID.unique()
+    const fileUrl = `/api/resources/${encodeURIComponent(resourceId)}/file`
     const now = new Date().toISOString()
 
-    const resource = await databases.createDocument(DATABASE_ID, RESOURCES_COLLECTION_ID, 'unique()', {
+    const resource = await databases.createDocument(DATABASE_ID, RESOURCES_COLLECTION_ID, resourceId, {
       fileId: upload.$id,
       authorId: userId,
       title,
@@ -77,14 +95,16 @@ export async function POST(request: NextRequest) {
       downloads: 0,
       likes: 0,
       views: 0,
-      likedBy: [],
       uploadedAt: now,
-      createdAt: now,
       updatedAt: now,
     })
 
     return NextResponse.json({ success: true, resource })
   } catch (error: any) {
+    if (uploadedFileId) {
+      const { storage } = await createAdminClient()
+      await storage.deleteFile(RESOURCES_BUCKET_ID, uploadedFileId).catch(() => undefined)
+    }
     if (error instanceof ApiError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
     console.error('[API] Error uploading resource:', error)
     return NextResponse.json({ error: 'Failed to upload resource' }, { status: 500 })

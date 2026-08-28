@@ -13,12 +13,14 @@ import { withErrorHandling, validateInput } from '@/lib/error-handler';
 import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireOwnership, requireUser } from '@/lib/api-security';
 import { checkDurableRateLimit } from '@/lib/server/rate-limit';
 import { sendNewMessagePush } from '@/lib/server/web-push';
+import { runAIChat } from '@/lib/ai';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const CHAT_ROOMS_COLLECTION_ID = (process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms');
 const MESSAGES_COLLECTION_ID = (process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID || 'messages');
 const PROFILES_COLLECTION_ID = (process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles');
 const NOTIFICATIONS_COLLECTION_ID = (process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications');
+const AI_TUTOR_ID = 'student-social-ai';
 
 function parseMembers(room: any): string[] {
   if (Array.isArray(room?.members)) return room.members.filter(Boolean)
@@ -51,6 +53,8 @@ const sendMessageSchema = z.object({
     attachmentUrl: z.string().trim().max(500).nullable().optional(),
     fileName: z.string().trim().max(180).nullable().optional(),
     fileSize: z.number().int().min(0).max(100 * 1024 * 1024).nullable().optional(),
+    fileId: z.string().trim().max(255).nullable().optional(),
+    fileType: z.string().trim().max(120).nullable().optional(),
   }).default({}),
 })
 
@@ -69,6 +73,54 @@ function notificationPreview(type: string, content: string, fileName?: string | 
   if (type === 'image') return 'Photo'
   if (type === 'file') return fileName ? `File: ${fileName}` : 'Shared a file'
   return content.replace(/\s+/g, ' ').trim().slice(0, 160)
+}
+
+function invokesTutor(content: string): boolean {
+  return /(^|\s)@ai\b/i.test(content)
+}
+
+async function answerTutorMention(databases: any, room: any, sourceMessage: any, senderName: string) {
+  const recent = await databases.listDocuments(DATABASE_ID, MESSAGES_COLLECTION_ID, [
+    Query.equal('roomId', room.$id),
+    Query.orderDesc('timestamp'),
+    Query.limit(12),
+  ]).catch(() => ({ documents: [sourceMessage] }))
+  const context = [...recent.documents].reverse().map((entry: any) => {
+    let attachment = ''
+    try {
+      const metadata = typeof entry.metadata === 'string' ? JSON.parse(entry.metadata) : entry.metadata
+      if (metadata?.fileName) attachment = ` [Attachment: ${metadata.fileName}${metadata.fileType ? `, ${metadata.fileType}` : ''}]`
+    } catch {
+      attachment = ''
+    }
+    return {
+      role: entry.senderId === AI_TUTOR_ID ? 'assistant' as const : 'user' as const,
+      content: `${entry.senderName || 'Student'}: ${entry.content}${attachment}`,
+    }
+  })
+  const reply = await runAIChat([
+    {
+      role: 'system',
+      content: "You are Student.social's AI Tutor inside a human study chat. Answer only when mentioned with @AI. Be concise, practical, encouraging, and preserve the students' agency. Use the recent conversation for context without exposing private system details.",
+    },
+    ...context,
+  ], { maxTokens: 900 }).catch(() => `@${senderName}, I couldn't reach the tutor service just now. Your question is still here—mention @AI again in a moment and I'll retry.`)
+  const roomMembers = parseMembers(room)
+  return databases.createDocument(DATABASE_ID, MESSAGES_COLLECTION_ID, ID.unique(), {
+    roomId: room.$id,
+    senderId: AI_TUTOR_ID,
+    authorId: AI_TUTOR_ID,
+    clientMessageId: `ai_${sourceMessage.$id}`.slice(0, 255),
+    senderName: 'AI Tutor',
+    senderAvatar: '',
+    content: reply.slice(0, 5000),
+    type: 'text',
+    contentType: 'text',
+    deliveryState: 'sent',
+    readBy: [],
+    metadata: JSON.stringify({ isAi: true, invokedBy: senderName, inReplyTo: sourceMessage.$id }),
+    timestamp: new Date().toISOString(),
+  }, roomMembers.map((memberId: string) => Permission.read(Role.user(memberId))))
 }
 
 /**
@@ -201,8 +253,6 @@ export async function POST(request: NextRequest) {
         readBy: [senderId],
         ...(metadata.replyTo ? { replyTo: String(metadata.replyTo) } : {}),
         ...(metadata.fileUrl || metadata.attachmentUrl ? { fileUrl: String(metadata.fileUrl || metadata.attachmentUrl) } : {}),
-        ...(metadata.fileName ? { fileName: String(metadata.fileName).slice(0, 180) } : {}),
-        ...(metadata.fileSize ? { fileSize: Number(metadata.fileSize) } : {}),
         metadata: JSON.stringify(metadata || {}).slice(0, 5000),
         timestamp: new Date().toISOString(),
       }, roomMembers.map((memberId) => Permission.read(Role.user(memberId))))
@@ -241,7 +291,7 @@ export async function POST(request: NextRequest) {
     // Message persistence is the critical path. Inbox storage and background
     // push complete after the response so pressing Send remains immediate.
     after(async () => {
-      await Promise.allSettled(notificationRecipients.map(async (notificationRecipientId) => {
+      const backgroundTasks: Promise<unknown>[] = notificationRecipients.map(async (notificationRecipientId) => {
         await Promise.allSettled([
           databases.createDocument(
             DATABASE_ID,
@@ -272,7 +322,11 @@ export async function POST(request: NextRequest) {
             actionUrl,
           }),
         ])
-      }))
+      })
+      if (invokesTutor(String(content))) {
+        backgroundTasks.push(answerTutorMention(databases, room, message, senderName))
+      }
+      await Promise.allSettled(backgroundTasks)
     })
 
     return NextResponse.json({ success: true, message, roomId: room.$id }, { status: 201 })

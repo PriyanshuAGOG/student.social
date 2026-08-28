@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       throw new ApiError(400, 'UNSUPPORTED_FILE_TYPE', 'Posts support images, videos, PDFs, JSON, and text/code files')
     }
 
-    const scanned = scanUploadMeta({ name: file.name, type: file.type, size: file.size })
+    const scanned = scanUploadMeta({ name: file.name, type: file.type, size: file.size }, { maxBytes: MAX_POST_ATTACHMENT_BYTES })
     if (!scanned.ok) {
       throw new ApiError(400, 'UNSAFE_UPLOAD', `Rejected upload: ${scanned.reason}`)
     }
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       ID.unique(),
       InputFile.fromBuffer(Buffer.from(await file.arrayBuffer()), fileName),
       [
-        Permission.read(Role.users()),
+        Permission.read(Role.any()),
         Permission.update(Role.user(auth.userId)),
         Permission.delete(Role.user(auth.userId)),
       ],
