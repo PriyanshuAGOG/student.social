@@ -7,6 +7,7 @@ import { ProtectRoute } from "@/lib/protect-route"
 import { CallProvider } from "@/components/call/CallProvider"
 import { AppWorkspace } from "@/components/internal/AppWorkspace"
 import "@/components/internal/internal-app.css"
+import "@/components/pods3/pods-v3.css"
 import { MessageNotificationProvider } from "@/components/chat/MessageNotificationProvider"
 
 export default function AppLayout({
