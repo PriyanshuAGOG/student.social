@@ -69,6 +69,7 @@ import { pod2Api } from "@/lib/pods/client"
 import { calculateLeaderboard } from "@/lib/pods/calculations"
 import type { PodBundle, PodDocument, PodMessage, PodProfile, PodResource, PodTask } from "@/lib/pods/types"
 import { usePodRealtime } from "@/hooks/pods/use-pod-realtime"
+import { CourseJourney } from "@/components/pods2/CourseJourney"
 
 const tabs = [
   ["overview", "Home", LayoutDashboard],
@@ -615,7 +616,7 @@ export function PodWorkspacePage({ podId, tab = "overview", preview = false }: {
         <div className="ss-pod-tab-content mt-4 md:mt-6">
           {preview ? <PreviewTab bundle={bundle} onJoin={join} /> : null}
           {activeTab === "overview" ? <OverviewTab bundle={bundle} reload={load} /> : null}
-          {activeTab === "roadmap" ? <div className="space-y-8"><RoadmapTab bundle={bundle} reload={load} /><TasksTab bundle={bundle} reload={load} /></div> : null}
+          {activeTab === "roadmap" ? <div className="space-y-8"><CourseJourney bundle={bundle} /><RoadmapTab bundle={bundle} reload={load} /><TasksTab bundle={bundle} reload={load} /></div> : null}
           {activeTab === "study-room" ? <StudyRoomTab bundle={bundle} /> : null}
           {activeTab === "chat" ? <ChatTab bundle={bundle} reload={load} /> : null}
           {activeTab === "resources" ? <ResourcesTab bundle={bundle} reload={load} /> : null}

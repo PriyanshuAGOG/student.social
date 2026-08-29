@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { getEnv } from '@/lib/env'
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireVerifiedUser } from '@/lib/api-security'
 
 const DATABASE_ID = getEnv().NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db'
 const RESOURCES_COLLECTION_ID = process.env.NEXT_PUBLIC_RESOURCES_COLLECTION_ID || 'resources'
@@ -10,7 +10,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     enforceSameOrigin(request)
     enforceRateLimit(request, { key: 'resources:like', max: 60, windowMs: 60_000 })
-    const { userId } = requireUser(request)
+    const { userId } = await requireVerifiedUser(request)
     const { databases } = await createAdminClient()
 
     const { id: resourceId } = await params

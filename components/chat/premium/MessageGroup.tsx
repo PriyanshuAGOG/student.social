@@ -89,6 +89,7 @@ export function MessageGroup({
               isEdited={message.isEdited}
               deliveryState={message.deliveryState}
               reactions={message.metadata?.reactions}
+              metadata={message.metadata}
               currentUserId={currentUserId}
               onReply={() => onReply?.(message)}
               onDelete={() => onDelete?.(message.$id)}

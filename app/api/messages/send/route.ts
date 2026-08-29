@@ -10,17 +10,18 @@ import { ID, Permission, Query, Role } from 'node-appwrite';
 import { z } from 'zod';
 import { createAdminClient } from '@/lib/server/appwrite';
 import { withErrorHandling, validateInput } from '@/lib/error-handler';
-import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireOwnership, requireUser } from '@/lib/api-security';
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireOwnership, requireVerifiedUser } from '@/lib/api-security';
 import { checkDurableRateLimit } from '@/lib/server/rate-limit';
 import { sendNewMessagePush } from '@/lib/server/web-push';
 import { runAIChat } from '@/lib/ai';
+import { buildAuthorizedAIContext } from '@/lib/server/ai-context';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const CHAT_ROOMS_COLLECTION_ID = (process.env.NEXT_PUBLIC_CHAT_ROOMS_COLLECTION_ID || 'chat_rooms');
 const MESSAGES_COLLECTION_ID = (process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID || 'messages');
 const PROFILES_COLLECTION_ID = (process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles');
 const NOTIFICATIONS_COLLECTION_ID = (process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications');
-const AI_TUTOR_ID = 'student-social-ai';
+const AI_ID = 'student-social-ai';
 
 function parseMembers(room: any): string[] {
   if (Array.isArray(room?.members)) return room.members.filter(Boolean)
@@ -55,6 +56,12 @@ const sendMessageSchema = z.object({
     fileSize: z.number().int().min(0).max(100 * 1024 * 1024).nullable().optional(),
     fileId: z.string().trim().max(255).nullable().optional(),
     fileType: z.string().trim().max(120).nullable().optional(),
+    durationMs: z.number().int().min(0).max(6 * 60 * 60 * 1000).nullable().optional(),
+    transcript: z.string().trim().max(3000).nullable().optional(),
+    transcriptStatus: z.enum(['ready', 'unavailable', 'failed']).nullable().optional(),
+    resourceId: z.string().trim().max(255).nullable().optional(),
+    resourceTitle: z.string().trim().max(180).nullable().optional(),
+    resourceType: z.string().trim().max(120).nullable().optional(),
   }).default({}),
 })
 
@@ -80,6 +87,7 @@ function invokesTutor(content: string): boolean {
 }
 
 async function answerTutorMention(databases: any, room: any, sourceMessage: any, senderName: string) {
+  const authorizedContext = await buildAuthorizedAIContext(sourceMessage.senderId || sourceMessage.authorId, { resources: true, calendar: true })
   const recent = await databases.listDocuments(DATABASE_ID, MESSAGES_COLLECTION_ID, [
     Query.equal('roomId', room.$id),
     Query.orderDesc('timestamp'),
@@ -94,24 +102,24 @@ async function answerTutorMention(databases: any, room: any, sourceMessage: any,
       attachment = ''
     }
     return {
-      role: entry.senderId === AI_TUTOR_ID ? 'assistant' as const : 'user' as const,
+      role: entry.senderId === AI_ID ? 'assistant' as const : 'user' as const,
       content: `${entry.senderName || 'Student'}: ${entry.content}${attachment}`,
     }
   })
   const reply = await runAIChat([
     {
       role: 'system',
-      content: "You are Student.social's AI Tutor inside a human study chat. Answer only when mentioned with @AI. Be concise, practical, encouraging, and preserve the students' agency. Use the recent conversation for context without exposing private system details.",
+      content: `You are Student.social AI inside a human study chat. Answer only when mentioned with @AI. Be concise, practical, encouraging, and preserve the students' agency. Use the recent conversation and the invoking student's authorized context without exposing private system details. Never perform a side effect such as sending another message or changing a calendar event without first proposing the exact action and receiving explicit confirmation.\n\n${authorizedContext}`,
     },
     ...context,
   ], { maxTokens: 900 }).catch(() => `@${senderName}, I couldn't reach the tutor service just now. Your question is still here—mention @AI again in a moment and I'll retry.`)
   const roomMembers = parseMembers(room)
   return databases.createDocument(DATABASE_ID, MESSAGES_COLLECTION_ID, ID.unique(), {
     roomId: room.$id,
-    senderId: AI_TUTOR_ID,
-    authorId: AI_TUTOR_ID,
+    senderId: AI_ID,
+    authorId: AI_ID,
     clientMessageId: `ai_${sourceMessage.$id}`.slice(0, 255),
-    senderName: 'AI Tutor',
+    senderName: 'AI',
     senderAvatar: '',
     content: reply.slice(0, 5000),
     type: 'text',
@@ -131,7 +139,7 @@ export async function POST(request: NextRequest) {
     enforceSameOrigin(request)
     enforceRateLimit(request, { key: 'messages:send', max: 60, windowMs: 60 * 1000 })
 
-    const auth = requireUser(request)
+    const auth = await requireVerifiedUser(request)
     const durableLimit = await checkDurableRateLimit(`messages:send:${auth.userId}`, 60, 60_000)
     if (!durableLimit.allowed) throw new ApiError(429, 'RATE_LIMITED', 'Too many messages sent; wait before trying again')
     const body = await parseJsonBody(request, sendMessageSchema, 16 * 1024)
@@ -345,7 +353,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   const { data, error } = await withErrorHandling(async () => {
-    const auth = requireUser(request)
+    const auth = await requireVerifiedUser(request)
     const searchParams = request.nextUrl.searchParams;
     const userId = searchParams.get('userId');
 

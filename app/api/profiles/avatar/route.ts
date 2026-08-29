@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ID, Permission, Role } from 'node-appwrite'
 import { InputFile } from 'node-appwrite/file'
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireVerifiedUser } from '@/lib/api-security'
 import { createAdminClient, getDatabaseId } from '@/lib/server/appwrite'
 import { normalizeAppwriteEndpoint } from '@/lib/env'
 import { scanUploadMeta } from '@/lib/upload-security'
@@ -12,6 +12,12 @@ const APPWRITE_ENDPOINT = normalizeAppwriteEndpoint(process.env.NEXT_PUBLIC_APPW
 const APPWRITE_PROJECT_ID = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID || ''
 const MAX_AVATAR_BYTES = 8 * 1024 * 1024
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'])
+
+function imageType(file: File): string {
+  if (file.type) return file.type.toLowerCase()
+  const extension = file.name.toLowerCase().split('.').pop()
+  return ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif' } as Record<string, string>)[extension || ''] || ''
+}
 
 function avatarViewUrl(fileId: string): string {
   return `${APPWRITE_ENDPOINT.replace(/\/$/, '')}/storage/buckets/${encodeURIComponent(AVATARS_BUCKET_ID)}/files/${encodeURIComponent(fileId)}/view?project=${encodeURIComponent(APPWRITE_PROJECT_ID)}`
@@ -26,12 +32,12 @@ export async function POST(request: NextRequest) {
   try {
     enforceSameOrigin(request)
     enforceRateLimit(request, { key: 'profiles:avatar', max: 12, windowMs: 60_000 })
-    const { userId } = requireUser(request)
+    const { userId } = await requireVerifiedUser(request)
     const form = await request.formData()
     const file = form.get('file')
 
     if (!(file instanceof File)) throw new ApiError(400, 'INVALID_INPUT', 'Select an image to upload')
-    if (!ALLOWED_TYPES.has(file.type.toLowerCase())) throw new ApiError(400, 'UNSUPPORTED_FILE_TYPE', 'Use a JPG, PNG, WebP, GIF, or AVIF image')
+    if (!ALLOWED_TYPES.has(imageType(file))) throw new ApiError(400, 'UNSUPPORTED_FILE_TYPE', 'Use a JPG, PNG, WebP, GIF, or AVIF image')
     if (file.size <= 0 || file.size > MAX_AVATAR_BYTES) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', 'Profile pictures must be smaller than 8 MB')
     const scan = scanUploadMeta(file)
     if (!scan.ok) throw new ApiError(400, 'INVALID_UPLOAD', scan.reason || 'This image cannot be uploaded')

@@ -151,7 +151,8 @@ export default function AIAssistantPage() {
           role: m.sender === "ai" ? "assistant" : "user",
           content: m.content,
         })),
-        system: "You are Student.social's AI study assistant. Help students with explanations, problem-solving, coding, study strategies, and more. Be concise, helpful, and encouraging. Use markdown formatting for code and structured content.",
+        system: "Help students with explanations, problem-solving, coding, study strategies, and more. Be concise, helpful, and encouraging. Use markdown formatting for code and structured content.",
+        context: { resources: true, calendar: true },
       }
 
       const resp = await fetch("/api/ai/chat", {
@@ -225,7 +226,8 @@ export default function AIAssistantPage() {
               role: m.sender === "ai" ? "assistant" : "user",
               content: m.content,
             })),
-            system: "You are Student.social's AI study assistant. Help students with explanations, problem-solving, coding, study strategies, and more. Be concise, helpful, and encouraging.",
+            system: "Help students with explanations, problem-solving, coding, study strategies, and more. Be concise, helpful, and encouraging.",
+            context: { resources: true, calendar: true },
           }
 
           const resp = await fetch("/api/ai/chat", {
@@ -276,7 +278,7 @@ export default function AIAssistantPage() {
       const payload = await response.json().catch(() => null)
       if (!response.ok || !payload?.attachment) throw new Error(payload?.error || 'Could not process the attachment')
       setPendingAttachment(payload.attachment as AIAttachment)
-      toast({ title: "Attachment ready", description: `${file.name} is ready for the AI tutor.` })
+      toast({ title: "Attachment ready", description: `${file.name} is ready for AI.` })
     } catch (error: any) {
       toast({ title: "Attachment failed", description: error?.message || "Please try another file.", variant: "destructive" })
     } finally {
@@ -573,7 +575,7 @@ export default function AIAssistantPage() {
                   className="h-7 w-7 md:h-8 md:w-8 p-0"
                   onClick={startVoiceInput}
                   disabled={isLoading || isUploadingAttachment}
-                  aria-label={isListening ? "Finish voice message" : "Record a voice message for the AI tutor"}
+                  aria-label={isListening ? "Finish voice message" : "Record a voice message for AI"}
                 >
                   <Mic className={`h-4 w-4 ${isListening ? "text-red-500" : ""}`} />
                 </Button>
@@ -582,7 +584,7 @@ export default function AIAssistantPage() {
                 </Button>
               </div>
             </div>
-            <Button onClick={handleSendMessage} disabled={(!inputValue.trim() && !pendingAttachment) || isLoading || isUploadingAttachment} className="h-11 w-11 md:w-auto md:px-4 flex-shrink-0" aria-label="Send question to AI tutor">
+            <Button onClick={handleSendMessage} disabled={(!inputValue.trim() && !pendingAttachment) || isLoading || isUploadingAttachment} className="h-11 w-11 md:w-auto md:px-4 flex-shrink-0" aria-label="Send question to AI">
               <Send className="h-4 w-4" />
             </Button>
           </div>

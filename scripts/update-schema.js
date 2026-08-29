@@ -921,6 +921,9 @@ const collections = [
       { key: 'correlationId', type: 'string', size: 100 },
       { key: 'errorMessage', type: 'string', size: 1000 },
     ],
+    indexes: [
+      { key: 'pod_courses_pod', type: 'key', attributes: ['podId'] },
+    ],
   },
   {
     id: 'courses',
@@ -979,6 +982,9 @@ const collections = [
       { key: 'llmModel', type: 'string', size: 255 },
       { key: 'promptHash', type: 'string', size: 255 },
     ],
+    indexes: [
+      { key: 'content_chapter', type: 'key', attributes: ['chapterId'] },
+    ],
   },
   {
     id: 'course_assignments',
@@ -997,6 +1003,9 @@ const collections = [
       { key: 'sequenceNumber', type: 'integer' },
       { key: 'variations', type: 'string', size: 1500 }, // JSON stringified array
       { key: 'createdAt', type: 'string', size: 255, required: true },
+    ],
+    indexes: [
+      { key: 'assignments_chapter_sequence', type: 'key', attributes: ['chapterId', 'sequenceNumber'] },
     ],
   },
   {
@@ -1019,6 +1028,13 @@ const collections = [
       { key: 'bookmarkedChapters', type: 'string', size: 5000 }, // JSON stringified array
       { key: 'attemptedAssignments', type: 'integer' },
       { key: 'completedAssignments', type: 'integer' },
+      { key: 'completedChapterIds', type: 'string', size: 50000 }, // JSON stringified lesson IDs
+      { key: 'quizScores', type: 'string', size: 50000 }, // JSON object keyed by lesson ID
+      { key: 'quizAttempts', type: 'string', size: 50000 }, // JSON object keyed by lesson ID
+      { key: 'currentChapterId', type: 'string', size: 255 },
+    ],
+    indexes: [
+      { key: 'progress_user_course', type: 'key', attributes: ['userId', 'courseId'] },
     ],
   },
   {

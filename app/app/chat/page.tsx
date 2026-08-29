@@ -16,6 +16,8 @@ import { MessageGroup } from "@/components/chat/premium/MessageGroup";
 import { ChatComposer } from "@/components/chat/premium/ChatComposer";
 import { TypingIndicator } from "@/components/chat/premium/TypingIndicator";
 import { MessageReceiptDetails } from "@/components/chat/premium/MessageReceiptDetails";
+import { AttachmentComposer } from "@/components/chat/premium/AttachmentComposer";
+import { ResourcePicker, type ShareableResource } from "@/components/chat/premium/ResourcePicker";
 import { createOutboxMessage, useChatOutbox } from "@/hooks/use-chat-outbox";
 import { useChatPresence } from "@/hooks/use-chat-presence";
 import { deriveDeliveryState, mergeReceipt, receiptAudience } from "@/lib/chat-receipts";
@@ -143,11 +145,14 @@ export default function PremiumChatPage() {
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [roomMemberProfiles, setRoomMemberProfiles] = useState<RoomMemberProfile[]>([]);
   const [receiptMessage, setReceiptMessage] = useState<StandardizedMessage | null>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<File | null>(null);
+  const [resourcePickerOpen, setResourcePickerOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const discardRecordingRef = useRef(false);
+  const recordingStartedAtRef = useRef(0);
   const activeRoomIdRef = useRef<string>("");
   const deepLinkedUserRef = useRef<string>("");
   const deepLinkedPodRef = useRef<string>("");
@@ -658,12 +663,12 @@ export default function PremiumChatPage() {
     }
   };
 
-  const sendAttachmentMessage = async (file: File, content = "") => {
-    if (!selectedRoom || !user?.$id) return;
+  const sendAttachmentMessage = async (file: File, content = "", options: { durationMs?: number } = {}) => {
+    if (!selectedRoom || !user?.$id) return false;
     setIsUploadingAttachment(true);
     setUploadStatus(`Uploading ${file.name}...`);
     try {
-      const attachment = await chatService.uploadAttachment(file, user.$id, selectedRoom.$id);
+      const attachment = await chatService.uploadAttachment(file, user.$id, selectedRoom.$id, options);
       const type = file.type.startsWith("audio/")
         ? "voice"
         : file.type.startsWith("image/")
@@ -680,6 +685,9 @@ export default function PremiumChatPage() {
           fileSize: attachment.fileSize,
           fileId: attachment.fileId,
           fileType: attachment.fileType,
+          durationMs: attachment.durationMs || options.durationMs || null,
+          transcript: attachment.transcript || null,
+          transcriptStatus: attachment.transcriptStatus || null,
         },
       );
       setMessages((prev) => [...prev, normalizeMessage(response, user.$id)]);
@@ -687,12 +695,14 @@ export default function PremiumChatPage() {
         title: type === "voice" ? "Voice message sent" : "Attachment sent",
         description: attachment.fileName,
       });
+      return true;
     } catch (error: any) {
       toast({
         title: "Upload failed",
         description: error?.message || "Please try again.",
         variant: "destructive",
       });
+      return false;
     } finally {
       setIsUploadingAttachment(false);
       setUploadStatus("");
@@ -745,14 +755,17 @@ export default function PremiumChatPage() {
           type: recorder.mimeType || "audio/webm",
         });
         if (!discardRecordingRef.current && blob.size > 0) {
+          const durationMs = Math.max(250, Math.round(performance.now() - recordingStartedAtRef.current));
           const extension = voiceFileExtension(blob.type);
           void sendAttachmentMessage(
             new File([blob], `voice-${Date.now()}.${extension}`, { type: blob.type || "audio/webm" }),
             "Voice message",
+            { durationMs },
           );
         }
       };
       recorder.start(750);
+      recordingStartedAtRef.current = performance.now();
       setIsListening(true);
       toast({
         title: "Recording voice message",
@@ -767,6 +780,22 @@ export default function PremiumChatPage() {
         variant: "destructive",
       });
     }
+  };
+
+  const shareVaultResource = async (resource: ShareableResource) => {
+    if (!selectedRoom || !user?.$id) return;
+    const title = resource.title || resource.fileName || "Shared resource";
+    const response = await chatService.sendMessage(selectedRoom.$id, user.$id, title, "file", {
+      fileUrl: resource.fileUrl || `/api/resources/${encodeURIComponent(resource.$id)}/file`,
+      fileName: resource.fileName || title,
+      fileType: resource.fileType || "application/octet-stream",
+      resourceId: resource.$id,
+      resourceTitle: title,
+      resourceType: resource.fileType || "Resource",
+    });
+    setMessages((prev) => [...prev, normalizeMessage(response, user.$id)]);
+    setResourcePickerOpen(false);
+    toast({ title: "Resource shared", description: title });
   };
 
   const handleCancelVoiceRecording = () => {
@@ -1092,11 +1121,17 @@ export default function PremiumChatPage() {
           <ChatComposer
             value={inputValue}
             onChange={(value) => {
+              if (value === "/" || value === "\\" || /^[/\\]resource\s*$/i.test(value)) {
+                setInputValue("");
+                chatPresence.setTyping(false);
+                setResourcePickerOpen(true);
+                return;
+              }
               setInputValue(value);
               chatPresence.setTyping(Boolean(value.trim()));
             }}
             onSend={handleSendMessage}
-            onAttachFile={sendAttachmentMessage}
+            onAttachFile={(file) => setPendingAttachment(file)}
             onEmoji={(emoji) => setInputValue((prev) => `${prev}${emoji}`)}
             onVoice={handleToggleVoiceRecording}
             // History can hydrate in the background; messaging and recording
@@ -1107,6 +1142,7 @@ export default function PremiumChatPage() {
             onCancelVoice={handleCancelVoiceRecording}
             replyingTo={replyingTo}
             onCancelReply={() => setReplyingTo(null)}
+            onOpenResources={() => setResourcePickerOpen(true)}
             placeholder="Type a message..."
           />
         </div>
@@ -1228,6 +1264,19 @@ export default function PremiumChatPage() {
         members={roomMemberProfiles}
         currentUserId={user?.$id || ""}
       />
+      {pendingAttachment ? (
+        <AttachmentComposer
+          file={pendingAttachment}
+          isSending={isUploadingAttachment}
+          onCancel={() => setPendingAttachment(null)}
+          onSend={async (file, caption) => {
+            const sent = await sendAttachmentMessage(file, caption);
+            if (sent) setPendingAttachment(null);
+            return sent;
+          }}
+        />
+      ) : null}
+      {resourcePickerOpen ? <ResourcePicker onClose={() => setResourcePickerOpen(false)} onSelect={shareVaultResource} /> : null}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, Paperclip, Send, Smile, Sparkles, Trash2, X } from "lucide-react";
+import { LibraryBig, Mic, Paperclip, Send, Smile, Sparkles, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const EMOJI_PALETTE = ["😀", "😂", "😍", "🔥", "👏", "👍", "🙏", "🎉", "💡", "✅", "🤔", "❤️"];
@@ -21,6 +21,7 @@ interface ChatComposerProps {
   placeholder?: string;
   replyingTo?: { authorName?: string; content?: string } | null;
   onCancelReply?: () => void;
+  onOpenResources?: () => void;
 }
 
 export function ChatComposer({
@@ -38,6 +39,7 @@ export function ChatComposer({
   placeholder = "Message",
   replyingTo,
   onCancelReply,
+  onOpenResources,
 }: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -121,7 +123,8 @@ export function ChatComposer({
           <div className="flex min-h-11 flex-1 items-end gap-1 rounded-[22px] border border-border/50 bg-background px-1.5 py-1 shadow-sm transition focus-within:border-primary/30 focus-within:ring-2 focus-within:ring-primary/10">
             <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} aria-label="Attach file" />
             <button type="button" onClick={() => setShowEmojiPicker((open) => !open)} disabled={isLoading} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50" aria-label="Add emoji" aria-expanded={showEmojiPicker}><Smile className="h-5 w-5" /></button>
-            <button type="button" onClick={() => onChange(`${value}${value && !value.endsWith(" ") ? " " : ""}@AI `)} disabled={isLoading} className="flex h-9 shrink-0 items-center justify-center gap-1 rounded-full px-2 text-[11px] font-semibold text-[#76556d] transition hover:bg-[#76556d]/10 disabled:opacity-50" aria-label="Mention the AI Tutor"><Sparkles className="h-4 w-4" /><span className="hidden sm:inline">AI</span></button>
+            <button type="button" onClick={() => onChange(`${value}${value && !value.endsWith(" ") ? " " : ""}@AI `)} disabled={isLoading} className="flex h-9 shrink-0 items-center justify-center gap-1 rounded-full px-2 text-[11px] font-semibold text-[#76556d] transition hover:bg-[#76556d]/10 disabled:opacity-50" aria-label="Mention Student.social AI"><Sparkles className="h-4 w-4" /><span className="hidden sm:inline">AI</span></button>
+            {onOpenResources ? <button type="button" onClick={onOpenResources} disabled={isLoading} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50" aria-label="Share from Resource Vault"><LibraryBig className="h-4.5 w-4.5" /></button> : null}
             <textarea
               ref={textareaRef}
               value={value}

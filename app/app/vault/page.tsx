@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FolderOpen, Search, Upload, Filter, Grid3X3, List, FileText, ImageIcon, Video, Code, BookOpen, Download, Share2, Star, Eye, Clock, Heart, ExternalLink, Play, Loader2, RefreshCw } from 'lucide-react'
+import { FolderOpen, Search, Upload, Filter, Grid3X3, List, FileText, ImageIcon, Video, Code, BookOpen, Download, Share2, Star, Eye, Clock, Heart, ExternalLink, Play, Loader2, RefreshCw, X } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { resourceService, profileService } from "@/lib/appwrite"
 import { useAuth } from "@/lib/auth-context"
@@ -95,6 +95,11 @@ export default function VaultPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [myResourcesCount, setMyResourcesCount] = useState(0)
   const [bookmarkedCount, setBookmarkedCount] = useState(0)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadTitle, setUploadTitle] = useState("")
+  const [uploadDescription, setUploadDescription] = useState("")
+  const [uploadTags, setUploadTags] = useState("")
+  const [uploadVisibility, setUploadVisibility] = useState("private")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
   const { user, loading: authLoading } = useAuth()
@@ -196,17 +201,29 @@ export default function VaultPage() {
     }
   }, [user, authLoading, loadResources, router])
 
-  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file || !user?.$id) return
+
+    setUploadFile(file)
+    setUploadTitle(file.name.replace(/\.[^.]+$/, ""))
+    setUploadDescription("")
+    setUploadTags("")
+    setUploadVisibility(scopedPodId ? "pod" : "private")
+    event.target.value = ""
+  }
+
+  const submitUpload = async () => {
+    const file = uploadFile
+    if (!file || !user?.$id || !uploadTitle.trim()) return
 
     setIsUploading(true)
     try {
       await resourceService.uploadResource(user.$id, file, {
-        title: file.name,
-        description: "",
-        tags: [],
-        visibility: scopedPodId ? "pod" : "public",
+        title: uploadTitle.trim(),
+        description: uploadDescription.trim(),
+        tags: uploadTags.split(",").map((tag) => tag.trim().replace(/^#/, "")).filter(Boolean).slice(0, 10),
+        visibility: scopedPodId ? "pod" : uploadVisibility,
         podId: scopedPodId || undefined,
       })
 
@@ -217,18 +234,16 @@ export default function VaultPage() {
 
       // Refresh resources
       await loadResources()
-    } catch (error) {
+      setUploadFile(null)
+    } catch (error: any) {
       console.error("Upload failed:", error)
       toast({
         title: "Upload Failed",
-        description: "Failed to upload resource. Please try again.",
+        description: error?.message || "Failed to upload resource. Please try again.",
         variant: "destructive",
       })
     } finally {
       setIsUploading(false)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ""
-      }
     }
   }
 
@@ -986,6 +1001,24 @@ export default function VaultPage() {
           </div>
         </div>
       </div>
+      {uploadFile ? (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/55 backdrop-blur-sm sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-label="Add resource to Vault">
+          <div className="w-full max-w-xl overflow-hidden rounded-t-[30px] border border-border/60 bg-card shadow-2xl sm:rounded-[30px]">
+            <header className="flex items-start justify-between border-b border-border/50 px-5 py-4">
+              <div><h2 className="text-base font-semibold tracking-[-0.02em]">Add to Resource Vault</h2><p className="mt-0.5 text-xs text-muted-foreground">Describe it once so it stays searchable across chats, Pods, calendar, and AI.</p></div>
+              <button type="button" onClick={() => setUploadFile(null)} disabled={isUploading} className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50" aria-label="Cancel upload"><X className="h-4 w-4" /></button>
+            </header>
+            <div className="max-h-[70dvh] space-y-4 overflow-y-auto p-5">
+              <div className="flex items-center gap-3 rounded-2xl border border-border/55 bg-background p-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#6f6a4f]/12 text-[#6f6a4f] dark:text-[#c9c39e]"><FileText className="h-5 w-5" /></span><span className="min-w-0"><span className="block truncate text-sm font-medium">{uploadFile.name}</span><span className="block text-xs text-muted-foreground">{uploadFile.type || "File"} · {formatFileSize(uploadFile.size)}</span></span></div>
+              <label className="block text-xs font-medium text-muted-foreground">Resource title<Input value={uploadTitle} onChange={(event) => setUploadTitle(event.target.value)} maxLength={180} className="mt-1.5 h-11 bg-background text-foreground" /></label>
+              <label className="block text-xs font-medium text-muted-foreground">Description<textarea value={uploadDescription} onChange={(event) => setUploadDescription(event.target.value.slice(0, 2000))} rows={3} placeholder="What will this help someone learn?" className="mt-1.5 w-full resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary/45 focus:ring-2 focus:ring-primary/10" /></label>
+              <label className="block text-xs font-medium text-muted-foreground">Tags<Input value={uploadTags} onChange={(event) => setUploadTags(event.target.value)} placeholder="java, interview, week-2" className="mt-1.5 h-11 bg-background text-foreground" /><span className="mt-1 block text-[10px] font-normal opacity-70">Separate up to 10 tags with commas.</span></label>
+              {!scopedPodId ? <label className="block text-xs font-medium text-muted-foreground">Access<Select value={uploadVisibility} onValueChange={setUploadVisibility}><SelectTrigger className="mt-1.5 h-11 bg-background"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="private">Only me</SelectItem><SelectItem value="public">Student.social community</SelectItem></SelectContent></Select></label> : null}
+            </div>
+            <footer className="flex items-center justify-end gap-2 border-t border-border/50 px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:pb-4"><Button variant="ghost" onClick={() => setUploadFile(null)} disabled={isUploading}>Cancel</Button><Button onClick={submitUpload} disabled={isUploading || !uploadTitle.trim()}>{isUploading ? <Loader2 className="animate-spin" /> : <Upload />} {isUploading ? "Uploading…" : "Add to Vault"}</Button></footer>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

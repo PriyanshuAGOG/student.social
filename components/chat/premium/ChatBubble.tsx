@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import { CircleAlert, Edit3, MoreHorizontal, Pause, Play, Reply, Smile, Trash2 } from "lucide-react";
+import { Captions, CircleAlert, Edit3, ExternalLink, LibraryBig, MoreHorizontal, Pause, Play, Reply, Smile, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🔥", "👏", "🎉"];
@@ -30,6 +30,7 @@ interface ChatBubbleProps {
   highlightQuery?: string;
   currentUserId?: string;
   onDeliveryDetails?: () => void;
+  metadata?: Record<string, any>;
 }
 
 function DeliverySignal({ state, onClick }: { state?: ChatBubbleProps["deliveryState"]; onClick?: () => void }) {
@@ -69,6 +70,7 @@ export function ChatBubble({
   highlightQuery = "",
   currentUserId = "",
   onDeliveryDetails,
+  metadata,
 }: ChatBubbleProps) {
   const [showActions, setShowActions] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
@@ -76,6 +78,7 @@ export function ChatBubble({
   const timeFormatted = Number.isNaN(date.getTime()) ? "" : format(date, "HH:mm");
   const isImage = Boolean(fileUrl && (type === "image" || /\.(jpg|jpeg|png|gif|webp|avif|bmp)(\?|$)/i.test(fileUrl)));
   const isVoice = Boolean(fileUrl && type === "voice");
+  const isResource = Boolean(metadata?.resourceId);
   const normalizedReactions = useMemo(
     () =>
       Object.entries(reactions || {})
@@ -124,9 +127,22 @@ export function ChatBubble({
             ) : null}
 
             {isVoice ? (
-              <VoiceNotePlayer src={fileUrl || ""} label={fileName || "Voice message"} />
+              <VoiceNotePlayer
+                src={fileUrl || ""}
+                label={fileName || "Voice message"}
+                expectedDurationMs={Number(metadata?.durationMs) || 0}
+                transcript={typeof metadata?.transcript === "string" ? metadata.transcript : ""}
+                transcriptStatus={metadata?.transcriptStatus}
+              />
             ) : null}
-            {fileUrl && !isImage && !isVoice ? (
+            {isResource && fileUrl ? (
+              <a href={fileUrl} target="_blank" rel="noreferrer" className="mb-2 flex min-w-60 items-center gap-3 rounded-xl border border-black/10 bg-background/70 px-3 py-2.5 transition hover:bg-background">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#6f6a4f]/15 text-[#6f6a4f] dark:text-[#c9c39e]"><LibraryBig className="h-4.5 w-4.5" /></span>
+                <span className="min-w-0 flex-1"><span className="block text-[10px] font-semibold uppercase tracking-[0.12em] opacity-55">From Resource Vault</span><span className="mt-0.5 block truncate text-sm font-semibold">{metadata?.resourceTitle || fileName || "Shared resource"}</span><span className="block truncate text-[10px] opacity-55">{metadata?.resourceType || "Resource"}</span></span>
+                <ExternalLink className="h-4 w-4 shrink-0 opacity-45" />
+              </a>
+            ) : null}
+            {fileUrl && !isImage && !isVoice && !isResource ? (
               <a href={fileUrl} target="_blank" rel="noreferrer" download={fileName || undefined} className="mb-2 flex items-center gap-2 rounded-xl bg-black/[0.06] px-3 py-2 text-sm underline-offset-2 hover:underline"><span aria-hidden>📎</span><span className="truncate">{fileName || "Download attachment"}</span></a>
             ) : null}
             {isImage ? (
@@ -184,11 +200,37 @@ function formatAudioTime(value: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-function VoiceNotePlayer({ src, label }: { src: string; label: string }) {
+function VoiceNotePlayer({
+  src,
+  label,
+  expectedDurationMs = 0,
+  transcript = "",
+  transcriptStatus,
+}: {
+  src: string;
+  label: string;
+  expectedDurationMs?: number;
+  transcript?: string;
+  transcriptStatus?: "ready" | "unavailable" | "failed";
+}) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const expectedDuration = expectedDurationMs > 0 ? expectedDurationMs / 1000 : 0;
+  const [duration, setDuration] = useState(expectedDuration);
+  const [showTranscript, setShowTranscript] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+
+  const updateDuration = (candidate: number) => {
+    if (expectedDuration > 0) {
+      setDuration(expectedDuration);
+      return;
+    }
+    // Chromium can report multi-hour durations for short MediaRecorder WebM
+    // blobs. Voice notes are capped to a sensible 30-minute presentation.
+    if (Number.isFinite(candidate) && candidate > 0 && candidate <= 30 * 60) {
+      setDuration(candidate);
+    }
+  };
 
   const togglePlayback = async () => {
     const audio = audioRef.current;
@@ -198,7 +240,8 @@ function VoiceNotePlayer({ src, label }: { src: string; label: string }) {
   };
 
   return (
-    <div className="mb-2 flex min-w-52 items-center gap-2.5 rounded-xl bg-black/[0.06] px-2.5 py-2" aria-label={label}>
+    <div className="mb-2 min-w-56 rounded-xl bg-black/[0.06] px-2.5 py-2" aria-label={label}>
+      <div className="flex items-center gap-2.5">
       <audio
         ref={audioRef}
         src={src}
@@ -206,8 +249,12 @@ function VoiceNotePlayer({ src, label }: { src: string; label: string }) {
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onEnded={() => setIsPlaying(false)}
-        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
-        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+        onTimeUpdate={(event) => {
+          setCurrentTime(event.currentTarget.currentTime);
+          updateDuration(event.currentTarget.duration);
+        }}
+        onLoadedMetadata={(event) => updateDuration(event.currentTarget.duration)}
+        onDurationChange={(event) => updateDuration(event.currentTarget.duration)}
       />
       <button type="button" onClick={togglePlayback} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground" aria-label={isPlaying ? "Pause voice message" : "Play voice message"}>
         {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
@@ -226,7 +273,21 @@ function VoiceNotePlayer({ src, label }: { src: string; label: string }) {
         className="h-1 min-w-0 flex-1 accent-primary"
         aria-label="Voice message position"
       />
-      <span className="w-9 text-right text-[10px] tabular-nums opacity-60">{formatAudioTime(duration || currentTime)}</span>
+      <span className="w-20 text-right text-[10px] tabular-nums opacity-60">{formatAudioTime(currentTime)} / {formatAudioTime(duration)}</span>
+      </div>
+      <button
+        type="button"
+        onClick={() => setShowTranscript((visible) => !visible)}
+        className="mt-1.5 inline-flex items-center gap-1 rounded-full px-1 py-0.5 text-[10px] font-medium opacity-70 transition hover:opacity-100"
+        aria-expanded={showTranscript}
+      >
+        <Captions className="h-3 w-3" /> {showTranscript ? "Hide transcript" : "Transcript"}
+      </button>
+      {showTranscript ? (
+        <p className="mt-1.5 max-w-sm whitespace-pre-wrap rounded-lg bg-background/60 px-2.5 py-2 text-xs leading-5">
+          {transcript || (transcriptStatus === "failed" ? "The transcript could not be generated for this note." : "A transcript is not available for this note.")}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ID, Permission, Role } from 'node-appwrite'
 import { InputFile } from 'node-appwrite/file'
 import { createAdminClient } from '@/lib/server/appwrite'
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireVerifiedUser } from '@/lib/api-security'
 import { scanUploadMeta } from '@/lib/upload-security'
+import { transcribeAudioFile } from '@/lib/server/audio-transcription'
 
 const ATTACHMENTS_BUCKET_ID = process.env.NEXT_PUBLIC_ATTACHMENTS_BUCKET_ID || 'attachments'
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || 'peerspark-main-db'
@@ -43,10 +44,14 @@ export async function POST(req: NextRequest) {
     enforceSameOrigin(req)
     enforceRateLimit(req, { key: 'messages:attachments', max: 40, windowMs: 60 * 1000 })
 
-    const auth = requireUser(req)
+    const auth = await requireVerifiedUser(req)
     const formData = await req.formData().catch(() => null)
     const file = formData?.get('file')
     const roomId = String(formData?.get('roomId') || '')
+    const requestedDurationMs = Number(formData?.get('durationMs') || 0)
+    const durationMs = Number.isFinite(requestedDurationMs)
+      ? Math.max(0, Math.min(Math.round(requestedDurationMs), 6 * 60 * 60 * 1000))
+      : 0
 
     if (!(file instanceof File)) {
       throw new ApiError(400, 'INVALID_INPUT', 'A file is required')
@@ -78,6 +83,10 @@ export async function POST(req: NextRequest) {
       ],
     )
 
+    const transcriptResult = file.type.toLowerCase().startsWith('audio/')
+      ? await transcribeAudioFile(file)
+      : { transcript: '', status: 'unavailable' as const }
+
     return NextResponse.json({
       success: true,
       attachment: {
@@ -86,6 +95,9 @@ export async function POST(req: NextRequest) {
         fileName,
         fileSize: file.size,
         fileType: file.type || 'application/octet-stream',
+        durationMs,
+        transcript: transcriptResult.transcript,
+        transcriptStatus: transcriptResult.status,
       },
     }, { status: 201 })
   } catch (error: any) {

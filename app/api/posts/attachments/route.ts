@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ID, Permission, Role } from 'node-appwrite'
 import { InputFile } from 'node-appwrite/file'
 import { createAdminClient } from '@/lib/server/appwrite'
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireVerifiedUser } from '@/lib/api-security'
 import { normalizeAppwriteEndpoint } from '@/lib/env'
 import { scanUploadMeta } from '@/lib/upload-security'
 
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   try {
     enforceSameOrigin(req)
     enforceRateLimit(req, { key: 'posts:attachments', max: 24, windowMs: 60 * 1000 })
-    const auth = requireUser(req)
+    const auth = await requireVerifiedUser(req)
 
     const formData = await req.formData().catch(() => null)
     const file = formData?.get('file')

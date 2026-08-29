@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ID, Permission, Role } from 'node-appwrite'
 import { InputFile } from 'node-appwrite/file'
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireVerifiedUser } from '@/lib/api-security'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { normalizeAppwriteEndpoint } from '@/lib/env'
 import { scanUploadMeta } from '@/lib/upload-security'
@@ -74,10 +74,10 @@ export async function POST(request: NextRequest) {
   try {
     enforceSameOrigin(request)
     enforceRateLimit(request, { key: 'ai:attachments', max: 15, windowMs: 60_000 })
-    const { userId } = requireUser(request)
+    const { userId } = await requireVerifiedUser(request)
     const form = await request.formData()
     const file = form.get('file')
-    if (!(file instanceof File)) throw new ApiError(400, 'INVALID_INPUT', 'Choose a file for the AI tutor')
+    if (!(file instanceof File)) throw new ApiError(400, 'INVALID_INPUT', 'Choose a file for AI')
     if (file.size <= 0 || file.size > MAX_AI_ATTACHMENT_BYTES) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', 'AI attachments must be 10 MB or smaller')
     const scan = scanUploadMeta(file, { maxBytes: MAX_AI_ATTACHMENT_BYTES })
     if (!scan.ok) throw new ApiError(400, 'INVALID_UPLOAD', scan.reason || 'This file cannot be uploaded')
@@ -110,6 +110,6 @@ export async function POST(request: NextRequest) {
     }
     if (error instanceof ApiError) return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
     console.error('[ai/attachments] Upload failed:', error)
-    return NextResponse.json({ success: false, error: 'The AI tutor could not process this attachment' }, { status: 500 })
+    return NextResponse.json({ success: false, error: 'AI could not process this attachment' }, { status: 500 })
   }
 }

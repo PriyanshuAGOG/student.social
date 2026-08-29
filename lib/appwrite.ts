@@ -2220,6 +2220,12 @@ export const chatService = {
       fileSize?: number
       fileId?: string
       fileType?: string
+      durationMs?: number
+      transcript?: string
+      transcriptStatus?: "ready" | "unavailable" | "failed"
+      resourceId?: string
+      resourceTitle?: string
+      resourceType?: string
       clientMessageId?: string
     } = "text",
     metadata: {
@@ -2231,6 +2237,12 @@ export const chatService = {
       fileSize?: number
       fileId?: string
       fileType?: string
+      durationMs?: number
+      transcript?: string
+      transcriptStatus?: "ready" | "unavailable" | "failed"
+      resourceId?: string
+      resourceTitle?: string
+      resourceType?: string
       clientMessageId?: string
     } = {}
   ) {
@@ -2288,6 +2300,12 @@ export const chatService = {
             fileSize: metadata.fileSize || null,
             fileId: metadata.fileId || null,
             fileType: metadata.fileType || null,
+            durationMs: metadata.durationMs || null,
+            transcript: metadata.transcript || null,
+            transcriptStatus: metadata.transcriptStatus || null,
+            resourceId: metadata.resourceId || null,
+            resourceTitle: metadata.resourceTitle || null,
+            resourceType: metadata.resourceType || null,
           },
         }),
       })
@@ -2469,7 +2487,7 @@ export const chatService = {
   // Upload file attachment through the authenticated server route so storage
   // permissions are applied by the Appwrite Server SDK instead of relying on a
   // public bucket-level create grant.
-  async uploadAttachment(file: File, userId: string, roomId = '') {
+  async uploadAttachment(file: File, userId: string, roomId = '', options: { durationMs?: number } = {}) {
     try {
       if (!file) throw new Error('File is required')
       if (!userId) throw new Error('User ID is required')
@@ -2478,6 +2496,9 @@ export const chatService = {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('roomId', roomId)
+      if (options.durationMs && Number.isFinite(options.durationMs)) {
+        formData.append('durationMs', String(Math.max(0, Math.round(options.durationMs))))
+      }
 
       const response = await fetch('/api/messages/attachments', {
         method: 'POST',

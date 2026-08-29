@@ -10,6 +10,12 @@
 
 import { YoutubeTranscript } from 'youtube-transcript';
 
+export type TimestampedTranscriptSegment = {
+  text: string;
+  offsetSeconds: number;
+  durationSeconds: number;
+};
+
 /**
  * Extract YouTube video ID from various URL formats
  */
@@ -53,6 +59,25 @@ export async function getTranscript(videoId: string): Promise<string | null> {
     console.warn('Error fetching transcript:', error);
     // Fallback or just return null
     return null;
+  }
+}
+
+/**
+ * Fetch caption segments while preserving their source timestamps. Course
+ * notes and assessment evidence use this shape so long videos can be processed
+ * one lesson at a time instead of loading the whole transcript into an AI call.
+ */
+export async function getTimestampedTranscript(videoId: string): Promise<TimestampedTranscriptSegment[]> {
+  try {
+    const items = await YoutubeTranscript.fetchTranscript(videoId);
+    return (items || []).map((item) => ({
+      text: decodeHtmlEntities(item.text),
+      offsetSeconds: Number(item.offset || 0) / 1000,
+      durationSeconds: Number(item.duration || 0) / 1000,
+    }));
+  } catch (error) {
+    console.warn(`No timestamped transcript available for ${videoId}`, error);
+    return [];
   }
 }
 

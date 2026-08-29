@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import { z } from 'zod'
 import { getSessionCookieSecret } from '@/lib/env'
 import { verifyJWT } from '@/lib/auth-security'
+import { createSessionClient } from '@/lib/server/appwrite'
 
 export class ApiError extends Error {
   status: number
@@ -163,6 +164,44 @@ export function requireUser(request: Request): AuthContext {
   }
 
   throw new ApiError(401, 'UNAUTHORIZED', 'Missing authenticated user context')
+}
+
+/**
+ * Resolve the application session first, then securely bridge legacy/OAuth
+ * Appwrite sessions that have not received the signed application cookie yet.
+ * The fallback asks Appwrite for the current account; it never trusts a user ID
+ * supplied by the browser.
+ */
+export async function requireVerifiedUser(request: Request): Promise<AuthContext> {
+  try {
+    return requireUser(request)
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401) throw error
+
+    const appwriteSession = getCookieValue(request, 'appwrite-session')
+    if (!appwriteSession) throw error
+
+    try {
+      const { account } = await createSessionClient({
+        cookies: {
+          get(name: string) {
+            return name === 'appwrite-session' ? { value: appwriteSession } : undefined
+          },
+        },
+      })
+      const user = await account.get()
+      if (!user?.$id) throw error
+
+      return {
+        userId: user.$id,
+        role: 'user',
+        correlationId: getCorrelationId(request),
+        authenticatedVia: 'session-cookie',
+      }
+    } catch {
+      throw error
+    }
+  }
 }
 export function requireRole(ctx: AuthContext, allowedRoles: string[]): void { if (!allowedRoles.includes(ctx.role)) throw new ApiError(403, 'FORBIDDEN', 'Insufficient role permissions') }
 export function requireOwnership(ownerId: string, actorId: string): void { if (ownerId !== actorId) throw new ApiError(403, 'FORBIDDEN', 'Resource ownership check failed') }

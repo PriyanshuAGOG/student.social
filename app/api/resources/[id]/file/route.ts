@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { ApiError, requireUser } from '@/lib/api-security'
+import { ApiError, requireVerifiedUser } from '@/lib/api-security'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { canAccessResource } from '@/lib/server/resource-access'
 
@@ -9,7 +9,7 @@ const RESOURCES_BUCKET_ID = process.env.NEXT_PUBLIC_RESOURCES_BUCKET_ID || 'reso
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
-    const { userId } = requireUser(request)
+    const { userId } = await requireVerifiedUser(request)
     const { id } = await context.params
     const { databases, storage } = createAdminClient()
     const resource = await databases.getDocument(DATABASE_ID, RESOURCES_COLLECTION_ID, id)

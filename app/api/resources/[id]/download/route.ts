@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { getEnv } from '@/lib/env'
-import { ApiError, requireUser } from '@/lib/api-security'
+import { ApiError, requireVerifiedUser } from '@/lib/api-security'
 import { canAccessResource } from '@/lib/server/resource-access'
 
 const DATABASE_ID = getEnv().NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main-db'
 const RESOURCES_COLLECTION_ID = process.env.NEXT_PUBLIC_RESOURCES_COLLECTION_ID || 'resources'
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { userId } = requireUser(request)
+    const { userId } = await requireVerifiedUser(request)
     const { databases } = await createAdminClient()
     const { id: resourceId } = await params
     const resource = await databases.getDocument(DATABASE_ID, RESOURCES_COLLECTION_ID, resourceId)

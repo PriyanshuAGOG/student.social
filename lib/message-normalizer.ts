@@ -32,6 +32,13 @@ export interface StandardizedMessage {
     reactions?: Record<string, string[]>
     pinnedBy?: string[]
     starredBy?: string[]
+    durationMs?: number | null
+    transcript?: string | null
+    transcriptStatus?: 'ready' | 'unavailable' | 'failed' | null
+    resourceId?: string | null
+    resourceTitle?: string | null
+    resourceType?: string | null
+    fileType?: string | null
   }
   clientMessageId?: string
 }

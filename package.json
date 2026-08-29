@@ -6,6 +6,7 @@
     "setup-appwrite": "node scripts/setup-appwrite.js",
     "update-schema": "node scripts/update-schema.js",
     "appwrite:verify": "node scripts/verify-appwrite.js",
+    "appwrite:verify-uploads": "node --env-file=.env.local scripts/verify-upload-pipeline.mjs",
     "livekit:verify": "node --env-file=.env.local scripts/verify-livekit.mjs",
     "appwrite:setup-pods": "node --env-file=.env.local --experimental-strip-types scripts/appwrite/setup-pods.ts",
     "appwrite:harden-pods": "node --env-file=.env.local --experimental-strip-types scripts/appwrite/harden-pods-permissions.ts",
@@ -22,6 +23,7 @@
     "test:communications": "node --experimental-strip-types --test tests/calls-domain.test.ts tests/chat-receipts.test.ts",
     "test:backend": "node --experimental-strip-types --test tests/backend-reliability.test.ts",
     "test:pods": "node --test tests.pods.mjs",
+    "test:courses": "node --experimental-strip-types --test tests/pod-course-domain.test.ts",
     "audit:mutations": "node scripts/audit-mutations.mjs --strict",
     "web-push:keys": "web-push generate-vapid-keys"
   },

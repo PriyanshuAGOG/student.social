@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/server/appwrite'
-import { ApiError, jsonError, jsonOk, parseJsonBody, requireOwnership, requireUser } from '@/lib/api-security'
+import { ApiError, jsonError, jsonOk, parseJsonBody, requireOwnership, requireVerifiedUser } from '@/lib/api-security'
 import { z } from 'zod'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID()
 
   try {
-    const auth = requireUser(request)
+    const auth = await requireVerifiedUser(request)
     const bodySchema = z.object({
       userId: z.string().min(1),
       title: z.string().min(1).max(255),
@@ -51,12 +51,14 @@ export async function GET(request: NextRequest) {
   const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID()
 
   try {
+    const auth = await requireVerifiedUser(request)
     const searchParams = request.nextUrl.searchParams
-    const userId = searchParams.get('userId')
+    const userId = searchParams.get('userId') || auth.userId
     const podId = searchParams.get('podId')
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10) || 50, 100)
     const offset = Math.max(parseInt(searchParams.get('offset') || '0', 10) || 0, 0)
 
+    requireOwnership(userId, auth.userId)
     const { databases } = await createAdminClient()
     const queries: string[] = []
 

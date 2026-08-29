@@ -1,490 +1,152 @@
-/**
- * Streaming Course Generation API
- * 
- * Generates courses incrementally - first creates chapter stubs,
- * then generates content progressively as user views chapters.
- * Much faster perceived performance and better UX.
- * 
- * @endpoint POST /api/pods/generate-course-streaming
- * @requires podId, youtubeUrl, courseTitle
- */
-
 import { NextRequest, NextResponse } from "next/server"
 import { Query } from "node-appwrite"
+import { z } from "zod"
+import { ApiError, enforceRateLimit, enforceSameOrigin, parseJsonBody, requireVerifiedUser } from "@/lib/api-security"
 import { runAIChat } from "@/lib/ai"
+import { COLLECTIONS, DATABASE_ID } from "@/lib/appwrite-server"
+import { buildCourseManifest, courseSettingsSchema, type PodCourseManifest } from "@/lib/courses/pod-course"
+import { resolveYouTubeSource } from "@/lib/courses/youtube-source"
 import { createAdminClient } from "@/lib/server/appwrite"
-import { DATABASE_ID, COLLECTIONS } from "@/lib/appwrite-server"
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from "@/lib/api-security"
 
-const REQUEST_TIMEOUT = 30000 // 30 second timeout
+const requestSchema = z.object({
+  podId: z.string().trim().min(1).max(255),
+  youtubeUrl: z.string().url().max(500),
+  courseTitle: z.string().trim().min(3).max(200),
+  settings: courseSettingsSchema.partial().optional(),
+})
 
-// Structured logging helper
-function log(level: 'info' | 'warn' | 'error', message: string, data?: Record<string, any>) {
-  const timestamp = new Date().toISOString()
-  const logEntry = { timestamp, level, message, ...data }
-  
-  if (level === 'error') {
-    console.error(JSON.stringify(logEntry))
-  } else if (level === 'warn') {
-    console.warn(JSON.stringify(logEntry))
-  } else {
-    console.log(JSON.stringify(logEntry))
-  }
+function extractJsonObject(response: string) {
+  const match = response.match(/\{[\s\S]*\}/)
+  if (!match) throw new Error("The curriculum response was not structured JSON")
+  return JSON.parse(match[0])
 }
 
-// Extract video ID with timeout
-async function extractVideoIdWithTimeout(url: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(
-      () => reject(new Error("Video ID extraction timeout")),
-      5000
-    )
-
-    try {
-      const urlObj = new URL(url)
-      // Handle various YouTube URL formats
-      let videoId = urlObj.searchParams.get("v") // youtube.com/watch?v=XXX
-      
-      if (!videoId && urlObj.hostname.includes('youtu.be')) {
-        // youtu.be/XXX format
-        videoId = urlObj.pathname.slice(1)
-      }
-      
-      if (!videoId) {
-        // youtube.com/embed/XXX format
-        const pathParts = urlObj.pathname.split("/")
-        const embedIndex = pathParts.indexOf('embed')
-        if (embedIndex >= 0 && pathParts[embedIndex + 1]) {
-          videoId = pathParts[embedIndex + 1]
-        }
-      }
-      
-      if (!videoId) {
-        // Last resort: try to get from path
-        videoId = urlObj.pathname.split("/").pop() || null
-      }
-
-      clearTimeout(timeout)
-      
-      if (videoId && videoId.length > 5) {
-        resolve(videoId)
-      } else {
-        reject(new Error("Could not extract video ID from URL"))
-      }
-    } catch (err) {
-      clearTimeout(timeout)
-      reject(err)
-    }
-  })
-}
-
-// Generate chapter stubs quickly
-async function generateChapterStubs(
-  courseTitle: string,
-  youtubeUrl: string
-): Promise<any[]> {
+async function enrichManifest(manifest: PodCourseManifest): Promise<PodCourseManifest> {
+  if (!process.env.OPENAI_API_KEY && !process.env.OPENROUTER_API_KEY) return manifest
+  const compactOutline = manifest.modules.map((module) => ({
+    id: module.id,
+    chapters: module.chapters.map((chapter) => ({ id: chapter.id, sourceTitle: chapter.title })).slice(0, 12),
+  }))
   try {
     const response = await Promise.race([
       runAIChat([
         {
           role: "system",
-          content: `You are a course curriculum expert. Given a course title and YouTube URL, 
-generate a structured list of 4-6 chapters that would logically divide the course content.
-Return ONLY a JSON array with no markdown formatting. Each chapter should have: 
-{
-  "chapterNumber": 1,
-  "title": "Chapter title",
-  "description": "What this chapter covers",
-  "estimatedMinutes": 15,
-  "objectives": ["objective 1", "objective 2"],
-  "locked": false,
-  "contentGenerated": false
-}`,
+          content: `You are a senior instructional designer. Return only JSON. Improve the names and learning design for this course map without changing IDs, module count, lesson count, source order, or timestamps. Keep every title concise and source-grounded. Output {"modules":[{"id":"module-01","title":"...","description":"...","objectives":["...","..."],"milestone":"...","chapters":[{"id":"lesson-01","title":"...","description":"...","objectives":["...","..."],"topics":["...","..."]}]}]}. Do not include quiz answers or invented factual claims.`,
         },
         {
           role: "user",
-          content: `Course Title: "${courseTitle}"\nYouTube URL: ${youtubeUrl}\n\nGenerate chapter structure for this course.`,
+          content: JSON.stringify({ title: manifest.sourceTitle, difficulty: manifest.settings.difficulty, outline: compactOutline }),
         },
-      ]),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Chapter generation timeout")), 15000)
-      ),
-    ]) as string
-
-    try {
-      // Extract JSON from response (might be wrapped in markdown)
-      const jsonMatch = response.match(/\[[\s\S]*\]/)
-      const jsonStr = jsonMatch ? jsonMatch[0] : response
-      const chapters = JSON.parse(jsonStr)
-      
-      // Validate structure
-      if (!Array.isArray(chapters) || chapters.length === 0) {
-        throw new Error("Invalid chapter structure")
-      }
-
-      // Only first chapter unlocked initially
-      return chapters.map((ch, idx) => ({
-        ...ch,
-        locked: idx > 0,
-        contentGenerated: false,
-        createdAt: new Date().toISOString(),
-      }))
-    } catch (parseErr: unknown) {
-      const msg = parseErr instanceof Error ? parseErr.message : String(parseErr)
-      throw new Error(`Failed to parse AI response: ${msg}`)
+      ], { maxTokens: 7000 }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Curriculum enrichment timed out")), 20_000)),
+    ])
+    const enriched = extractJsonObject(response)
+    if (!Array.isArray(enriched.modules)) return manifest
+    const modulesById = new Map(enriched.modules.map((module: any) => [module.id, module]))
+    return {
+      ...manifest,
+      modules: manifest.modules.map((module) => {
+        const update: any = modulesById.get(module.id)
+        const chaptersById = new Map((Array.isArray(update?.chapters) ? update.chapters : []).map((chapter: any) => [chapter.id, chapter]))
+        return {
+          ...module,
+          title: typeof update?.title === "string" ? update.title.slice(0, 120) : module.title,
+          description: typeof update?.description === "string" ? update.description.slice(0, 500) : module.description,
+          objectives: Array.isArray(update?.objectives) ? update.objectives.slice(0, 5).map(String) : module.objectives,
+          milestone: typeof update?.milestone === "string" ? update.milestone.slice(0, 300) : module.milestone,
+          chapters: module.chapters.map((chapter) => {
+            const chapterUpdate: any = chaptersById.get(chapter.id)
+            return {
+              ...chapter,
+              title: typeof chapterUpdate?.title === "string" ? chapterUpdate.title.slice(0, 160) : chapter.title,
+              description: typeof chapterUpdate?.description === "string" ? chapterUpdate.description.slice(0, 500) : chapter.description,
+              objectives: Array.isArray(chapterUpdate?.objectives) ? chapterUpdate.objectives.slice(0, 5).map(String) : chapter.objectives,
+              topics: Array.isArray(chapterUpdate?.topics) ? chapterUpdate.topics.slice(0, 8).map(String) : chapter.topics,
+            }
+          }),
+        }
+      }),
     }
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error)
-    throw new Error(`Chapter stub generation failed: ${msg}`)
+  } catch (error) {
+    console.info("Course outline enrichment unavailable; using deterministic curriculum", error instanceof Error ? error.message : String(error))
+    return manifest
   }
 }
 
 export async function POST(request: NextRequest) {
-  // Generate correlation ID for request tracing
-  const correlationId = request.headers.get('x-correlation-id') || 
-    `course-gen-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`
-  
-  const startTime = Date.now()
-  
+  const correlationId = request.headers.get("x-correlation-id") || `course-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`
   try {
     enforceSameOrigin(request)
-    enforceRateLimit(request, { key: "pods:generate-course-streaming", max: 5, windowMs: 60 * 1000 })
-    const auth = requireUser(request)
-
-    let body: any
-    try {
-      body = await request.json()
-    } catch (e) {
-      log('warn', 'Invalid JSON in request body', { correlationId })
-      return NextResponse.json(
-        { error: "Invalid JSON in request body", correlationId },
-        { status: 400 }
-      )
-    }
-
-    const { podId, youtubeUrl, courseTitle } = body
-
-    log('info', 'Course generation request received', { correlationId, podId, courseTitle })
-
-    // Input validation
-    if (!podId || !youtubeUrl || !courseTitle) {
-      log('warn', 'Missing required fields', { correlationId, podId: !!podId, youtubeUrl: !!youtubeUrl, courseTitle: !!courseTitle })
-      return NextResponse.json(
-        { error: "Missing required fields: podId, youtubeUrl, courseTitle", correlationId },
-        { status: 400 }
-      )
-    }
-
-    if (typeof courseTitle !== 'string' || courseTitle.length < 3 || courseTitle.length > 200) {
-      return NextResponse.json(
-        { error: "Course title must be a string between 3 and 200 characters", correlationId },
-        { status: 400 }
-      )
-    }
-
-    // Allow both youtube.com and youtu.be URLs
-    if (typeof youtubeUrl !== 'string' || (!youtubeUrl.includes('youtube') && !youtubeUrl.includes('youtu.be'))) {
-      return NextResponse.json(
-        { error: "youtubeUrl must be a valid YouTube URL (youtube.com or youtu.be)", correlationId },
-        { status: 400 }
-      )
-    }
-
+    enforceRateLimit(request, { key: "pods:generate-course", max: 4, windowMs: 60_000 })
+    const auth = await requireVerifiedUser(request)
+    const input = await parseJsonBody(request, requestSchema)
+    const settings = courseSettingsSchema.parse(input.settings || {})
     const { databases } = await createAdminClient()
-    const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, podId)
+    const pod = await databases.getDocument(DATABASE_ID, COLLECTIONS.PODS, input.podId)
     const members = Array.isArray(pod.members) ? pod.members : []
     if (pod.creatorId !== auth.userId && !members.includes(auth.userId)) {
-      return NextResponse.json(
-        { error: "Only pod members can generate a course for this pod", correlationId },
-        { status: 403 }
-      )
+      throw new ApiError(403, "FORBIDDEN", "Join this Pod before creating its learning track")
     }
 
-    // Check if pod already has a course
-    let existingCourses
+    const existing = await databases.listDocuments(DATABASE_ID, COLLECTIONS.POD_COURSES, [Query.equal("podId", input.podId), Query.limit(1)])
+    if (existing.total > 0) throw new ApiError(409, "COURSE_EXISTS", "This Pod already has a learning track")
+
+    let source: Awaited<ReturnType<typeof resolveYouTubeSource>>
     try {
-      existingCourses = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTIONS.POD_COURSES,
-        [Query.equal('podId', podId)]
-      )
-    } catch (e: any) {
-      log('error', 'Failed to check existing courses', { correlationId, error: e?.message })
-      return NextResponse.json(
-        { error: `Failed to check existing courses. Please try again.`, correlationId },
-        { status: 500 }
-      )
-    }
-
-    if (existingCourses.documents.length > 0) {
-      log('info', 'Pod already has a course', { correlationId, podId })
-      return NextResponse.json(
-        { error: "This pod already has a course. Each pod can only have one course.", correlationId },
-        { status: 400 }
-      )
-    }
-
-    // Extract video ID with timeout
-    let videoId: string
-    try {
-      videoId = await extractVideoIdWithTimeout(youtubeUrl)
-      log('info', 'Video ID extracted', { correlationId, videoId })
+      source = await resolveYouTubeSource(input.youtubeUrl, settings.estimatedHours)
     } catch (error) {
-      log('warn', 'Failed to extract video ID', { correlationId, youtubeUrl, error: (error as Error)?.message })
-      return NextResponse.json(
-        { error: `Invalid YouTube URL: ${error instanceof Error ? error.message : 'Unknown error'}`, correlationId },
-        { status: 400 }
-      )
+      throw new ApiError(400, "INVALID_YOUTUBE_SOURCE", error instanceof Error ? error.message : "Could not read this YouTube source")
+    }
+    const initialManifest = buildCourseManifest({
+      title: input.courseTitle,
+      sourceType: source.sourceType,
+      sourceItems: source.items,
+      settings,
+      namespace: correlationId,
+    })
+    initialManifest.sourceTitle = input.courseTitle
+    const manifest = await enrichManifest(initialManifest)
+    const encodedManifest = JSON.stringify(manifest)
+    if (encodedManifest.length > 49_000) {
+      throw new ApiError(422, "COURSE_TOO_LARGE", "This playlist is too large for one Pod track. Split it into two focused tracks.")
     }
 
-    // Generate chapter stubs (quick, AI-based)
-    let chapters: any[]
-    try {
-      log('info', 'Generating chapter stubs', { correlationId, courseTitle })
-      chapters = await generateChapterStubs(courseTitle, youtubeUrl)
-      log('info', 'Chapter stubs generated', { correlationId, chapterCount: chapters.length })
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
-      log('error', 'Failed to generate chapter stubs', { correlationId, error: msg })
-      return NextResponse.json(
-        { error: `Failed to generate course structure. The AI service may be temporarily unavailable. Please try again.`, correlationId },
-        { status: 500 }
-      )
-    }
-
-    if (!Array.isArray(chapters) || chapters.length === 0) {
-      log('error', 'No valid chapters generated', { correlationId })
-      return NextResponse.json(
-        { error: "Failed to generate valid course chapters. Please try a different course title.", correlationId },
-        { status: 500 }
-      )
-    }
-
-    // Create course document with chapter stubs (status: "structuring")
     const now = new Date().toISOString()
-    const courseData = {
-      podId,
-      courseTitle,
-      youtubeUrl,
-      videoId,
-      status: "structuring",
-      progress: 0,
-      totalChapters: chapters.length,
+    const totalChapters = manifest.modules.reduce((sum, module) => sum + module.chapters.length, 0)
+    const course = await databases.createDocument(DATABASE_ID, COLLECTIONS.POD_COURSES, "unique()", {
+      podId: input.podId,
+      courseTitle: input.courseTitle,
+      youtubeUrl: input.youtubeUrl,
+      videoId: source.videoId || "",
+      status: "completed",
+      progress: 100,
+      totalChapters,
       completedChapters: 0,
-      chapters: JSON.stringify(chapters),
+      chapters: encodedManifest,
       assignments: JSON.stringify([]),
       notes: JSON.stringify([]),
       dailyTasks: JSON.stringify([]),
       generationStartedAt: now,
+      generationCompletedAt: now,
       createdAt: now,
       createdBy: auth.userId,
       updatedAt: now,
-      correlationId, // Store for debugging
-    }
-
-    let course
-    try {
-      course = await databases.createDocument(
-        DATABASE_ID,
-        COLLECTIONS.POD_COURSES,
-        "unique()",
-        courseData
-      )
-      log('info', 'Course document created', { correlationId, courseId: course.$id })
-    } catch (e: any) {
-      const msg = e?.message || String(e)
-      log('error', 'Failed to create course document', { correlationId, error: msg })
-      return NextResponse.json(
-        { error: `Failed to create course. Please try again.`, correlationId },
-        { status: 500 }
-      )
-    }
-
-    // Trigger background job to generate chapter content progressively
-    generateChapterContentAsync(
-      course.$id,
-      podId,
-      youtubeUrl,
-      videoId,
-      courseTitle,
-      chapters,
-      correlationId
-    ).catch(error => {
-      const msg = error instanceof Error ? error.message : String(error)
-      log('error', 'Background chapter generation failed', { correlationId, courseId: course.$id, error: msg })
+      correlationId,
     })
 
-    const duration = Date.now() - startTime
-    log('info', 'Course generation request completed', { correlationId, courseId: course.$id, duration })
-
-    return NextResponse.json(
-      {
-        success: true,
-        correlationId,
-        course: {
-          ...courseData,
-          $id: course.$id,
-          chapters: chapters,
-        },
-      },
-      { status: 201 }
-    )
+    return NextResponse.json({
+      success: true,
+      correlationId,
+      course,
+      source: { type: source.sourceType, itemCount: source.items.length, metadataMode: source.metadataMode },
+    }, { status: 201 })
   } catch (error) {
     if (error instanceof ApiError) {
       return NextResponse.json({ error: error.message, code: error.code, correlationId }, { status: error.status })
     }
-
-    const msg = error instanceof Error ? error.message : "Failed to generate course"
-    log('error', 'Unhandled error in course generation', { correlationId, error: msg, stack: (error as Error)?.stack })
-    return NextResponse.json(
-      { error: "An unexpected error occurred. Please try again.", correlationId },
-      { status: 500 }
-    )
-  }
-}
-
-// Async background job - generates chapter content progressively
-async function generateChapterContentAsync(
-  courseId: string,
-  podId: string,
-  youtubeUrl: string,
-  videoId: string,
-  courseTitle: string,
-  chapters: any[],
-  correlationId?: string
-) {
-  try {
-    log('info', 'Starting background chapter content generation', { correlationId, courseId, chapterCount: chapters.length })
-    const { databases } = await createAdminClient()
-    let generatedCount = 0
-
-    // Generate content for each chapter progressively
-    for (let i = 0; i < chapters.length; i++) {
-      try {
-        // Generate content for this specific chapter (with timeout)
-        const chapterContent = await Promise.race([
-          generateChapterContent(courseTitle, chapters[i], i),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Chapter content generation timeout")), 20000)
-          ),
-        ] as const)
-
-        // Update chapter with generated content
-        chapters[i] = {
-          ...chapters[i],
-          ...chapterContent,
-          contentGenerated: true,
-        }
-
-        // Unlock next chapter if this one is completed
-        if (i + 1 < chapters.length) {
-          chapters[i + 1].locked = false
-        }
-
-        generatedCount++
-
-        // Update progress in database
-        await databases.updateDocument(
-          DATABASE_ID,
-          COLLECTIONS.POD_COURSES,
-          courseId,
-          {
-            chapters: JSON.stringify(chapters),
-            progress: Math.round((generatedCount / chapters.length) * 100),
-            completedChapters: generatedCount,
-            updatedAt: new Date().toISOString(),
-          }
-        )
-      } catch (chapterError: unknown) {
-        const msg = chapterError instanceof Error ? chapterError.message : String(chapterError)
-        console.warn(`[generateChapterContent] Failed to generate chapter ${i + 1}: ${msg}`)
-        // Continue to next chapter on error
-        chapters[i].contentGenerated = false
-        chapters[i].error = msg
-      }
-    }
-
-    // Mark course as completed
-    await databases.updateDocument(DATABASE_ID, COLLECTIONS.POD_COURSES, courseId, {
-      status: "completed",
-      progress: 100,
-      chapters: JSON.stringify(chapters),
-      completedChapters: generatedCount,
-      generationCompletedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error)
-    console.error(`[generateChapterContentAsync] Fatal error: ${msg}`)
-    try {
-      const { databases } = await createAdminClient()
-      await databases.updateDocument(DATABASE_ID, COLLECTIONS.POD_COURSES, courseId, {
-        status: "error",
-        error: msg,
-        updatedAt: new Date().toISOString(),
-      })
-    } catch (updateError: unknown) {
-      const updateMsg = updateError instanceof Error ? updateError.message : String(updateError)
-      console.error(`[generateChapterContentAsync] Failed to update error status: ${updateMsg}`)
-    }
-  }
-}
-
-// Generate detailed content for a single chapter
-async function generateChapterContent(
-  courseTitle: string,
-  chapter: any,
-  chapterIndex: number
-): Promise<any> {
-  try {
-    const response = await runAIChat([
-      {
-        role: "system",
-        content: `You are an expert course content creator. Generate detailed educational content for a chapter.
-Return ONLY a JSON object with no markdown formatting. Structure:
-{
-  "content": "detailed chapter content (2-3 paragraphs)",
-  "keyPoints": ["point 1", "point 2", "point 3"],
-  "assignments": [
-    {
-      "id": "assign-1",
-      "title": "Assignment title",
-      "description": "What to do",
-      "dueInDays": 3
-    }
-  ],
-  "notes": ["note 1", "note 2"],
-  "resources": ["resource link 1", "resource link 2"]
-}`,
-      },
-      {
-        role: "user",
-        content: `Course: "${courseTitle}"\nChapter ${chapterIndex + 1}: ${chapter.title}\nDescription: ${chapter.description}\nObjectives: ${chapter.objectives.join(", ")}\n\nCreate detailed chapter content.`,
-      },
-    ])
-
-    // Extract and validate JSON
-    const jsonMatch = response.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      throw new Error("No JSON found in response")
-    }
-
-    const content = JSON.parse(jsonMatch[0])
-    
-    // Validate structure
-    if (!content.content || !Array.isArray(content.keyPoints)) {
-      throw new Error("Invalid content structure")
-    }
-
-    return {
-      content: content.content,
-      keyPoints: content.keyPoints,
-      assignments: content.assignments || [],
-      notes: content.notes || [],
-      resources: content.resources || [],
-    }
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error)
-    throw new Error(`Chapter content generation failed: ${msg}`)
+    const message = error instanceof Error ? error.message : "Could not structure this course"
+    console.error("Pod course generation failed", { correlationId, message })
+    return NextResponse.json({ error: message, correlationId }, { status: 500 })
   }
 }

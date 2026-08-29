@@ -3,7 +3,7 @@ import { ID, Permission, Query, Role } from 'node-appwrite'
 import { InputFile } from 'node-appwrite/file'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { getEnv } from '@/lib/env'
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireVerifiedUser } from '@/lib/api-security'
 import { scanUploadMeta } from '@/lib/upload-security'
 import { canAccessResource } from '@/lib/server/resource-access'
 
@@ -11,9 +11,18 @@ const DATABASE_ID = getEnv().NEXT_PUBLIC_APPWRITE_DATABASE_ID || 'peerspark-main
 const RESOURCES_COLLECTION_ID = process.env.NEXT_PUBLIC_RESOURCES_COLLECTION_ID || 'resources'
 const RESOURCES_BUCKET_ID = process.env.NEXT_PUBLIC_RESOURCES_BUCKET_ID || 'resources'
 
+function inferCategory(fileType: string): string {
+  const type = fileType.toLowerCase()
+  if (type.startsWith('image/')) return 'images'
+  if (type.startsWith('video/')) return 'videos'
+  if (type.includes('javascript') || type.includes('typescript') || type.includes('json') || type.startsWith('text/x-')) return 'code'
+  if (type.includes('pdf') || type.includes('word') || type.startsWith('text/')) return 'notes'
+  return 'other'
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = requireUser(request)
+    const { userId } = await requireVerifiedUser(request)
     const { databases } = await createAdminClient()
     const params = request.nextUrl.searchParams
     const podId = params.get('podId')
@@ -34,6 +43,9 @@ export async function GET(request: NextRequest) {
     const documents = response.documents.filter((_, index) => access[index])
     return NextResponse.json({ success: true, documents, total: documents.length })
   } catch (error: any) {
+    if (error instanceof ApiError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
+    }
     console.error('[API] Error listing resources:', error)
     return NextResponse.json({ error: 'Failed to list resources' }, { status: 500 })
   }
@@ -44,7 +56,7 @@ export async function POST(request: NextRequest) {
   try {
     enforceSameOrigin(request)
     enforceRateLimit(request, { key: 'resources:upload', max: 20, windowMs: 60_000 })
-    const { userId } = requireUser(request)
+    const { userId } = await requireVerifiedUser(request)
     const { databases, storage } = await createAdminClient()
     const form = await request.formData()
 
@@ -92,6 +104,7 @@ export async function POST(request: NextRequest) {
       podId,
       visibility,
       tags,
+      category: inferCategory(file.type || ''),
       downloads: 0,
       likes: 0,
       views: 0,
