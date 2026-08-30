@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { createElement, useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
-import { MapPin, Calendar, LinkIcon, MessageSquare, UserPlus, Target, BookOpen, Users, Clock, Award, TrendingUp, Heart, Share2, ArrowLeft, Loader2 } from 'lucide-react'
+import { MapPin, Calendar, LinkIcon, MessageSquare, UserPlus, Target, BookOpen, Users, Clock, Award, TrendingUp, Heart, Share2, ArrowLeft, Loader2, FileText, Zap } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { useParams } from "next/navigation"
@@ -392,9 +392,9 @@ export default function UserProfilePage() {
             <div className="border-b border-border">
               <div className="flex space-x-0">
                 {[
-                  { value: "posts", label: "Posts", icon: "📝", count: userPosts.length },
-                  { value: "achievements", label: "Achievements", icon: "🏆", count: 5 },
-                  { value: "activity", label: "Activity", icon: "⚡", count: null },
+                  { value: "posts", label: "Posts", icon: FileText, count: userPosts.length },
+                  { value: "achievements", label: "Achievements", icon: Award, count: 5 },
+                  { value: "activity", label: "Activity", icon: Zap, count: null },
                 ].map((tab) => (
                   <button
                     key={tab.value}
@@ -406,7 +406,7 @@ export default function UserProfilePage() {
                     }`}
                   >
                     <div className="flex items-center space-x-1 mb-1">
-                      <span className="text-lg">{tab.icon}</span>
+                      {createElement(tab.icon, { className: "h-4 w-4", "aria-hidden": true })}
                       {tab.count !== null && (
                         <Badge variant="secondary" className="text-xs h-5 min-w-5 px-1">
                           {tab.count}

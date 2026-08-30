@@ -6,7 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/server/appwrite'
-import { ApiError, requireUser } from '@/lib/api-security'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { normalizeNotificationDocument } from '@/lib/notifications/normalize'
 
 const NOTIFICATIONS_COLLECTION_ID = process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications'
 
@@ -35,29 +36,7 @@ export async function GET(req: NextRequest) {
 
     const response = await databases.listDocuments(config.databaseId, NOTIFICATIONS_COLLECTION_ID, queries)
 
-    const data = response.documents.map((doc: any) => ({
-      $id: doc.$id,
-      title: doc.title || doc.type || 'Notification',
-      body: doc.message || '',
-      category: doc.category || doc.type || 'system',
-      priority: doc.priority || 'normal',
-      icon: doc.icon,
-      imageUrl: doc.imageUrl,
-      ctaLabel: doc.actionText,
-      ctaUrl: doc.actionUrl,
-      actorId: doc.actorId,
-      actorName: doc.actorName,
-      actorAvatar: doc.actorAvatar,
-      metadata: (() => {
-        if (!doc.metadata) return null
-        if (typeof doc.metadata !== 'string') return doc.metadata
-        try { return JSON.parse(doc.metadata) } catch { return null }
-      })(),
-      isRead: doc.isRead ?? doc.read ?? false,
-      readAt: doc.readAt,
-      expiresAt: doc.expiresAt,
-      createdAt: doc.createdAt || doc.timestamp || doc.$createdAt,
-    }))
+    const data = response.documents.map(normalizeNotificationDocument)
 
     return NextResponse.json({
       success: true,
@@ -76,5 +55,50 @@ export async function GET(req: NextRequest) {
       { error: 'Failed to fetch notifications' },
       { status: 500 }
     )
+  }
+}
+
+async function listOwnedNotifications(userId: string, unreadOnly: boolean) {
+  const { databases, config } = createAdminClient()
+  const documents: any[] = []
+  for (let offset = 0; offset < 500; offset += 100) {
+    const queries = [Query.equal('userId', userId), Query.orderDesc('timestamp'), Query.limit(100), Query.offset(offset)]
+    if (unreadOnly) queries.splice(1, 0, Query.equal('isRead', false))
+    const page = await databases.listDocuments(config.databaseId, NOTIFICATIONS_COLLECTION_ID, queries)
+    documents.push(...page.documents)
+    if (page.documents.length < 100) break
+  }
+  return { databases, config, documents }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    enforceSameOrigin(req)
+    enforceRateLimit(req, { key: 'notifications:mark-all', max: 10, windowMs: 60_000 })
+    const { userId } = requireUser(req)
+    const { databases, config, documents } = await listOwnedNotifications(userId, true)
+    await Promise.all(documents.map((doc) => databases.updateDocument(config.databaseId, NOTIFICATIONS_COLLECTION_ID, doc.$id, { isRead: true })))
+    return NextResponse.json({ success: true, data: { updated: documents.length } })
+  } catch (error: any) {
+    if (error instanceof ApiError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
+    console.error('[API] Error marking notifications as read:', error)
+    return NextResponse.json({ error: 'Failed to update notifications' }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    enforceSameOrigin(req)
+    enforceRateLimit(req, { key: 'notifications:clear', max: 10, windowMs: 60_000 })
+    const { userId } = requireUser(req)
+    const mode = req.nextUrl.searchParams.get('mode') === 'all' ? 'all' : 'read'
+    const { databases, config, documents } = await listOwnedNotifications(userId, false)
+    const selected = mode === 'all' ? documents : documents.filter((doc) => doc.isRead === true)
+    await Promise.all(selected.map((doc) => databases.deleteDocument(config.databaseId, NOTIFICATIONS_COLLECTION_ID, doc.$id)))
+    return NextResponse.json({ success: true, data: { deleted: selected.length, mode } })
+  } catch (error: any) {
+    if (error instanceof ApiError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
+    console.error('[API] Error clearing notifications:', error)
+    return NextResponse.json({ error: 'Failed to clear notifications' }, { status: 500 })
   }
 }

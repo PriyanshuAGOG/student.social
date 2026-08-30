@@ -7,9 +7,8 @@ import { decryptCalendarToken, encryptCalendarToken, generateCalendarToken, hash
 import { createAdminClient } from '@/lib/server/appwrite'
 import { Query } from 'node-appwrite'
 
-const secret = process.env.CALENDAR_FEED_SECRET || 'dev-secret'
-const encKey = process.env.CALENDAR_TOKEN_ENCRYPTION_KEY || 'dev-encryption-key'
-const baseFeedUrl = process.env.CALENDAR_ICS_FUNCTION_URL || 'http://localhost:3000/api/calendar-sync/feed'
+const secret = process.env.CALENDAR_FEED_SECRET || process.env.SESSION_COOKIE_SECRET || process.env.APPWRITE_API_KEY || 'dev-secret'
+const encKey = process.env.CALENDAR_TOKEN_ENCRYPTION_KEY || process.env.SESSION_COOKIE_SECRET || process.env.APPWRITE_API_KEY || 'dev-encryption-key'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const CALENDAR_FEED_SETTINGS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALENDAR_FEED_SETTINGS_COLLECTION_ID || 'calendar_feed_settings'
@@ -53,10 +52,32 @@ type CalendarFeedRecord = {
   updatedAt?: string
 }
 
-const buildUrls = (rawToken: string) => ({
-  feedUrl: `${baseFeedUrl}?token=${rawToken}`,
-  webcalUrl: `webcal://${baseFeedUrl.replace(/^https?:\/\//, '')}?token=${rawToken}`,
-})
+const buildUrls = (rawToken: string, requestUrl: string) => {
+  const configured = process.env.CALENDAR_ICS_FUNCTION_URL?.trim()
+  const baseFeedUrl = configured || `${new URL(requestUrl).origin}/api/calendar-sync/feed`
+  return {
+    feedUrl: `${baseFeedUrl}?token=${rawToken}`,
+    webcalUrl: `webcal://${baseFeedUrl.replace(/^https?:\/\//, '')}?token=${rawToken}`,
+  }
+}
+
+async function getPreviewEvents(userId: string) {
+  const databases = await getFeedCollection()
+  const result = await databases.listDocuments(DATABASE_ID, process.env.NEXT_PUBLIC_CALENDAR_EVENTS_COLLECTION_ID || 'calendar_events', [
+    Query.equal('userId', userId),
+    Query.greaterThanEqual('endTime', new Date().toISOString()),
+    Query.orderAsc('endTime'),
+    Query.limit(12),
+  ])
+  return result.documents.map((event: any) => ({
+    id: event.$id,
+    title: event.title || 'Event',
+    type: event.type || 'custom',
+    startAt: event.startTime,
+    endAt: event.endTime,
+    location: event.location || '',
+  }))
+}
 
 async function getFeedCollection() {
   const { databases } = await createAdminClient()
@@ -110,16 +131,16 @@ export async function GET(request: Request) {
     if (!rec) return jsonOk({ status: 'not_enabled' }, 200, c)
 
     if (action === 'preview') {
-      return jsonOk({ events: [{ title: '[Study] DSA Session', type: 'study_session', startAt: new Date().toISOString() }], settings: parseSettings(rec) }, 200, c)
+      return jsonOk({ events: await getPreviewEvents(auth.userId), settings: parseSettings(rec) }, 200, c)
     }
 
     if (action === 'download') {
       const raw = decryptCalendarToken(rec.encryptedToken, encKey)
-      return jsonOk({ ...buildUrls(raw), tokenPrefix: rec.tokenPrefix, status: rec.status, settings: parseSettings(rec) }, 200, c)
+      return jsonOk({ ...buildUrls(raw, request.url), tokenPrefix: rec.tokenPrefix, status: rec.status, settings: parseSettings(rec) }, 200, c)
     }
 
     const raw = decryptCalendarToken(rec.encryptedToken, encKey)
-    return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: parseSettings(rec), fetchCount: rec.fetchCount || 0, lastFetchedAt: rec.lastFetchedAt || null, ...buildUrls(raw) }, 200, c)
+    return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: parseSettings(rec), fetchCount: rec.fetchCount || 0, lastFetchedAt: rec.lastFetchedAt || null, ...buildUrls(raw, request.url) }, 200, c)
   } catch (e) {
     return jsonError(e, c)
   }
@@ -136,7 +157,7 @@ export async function POST(request: Request) {
     if (action === 'create') {
       if (existing) {
         const raw = decryptCalendarToken(existing.encryptedToken, encKey)
-        return jsonOk({ status: existing.status, tokenPrefix: existing.tokenPrefix, settings: parseSettings(existing), ...buildUrls(raw) }, 200, c)
+        return jsonOk({ status: existing.status, tokenPrefix: existing.tokenPrefix, settings: parseSettings(existing), ...buildUrls(raw, request.url) }, 200, c)
       }
       const raw = generateCalendarToken()
       const rec = {
@@ -150,7 +171,7 @@ export async function POST(request: Request) {
         updatedAt: new Date().toISOString(),
       }
       await databases.createDocument(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, auth.userId, rec as any)
-      return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: normalizeCalendarSyncSettings(JSON.parse(rec.settingsJson)), ...buildUrls(raw) }, 201, c)
+      return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: normalizeCalendarSyncSettings(JSON.parse(rec.settingsJson)), ...buildUrls(raw, request.url) }, 201, c)
     }
 
     if (!existing) throw new ApiError(404, 'NOT_FOUND', 'Feed not found')
@@ -163,7 +184,7 @@ export async function POST(request: Request) {
         lastTokenRotatedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       } as any)
-      return jsonOk({ status: existing.status, tokenPrefix: raw.slice(0, 14), ...buildUrls(raw) }, 200, c)
+      return jsonOk({ status: existing.status, tokenPrefix: raw.slice(0, 14), ...buildUrls(raw, request.url) }, 200, c)
     }
     if (action === 'disable') {
       await databases.updateDocument(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, existing.$id, { status: 'disabled', updatedAt: new Date().toISOString() } as any)

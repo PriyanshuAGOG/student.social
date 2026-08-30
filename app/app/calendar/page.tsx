@@ -26,12 +26,28 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, ChevronLeft, ChevronRight, Clock, MapPin, Users, Video, Bell, MoreVertical, Edit, Trash2, Copy, ExternalLink, ArrowLeft, CalendarIcon } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, Clock, MapPin, Users, Video, Bell, MoreVertical, Edit, Trash2, Copy, ExternalLink, ArrowLeft, CalendarIcon, RefreshCw, Loader2, Mail } from 'lucide-react'
 import { toast } from "@/hooks/use-toast"
 import { calendarService } from "@/lib/appwrite"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { PEERSPARK_SETTINGS_PREF_KEY, normalizePeerSparkSettings, resolvePeerSparkTimeZone } from "@/lib/settings"
+import { humanTextError } from "@/lib/validation/human-text"
+
+function toLocalDateInput(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function eventDateBounds() {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const latest = new Date(today)
+  latest.setFullYear(today.getFullYear() + 5)
+  return { minimum: toLocalDateInput(today), maximum: toLocalDateInput(latest) }
+}
 
 interface CalendarEvent {
   id: string
@@ -113,6 +129,8 @@ function CalendarContent() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [viewMode, setViewMode] = useState<"month" | "week" | "day">("month")
   const [showMobileSidebar, setShowMobileSidebar] = useState(false)
+  const [isSavingEvent, setIsSavingEvent] = useState(false)
+  const [formError, setFormError] = useState("")
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)")
@@ -179,7 +197,7 @@ function CalendarContent() {
     if (mode === "create" || mode === "schedule") {
       // Pre-fill with today's date
       const today = new Date()
-      const dateStr = today.toISOString().split("T")[0]
+      const dateStr = toLocalDateInput(today)
       setFormData((prev) => ({
         ...prev,
         startDate: dateStr,
@@ -205,6 +223,23 @@ function CalendarContent() {
     isRecurring: false,
     reminders: [15],
   })
+  const dateBounds = eventDateBounds()
+
+  const validateEventForm = () => {
+    const titleError = humanTextError("Event title", formData.title, 3)
+    if (titleError) return titleError
+    if (!formData.startDate || !formData.startTime || !formData.endDate || !formData.endTime) return "Choose a complete start and end time."
+    const start = new Date(`${formData.startDate}T${formData.startTime}`)
+    const end = new Date(`${formData.endDate}T${formData.endTime}`)
+    const today = new Date(`${dateBounds.minimum}T00:00`)
+    const latest = new Date(`${dateBounds.maximum}T23:59`)
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return "Choose a valid date and time."
+    if (start < today) return "Start date cannot be in the past."
+    if (start > latest) return "Events can be scheduled up to five years ahead."
+    if (end <= start) return "End time must be after start time."
+    if (end.getTime() - start.getTime() > 7 * 24 * 60 * 60 * 1000) return "A single event cannot be longer than seven days."
+    return null
+  }
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear()
@@ -258,29 +293,18 @@ function CalendarContent() {
       return
     }
 
-    // Validate required fields
-    if (!formData.title.trim()) {
-      toast({ title: "Please enter a title", variant: "destructive" })
-      return
-    }
-    if (!formData.startDate || !formData.startTime || !formData.endDate || !formData.endTime) {
-      toast({ title: "Please fill in all date and time fields", variant: "destructive" })
+    const validationError = validateEventForm()
+    if (validationError) {
+      setFormError(validationError)
+      toast({ title: "Check the event details", description: validationError, variant: "destructive" })
       return
     }
 
+    setFormError("")
+    setIsSavingEvent(true)
     try {
       const startDateTime = new Date(`${formData.startDate}T${formData.startTime}`)
       const endDateTime = new Date(`${formData.endDate}T${formData.endTime}`)
-
-      // Validate dates are valid
-      if (endDateTime <= startDateTime) {
-        toast({ title: "End time must be after start time", variant: "destructive" })
-        return
-      }
-      if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-        toast({ title: "Invalid date or time", variant: "destructive" })
-        return
-      }
 
       // Create event in Appwrite
       const created = await calendarService.createEvent(
@@ -291,6 +315,10 @@ function CalendarContent() {
         {
           type: formData.type,
           podId: formData.podId || undefined,
+          description: formData.description,
+          location: formData.location,
+          isRecurring: formData.isRecurring,
+          reminders: formData.reminders,
         }
       )
 
@@ -310,19 +338,19 @@ function CalendarContent() {
       }
 
       // Scheduled pod meetings enter the pod chat; LiveKit starts from its call control.
+      let meetingSetupWarning = ""
       if (formData.type === "meeting" && formData.podId) {
         const roomResponse = await fetch(`/api/pods/${encodeURIComponent(formData.podId)}/chat-room`, {
           credentials: "include",
         })
         const roomPayload = await roomResponse.json().catch(() => null)
-        if (!roomResponse.ok || !roomPayload?.data?.$id) {
-          throw new Error(roomPayload?.error || "Unable to prepare the pod meeting room")
+        if (roomResponse.ok && roomPayload?.data?.$id) {
+          const meetingUrl = `/app/chat?room=${encodeURIComponent(roomPayload.data.$id)}`
+          await calendarService.updateEvent(created.$id, { meetingUrl })
+          newEvent.meetingUrl = meetingUrl
+        } else {
+          meetingSetupWarning = " The session is saved, but its Pod room could not be linked yet."
         }
-        const meetingUrl = `/app/chat?room=${encodeURIComponent(roomPayload.data.$id)}`
-        await calendarService.updateEvent(created.$id, {
-          meetingUrl,
-        })
-        newEvent.meetingUrl = meetingUrl
       }
 
       setEvents((prev) => [...prev, newEvent])
@@ -331,21 +359,32 @@ function CalendarContent() {
 
       toast({
         title: "Event created",
-        description: "Your event has been added to the calendar.",
+        description: `Your event has been added to the calendar.${meetingSetupWarning}`,
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to create event:", error)
+      setFormError(error?.message || "The event could not be saved.")
       toast({
         title: "Failed to create event",
-        description: "Please try again.",
+        description: error?.message || "Please try again.",
         variant: "destructive",
       })
+    } finally {
+      setIsSavingEvent(false)
     }
   }
 
   const handleEditEvent = async () => {
     if (!selectedEvent) return
+    const validationError = validateEventForm()
+    if (validationError) {
+      setFormError(validationError)
+      toast({ title: "Check the event details", description: validationError, variant: "destructive" })
+      return
+    }
 
+    setFormError("")
+    setIsSavingEvent(true)
     try {
       const startDateTime = new Date(`${formData.startDate}T${formData.startTime}`)
       const endDateTime = new Date(`${formData.endDate}T${formData.endTime}`)
@@ -384,13 +423,15 @@ function CalendarContent() {
         title: "Event updated",
         description: "Your event has been updated successfully.",
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to update event:", error)
       toast({
         title: "Failed to update event",
-        description: "Please try again.",
+        description: error?.message || "Please try again.",
         variant: "destructive",
       })
+    } finally {
+      setIsSavingEvent(false)
     }
   }
 
@@ -408,18 +449,16 @@ function CalendarContent() {
       })
     } catch (error) {
       console.error("Failed to delete event:", error)
-      // Still remove from local state if deletion from backend fails
-      setEvents((prev) => prev.filter((event) => event.id !== eventId))
-      setSelectedEvent(null)
       toast({
-        title: "Event removed",
-        description: "The event has been removed locally.",
+        title: "Event was not deleted",
+        description: "Your event is still safe. Please check your connection and try again.",
+        variant: "destructive",
       })
     }
   }
 
   const resetForm = () => {
-    const date = selectedDate.toISOString().split("T")[0]
+    const date = toLocalDateInput(selectedDate < new Date() ? new Date() : selectedDate)
     setFormData({
       title: "",
       description: "",
@@ -440,9 +479,9 @@ function CalendarContent() {
     setFormData({
       title: event.title,
       description: event.description,
-      startDate: event.startTime.toISOString().split("T")[0],
+      startDate: toLocalDateInput(event.startTime),
       startTime: event.startTime.toTimeString().slice(0, 5),
-      endDate: event.endTime.toISOString().split("T")[0],
+      endDate: toLocalDateInput(event.endTime),
       endTime: event.endTime.toTimeString().slice(0, 5),
       type: event.type,
       location: event.location || "",
@@ -496,6 +535,9 @@ function CalendarContent() {
             </Button>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => router.push("/app/settings/calendar-sync")} aria-label="Sync calendar apps" title="Sync calendar apps">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => setShowMobileSidebar(true)} aria-label="Open selected day details" title="Day details">
               <CalendarIcon className="h-4 w-4" />
             </Button>
@@ -536,6 +578,8 @@ function CalendarContent() {
                       <Input
                         id="startDate"
                         type="date"
+                        min={dateBounds.minimum}
+                        max={dateBounds.maximum}
                         value={formData.startDate}
                         onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
                       />
@@ -557,6 +601,8 @@ function CalendarContent() {
                       <Input
                         id="endDate"
                         type="date"
+                        min={formData.startDate || dateBounds.minimum}
+                        max={dateBounds.maximum}
                         value={formData.endDate}
                         onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                       />
@@ -602,13 +648,24 @@ function CalendarContent() {
                       placeholder="Event location"
                     />
                   </div>
+                  <div>
+                    <Label htmlFor="mobile-reminder">Reminder</Label>
+                    <Select value={String(formData.reminders[0] ?? 15)} onValueChange={(value) => setFormData({ ...formData, reminders: [Number(value)] })}>
+                      <SelectTrigger id="mobile-reminder"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">At start time</SelectItem><SelectItem value="5">5 minutes before</SelectItem><SelectItem value="15">15 minutes before</SelectItem><SelectItem value="30">30 minutes before</SelectItem><SelectItem value="60">1 hour before</SelectItem><SelectItem value="1440">1 day before</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground"><Mail className="h-3.5 w-3.5" />Email and in-app reminder when enabled.</p>
+                  </div>
+                  {formError ? <p role="alert" className="rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p> : null}
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button onClick={handleCreateEvent} disabled={!formData.title || !formData.startDate}>
-                    Create Event
+                  <Button onClick={handleCreateEvent} disabled={isSavingEvent || !formData.title || !formData.startDate}>
+                    {isSavingEvent ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{isSavingEvent ? "Creating…" : "Create event"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -645,6 +702,9 @@ function CalendarContent() {
                 <TabsTrigger value="day">Day</TabsTrigger>
               </TabsList>
             </Tabs>
+            <Button variant="outline" onClick={() => router.push("/app/settings/calendar-sync")}>
+              <RefreshCw className="mr-2 h-4 w-4" />Sync calendars
+            </Button>
             <Dialog open={isCreateDialogOpen && !isMobileViewport} onOpenChange={setIsCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button onClick={resetForm}>
@@ -683,6 +743,8 @@ function CalendarContent() {
                       <Input
                         id="startDate"
                         type="date"
+                        min={dateBounds.minimum}
+                        max={dateBounds.maximum}
                         value={formData.startDate}
                         onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
                       />
@@ -704,6 +766,8 @@ function CalendarContent() {
                       <Input
                         id="endDate"
                         type="date"
+                        min={formData.startDate || dateBounds.minimum}
+                        max={dateBounds.maximum}
                         value={formData.endDate}
                         onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                       />
@@ -749,13 +813,24 @@ function CalendarContent() {
                       placeholder="Event location"
                     />
                   </div>
+                  <div>
+                    <Label htmlFor="desktop-reminder">Reminder</Label>
+                    <Select value={String(formData.reminders[0] ?? 15)} onValueChange={(value) => setFormData({ ...formData, reminders: [Number(value)] })}>
+                      <SelectTrigger id="desktop-reminder"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">At start time</SelectItem><SelectItem value="5">5 minutes before</SelectItem><SelectItem value="15">15 minutes before</SelectItem><SelectItem value="30">30 minutes before</SelectItem><SelectItem value="60">1 hour before</SelectItem><SelectItem value="1440">1 day before</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground"><Mail className="h-3.5 w-3.5" />Email and in-app reminder when enabled.</p>
+                  </div>
+                  {formError ? <p role="alert" className="rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p> : null}
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button onClick={handleCreateEvent} disabled={!formData.title || !formData.startDate}>
-                    Create Event
+                  <Button onClick={handleCreateEvent} disabled={isSavingEvent || !formData.title || !formData.startDate}>
+                    {isSavingEvent ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{isSavingEvent ? "Creating…" : "Create event"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -1218,6 +1293,8 @@ function CalendarContent() {
                 <Input
                   id="edit-startDate"
                   type="date"
+                  min={dateBounds.minimum}
+                  max={dateBounds.maximum}
                   value={formData.startDate}
                   onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
                 />
@@ -1238,6 +1315,8 @@ function CalendarContent() {
                 <Input
                   id="edit-endDate"
                   type="date"
+                  min={formData.startDate || dateBounds.minimum}
+                  max={dateBounds.maximum}
                   value={formData.endDate}
                   onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                 />
@@ -1279,13 +1358,23 @@ function CalendarContent() {
                 placeholder="Event location"
               />
             </div>
+            <div>
+              <Label htmlFor="edit-reminder">Reminder</Label>
+              <Select value={String(formData.reminders[0] ?? 15)} onValueChange={(value) => setFormData({ ...formData, reminders: [Number(value)] })}>
+                <SelectTrigger id="edit-reminder"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">At start time</SelectItem><SelectItem value="5">5 minutes before</SelectItem><SelectItem value="15">15 minutes before</SelectItem><SelectItem value="30">30 minutes before</SelectItem><SelectItem value="60">1 hour before</SelectItem><SelectItem value="1440">1 day before</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {formError ? <p role="alert" className="rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p> : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleEditEvent} disabled={!formData.title || !formData.startDate}>
-              Save Changes
+            <Button onClick={handleEditEvent} disabled={isSavingEvent || !formData.title || !formData.startDate}>
+              {isSavingEvent ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{isSavingEvent ? "Saving…" : "Save changes"}
             </Button>
           </DialogFooter>
         </DialogContent>

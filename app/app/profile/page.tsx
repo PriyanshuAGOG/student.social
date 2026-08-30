@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client"
 
-import { useState, useEffect } from "react"
+import { createElement, useRef, useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { MapPin, Calendar, LinkIcon, Edit, MessageSquare, UserPlus, Target, BookOpen, Users, Clock, Award, TrendingUp, Heart, Share2, Settings, Shield, Bell, Key, Palette, Globe, User, Upload, Save, Crown, Zap, Download, Trash2, Bookmark } from 'lucide-react'
+import { MapPin, Calendar, LinkIcon, Edit, MessageSquare, UserPlus, Target, BookOpen, Users, Clock, Award, TrendingUp, Heart, Share2, Settings, Shield, Bell, Key, User, Upload, Save, Crown, Zap, Download, Trash2, Bookmark, Camera, Flame, LibraryBig, HandHeart, GraduationCap, Swords, FileText, ChartNoAxesColumn } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
@@ -46,7 +46,7 @@ const USER_ACHIEVEMENTS = [
     id: "1",
     title: "Study Streak Master",
     description: "Maintained a 30+ day study streak",
-    icon: "🔥",
+    icon: Flame,
     earned: true,
     progress: 100,
     rarity: "Epic",
@@ -55,7 +55,7 @@ const USER_ACHIEVEMENTS = [
     id: "2",
     title: "Knowledge Sharer",
     description: "Shared 20+ helpful resources",
-    icon: "📚",
+    icon: LibraryBig,
     earned: true,
     progress: 100,
     rarity: "Rare",
@@ -64,7 +64,7 @@ const USER_ACHIEVEMENTS = [
     id: "3",
     title: "Community Helper",
     description: "Received 100+ helpful votes",
-    icon: "🤝",
+    icon: HandHeart,
     earned: true,
     progress: 100,
     rarity: "Rare",
@@ -73,7 +73,7 @@ const USER_ACHIEVEMENTS = [
     id: "4",
     title: "Pod Leader",
     description: "Successfully led a study pod",
-    icon: "👑",
+    icon: Crown,
     earned: false,
     progress: 75,
     rarity: "Legendary",
@@ -82,7 +82,7 @@ const USER_ACHIEVEMENTS = [
     id: "5",
     title: "Mentor",
     description: "Helped 50+ students achieve their goals",
-    icon: "🎓",
+    icon: GraduationCap,
     earned: false,
     progress: 60,
     rarity: "Epic",
@@ -91,7 +91,7 @@ const USER_ACHIEVEMENTS = [
     id: "6",
     title: "Code Warrior",
     description: "Solved 500+ coding problems",
-    icon: "⚔️",
+    icon: Swords,
     earned: false,
     progress: 45,
     rarity: "Legendary",
@@ -114,21 +114,21 @@ const USER_ACTIVITY = [
     type: "achievement",
     message: "Earned the 'Study Streak Master' achievement",
     timestamp: "2 hours ago",
-    icon: "🏆",
+    icon: Award,
   },
   {
     id: "2",
     type: "post",
     message: "Created a new post about system design learning",
     timestamp: "2 days ago",
-    icon: "📝",
+    icon: FileText,
   },
   {
     id: "3",
     type: "pod",
     message: "Joined the 'Advanced React Patterns' pod",
     timestamp: "3 days ago",
-    icon: "👥",
+    icon: Users,
   },
 ]
 
@@ -144,6 +144,8 @@ export default function ProfilePage() {
   const [userPosts, setUserPosts] = useState<any[]>([])
   const [isLoadingPosts, setIsLoadingPosts] = useState(false)
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
   
   // User profile state - loaded from database
   const [userProfile, setUserProfile] = useState(DEFAULT_PROFILE)
@@ -327,6 +329,32 @@ export default function ProfilePage() {
         description: error?.message || "Failed to update profile.",
         variant: "destructive",
       })
+    }
+  }
+
+  const handleAvatarSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file || !user?.$id) return
+
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Choose an image", description: "JPG, PNG, WebP, GIF, and AVIF files are supported.", variant: "destructive" })
+      return
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast({ title: "Image is too large", description: "Choose a profile picture smaller than 8 MB.", variant: "destructive" })
+      return
+    }
+
+    setIsUploadingAvatar(true)
+    try {
+      const avatar = await profileService.uploadAvatar(file, user.$id)
+      setUserProfile((current) => ({ ...current, avatar }))
+      toast({ title: "Profile picture updated", description: "Your new photo is now visible across Student.social." })
+    } catch (error: any) {
+      toast({ title: "Photo upload failed", description: error?.message || "Please try another image.", variant: "destructive" })
+    } finally {
+      setIsUploadingAvatar(false)
     }
   }
 
@@ -543,10 +571,10 @@ export default function ProfilePage() {
           <div className="border-b border-border">
             <div className="flex space-x-0" role="tablist" aria-label="Profile sections">
               {[
-                { value: "posts", label: "Posts", icon: "📝", count: userPosts.length },
-                { value: "achievements", label: "Achievements", icon: "🏆", count: USER_ACHIEVEMENTS.filter(a => a.earned).length },
-                { value: "activity", label: "Activity", icon: "⚡", count: USER_ACTIVITY.length },
-                { value: "stats", label: "Stats", icon: "📊", count: null },
+                  { value: "posts", label: "Posts", icon: FileText, count: userPosts.length },
+                  { value: "achievements", label: "Achievements", icon: Award, count: USER_ACHIEVEMENTS.filter(a => a.earned).length },
+                  { value: "activity", label: "Activity", icon: Zap, count: USER_ACTIVITY.length },
+                  { value: "stats", label: "Stats", icon: ChartNoAxesColumn, count: null },
               ].map((tab) => (
                 <button
                   key={tab.value}
@@ -561,7 +589,7 @@ export default function ProfilePage() {
                   }`}
                 >
                   <div className="flex items-center space-x-1 mb-1">
-                    <span className="text-lg">{tab.icon}</span>
+                      {createElement(tab.icon, { className: "h-4 w-4", "aria-hidden": true })}
                     {tab.count !== null && (
                       <Badge variant="secondary" className="text-xs h-5 min-w-5 px-1">
                         {tab.count}
@@ -677,7 +705,9 @@ export default function ProfilePage() {
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start space-x-3">
-                      <div className="text-2xl">{achievement.icon}</div>
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-background/80">
+                        {createElement(achievement.icon, { className: "h-5 w-5", "aria-hidden": true })}
+                      </div>
                       <div className="flex-1">
                         <div className="flex items-center justify-between mb-2">
                           <h4 className="font-semibold text-sm">{achievement.title}</h4>
@@ -709,7 +739,9 @@ export default function ProfilePage() {
               <Card key={activity.id}>
                 <CardContent className="p-4">
                   <div className="flex items-start space-x-3">
-                    <div className="text-xl">{activity.icon}</div>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border bg-muted/50">
+                      {createElement(activity.icon, { className: "h-4 w-4", "aria-hidden": true })}
+                    </div>
                     <div className="flex-1">
                       <p className="text-sm">{activity.message}</p>
                       <p className="text-xs text-muted-foreground mt-1">{activity.timestamp}</p>
@@ -787,9 +819,10 @@ export default function ProfilePage() {
                 <AvatarImage src={userProfile.avatar || "/placeholder.svg"} />
                 <AvatarFallback>AJ</AvatarFallback>
               </Avatar>
-              <Button variant="outline" size="sm">
-                <Upload className="w-4 h-4 mr-2" />
-                Change Photo
+              <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" className="sr-only" onChange={handleAvatarSelected} />
+              <Button type="button" variant="outline" size="sm" disabled={isUploadingAvatar} onClick={() => avatarInputRef.current?.click()}>
+                {isUploadingAvatar ? <Upload className="w-4 h-4 mr-2 animate-pulse" /> : <Camera className="w-4 h-4 mr-2" />}
+                {isUploadingAvatar ? "Uploading…" : "Change photo"}
               </Button>
             </div>
             <div>

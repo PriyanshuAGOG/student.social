@@ -70,6 +70,7 @@ import { calculateLeaderboard } from "@/lib/pods/calculations"
 import type { PodBundle, PodDocument, PodMessage, PodProfile, PodResource, PodTask } from "@/lib/pods/types"
 import { usePodRealtime } from "@/hooks/pods/use-pod-realtime"
 import { CourseJourney } from "@/components/pods2/CourseJourney"
+import { humanTextError } from "@/lib/validation/human-text"
 
 const tabs = [
   ["overview", "Home", LayoutDashboard],
@@ -333,9 +334,10 @@ export function PodDiscoveryPage() {
   )
 }
 
-function getPodFieldError(field: 'name' | 'shortOutcome' | 'description', value: string): string | null {
+function getPodFieldError(field: 'name' | 'category' | 'shortOutcome' | 'description', value: string): string | null {
   const trimmed = value.trim()
-  if (field === 'name' && trimmed.length < 3) return 'Pod name must be at least 3 characters.'
+  if (field === 'name') return humanTextError('Pod name', trimmed, 3)
+  if (field === 'category') return humanTextError('Pod category', trimmed, 2)
   if (field === 'shortOutcome' && trimmed.length < 10) return 'Short outcome must be at least 10 characters.'
   if (field === 'description' && trimmed.length < 20) return 'Description must be at least 20 characters.'
   return null
@@ -374,6 +376,7 @@ export function PodCreateWizard() {
 
   async function launch() {
     const fieldError = getPodFieldError('name', form.name)
+      || getPodFieldError('category', form.category)
       || getPodFieldError('shortOutcome', form.shortOutcome)
       || getPodFieldError('description', form.description)
     if (fieldError) {
@@ -419,7 +422,7 @@ export function PodCreateWizard() {
                 <Field label="Short outcome" count={`${form.shortOutcome.length}/180`}><Input value={form.shortOutcome} maxLength={180} onChange={(e) => update("shortOutcome", e.target.value)} className="pod-input" placeholder="Ship a production-ready dashboard in 30 days." /></Field>
                 <Field label="Description" count={`${form.description.length}/500`}><Textarea value={form.description} maxLength={500} onChange={(e) => update("description", e.target.value)} className="pod-textarea min-h-32" placeholder="Describe the transformation, cadence, and collaboration style." /></Field>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <Field label="Category"><Input value={form.category} onChange={(e) => update("category", e.target.value)} className="pod-input" /></Field>
+                  <Field label="Category"><Input value={form.category} maxLength={80} onChange={(e) => update("category", e.target.value)} className="pod-input" placeholder="Programming, Design, Mathematics…" /><p className="mt-1 text-xs text-white/40">Use a descriptive topic, not only numbers or symbols.</p></Field>
                   <Field label="Difficulty"><Select value={form.difficulty} onValueChange={(value) => update("difficulty", value)}><SelectTrigger className="pod-input"><SelectValue /></SelectTrigger><SelectContent>{["beginner", "intermediate", "advanced", "expert"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
                 </div>
                 <Field label="Tags"><Input value={form.tags} onChange={(e) => update("tags", e.target.value)} className="pod-input" placeholder="react, appwrite, portfolio" /></Field>

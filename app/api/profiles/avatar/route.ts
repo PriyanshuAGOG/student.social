@@ -27,6 +27,15 @@ function safeImageName(input: string): string {
   return (input || `avatar-${Date.now()}.png`).replace(/[\r\n\\/]/g, '-').slice(0, 140)
 }
 
+function hasValidImageSignature(bytes: Buffer, type: string): boolean {
+  if (type === 'image/jpeg') return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+  if (type === 'image/png') return bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+  if (type === 'image/gif') return bytes.subarray(0, 6).toString('ascii') === 'GIF87a' || bytes.subarray(0, 6).toString('ascii') === 'GIF89a'
+  if (type === 'image/webp') return bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP'
+  if (type === 'image/avif') return bytes.length >= 12 && bytes.subarray(4, 8).toString('ascii') === 'ftyp' && bytes.subarray(8, 12).toString('ascii').includes('avif')
+  return false
+}
+
 export async function POST(request: NextRequest) {
   let uploadedFileId = ''
   try {
@@ -42,13 +51,49 @@ export async function POST(request: NextRequest) {
     const scan = scanUploadMeta(file)
     if (!scan.ok) throw new ApiError(400, 'INVALID_UPLOAD', scan.reason || 'This image cannot be uploaded')
 
-    const { databases, storage } = createAdminClient()
+    if (!APPWRITE_PROJECT_ID) throw new ApiError(503, 'UPLOAD_NOT_CONFIGURED', 'Profile picture storage is not configured')
+    const bytes = Buffer.from(await file.arrayBuffer())
+    const resolvedType = imageType(file)
+    if (!hasValidImageSignature(bytes, resolvedType)) {
+      throw new ApiError(400, 'INVALID_IMAGE', 'The selected file is not a valid image')
+    }
+
+    const { databases, storage, users } = createAdminClient()
     const databaseId = getDatabaseId()
-    const profile = await databases.getDocument(databaseId, PROFILES_COLLECTION_ID, userId)
+    let profile: any
+    try {
+      profile = await databases.getDocument(databaseId, PROFILES_COLLECTION_ID, userId)
+    } catch (error: any) {
+      if (error?.code !== 404 && !String(error?.message || '').toLowerCase().includes('not found')) throw error
+      const account = await users.get(userId)
+      const now = new Date().toISOString()
+      profile = await databases.createDocument(databaseId, PROFILES_COLLECTION_ID, userId, {
+        userId,
+        name: account.name || `Student ${userId.slice(0, 6)}`,
+        email: account.email || '',
+        bio: '',
+        location: '',
+        website: '',
+        avatar: '',
+        interests: [],
+        joinedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        isOnline: true,
+        studyStreak: 0,
+        totalPoints: 0,
+        level: 1,
+        badges: [],
+      }, [
+        Permission.read(Role.user(userId)),
+        Permission.update(Role.user(userId)),
+        Permission.delete(Role.user(userId)),
+      ])
+    }
     const uploaded = await storage.createFile(
       AVATARS_BUCKET_ID,
       ID.unique(),
-      InputFile.fromBuffer(Buffer.from(await file.arrayBuffer()), safeImageName(file.name)),
+      InputFile.fromBuffer(bytes, safeImageName(file.name)),
       [
         Permission.read(Role.any()),
         Permission.update(Role.user(userId)),
@@ -58,7 +103,7 @@ export async function POST(request: NextRequest) {
     uploadedFileId = uploaded.$id
     const avatar = avatarViewUrl(uploaded.$id)
 
-    await databases.updateDocument(databaseId, PROFILES_COLLECTION_ID, userId, {
+    await databases.updateDocument(databaseId, PROFILES_COLLECTION_ID, profile.$id, {
       avatar,
       avatarFileId: uploaded.$id,
       updatedAt: new Date().toISOString(),

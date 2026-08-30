@@ -7,7 +7,7 @@ import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { normalizeCalendarSyncSettings } from '@/lib/calendar/settings'
 
-const secret = process.env.CALENDAR_FEED_SECRET || 'dev-secret'
+const secret = process.env.CALENDAR_FEED_SECRET || process.env.SESSION_COOKIE_SECRET || process.env.APPWRITE_API_KEY || 'dev-secret'
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const CALENDAR_FEED_SETTINGS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALENDAR_FEED_SETTINGS_COLLECTION_ID || 'calendar_feed_settings'
 const CALENDAR_EVENTS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALENDAR_EVENTS_COLLECTION_ID || 'calendar_events'
@@ -69,6 +69,13 @@ export async function GET(request: Request) {
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
   const provider = detectCalendarProvider(request.headers.get('user-agent') || '')
   const _diag = { provider, ipHash: hashIp(ip, secret), eventCount: filtered.length }
+
+  const { databases } = createAdminClient()
+  await databases.updateDocument(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, feed.$id, {
+    fetchCount: Number(feed.fetchCount || 0) + 1,
+    lastFetchedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }).catch(() => undefined)
 
   return new Response(ics, {
     status: 200,

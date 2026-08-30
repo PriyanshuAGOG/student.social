@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
 import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/server/appwrite'
-import { ApiError, jsonError, jsonOk, parseJsonBody, requireOwnership, requireVerifiedUser } from '@/lib/api-security'
-import { z } from 'zod'
+import { ApiError, enforceRateLimit, enforceSameOrigin, jsonError, jsonOk, parseJsonBody, requireOwnership, requireVerifiedUser } from '@/lib/api-security'
+import { calendarEventInputSchema, normalizeCalendarEventInput } from '@/lib/calendar/event-validation'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const CALENDAR_EVENTS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALENDAR_EVENTS_COLLECTION_ID || 'calendar_events'
@@ -11,16 +11,11 @@ export async function POST(request: NextRequest) {
   const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID()
 
   try {
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: 'calendar:events:create', max: 20, windowMs: 60_000 })
     const auth = await requireVerifiedUser(request)
-    const bodySchema = z.object({
-      userId: z.string().min(1),
-      title: z.string().min(1).max(255),
-      startTime: z.string().min(1),
-      endTime: z.string().min(1),
-      metadata: z.record(z.any()).optional(),
-    })
-
-    const { userId, title, startTime, endTime, metadata = {} } = await parseJsonBody(request, bodySchema)
+    const parsed = await parseJsonBody(request, calendarEventInputSchema)
+    const { userId, title, startTime, endTime, metadata } = normalizeCalendarEventInput(calendarEventInputSchema.parse(parsed))
     requireOwnership(userId, auth.userId)
 
     const { databases } = await createAdminClient()
@@ -30,14 +25,15 @@ export async function POST(request: NextRequest) {
       description: metadata.description || '',
       startTime,
       endTime,
-      type: metadata.type || 'study',
-      podId: metadata.podId || null,
-      location: metadata.location || '',
-      meetingUrl: metadata.meetingUrl || '',
-      attendees: Array.isArray(metadata.attendees) ? metadata.attendees : [],
-      isRecurring: Boolean(metadata.isRecurring),
-      reminders: Array.isArray(metadata.reminders) ? metadata.reminders : [],
+      type: metadata.type,
+      podId: metadata.podId,
+      location: metadata.location,
+      meetingUrl: metadata.meetingUrl,
+      attendees: metadata.attendees,
+      isRecurring: metadata.isRecurring,
+      reminders: metadata.reminders,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       isCompleted: false,
     })
 
@@ -55,7 +51,9 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const userId = searchParams.get('userId') || auth.userId
     const podId = searchParams.get('podId')
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10) || 50, 100)
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+    const limit = Math.min(parseInt(searchParams.get('limit') || '100', 10) || 100, 100)
     const offset = Math.max(parseInt(searchParams.get('offset') || '0', 10) || 0, 0)
 
     requireOwnership(userId, auth.userId)
@@ -64,6 +62,8 @@ export async function GET(request: NextRequest) {
 
     if (userId) queries.push(Query.equal('userId', userId))
     if (podId) queries.push(Query.equal('podId', podId))
+    if (startDate) queries.push(Query.greaterThanEqual('startTime', startDate))
+    if (endDate) queries.push(Query.lessThanEqual('endTime', endDate))
 
     queries.push(Query.orderAsc('startTime'))
     queries.push(Query.limit(limit))

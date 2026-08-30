@@ -4,6 +4,9 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "framework": "nextjs",
   "outputDirectory": ".next",
+  "crons": [
+    { "path": "/api/cron/calendar-reminders", "schedule": "*/5 * * * *" }
+  ],
   "env": {
     "NEXT_PUBLIC_APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
     "NEXT_PUBLIC_APPWRITE_PROJECT_ID": "694ed12f003c942317f4",

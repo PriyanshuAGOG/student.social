@@ -20,9 +20,18 @@ export const notificationService = {
   },
 
   async markAllAsRead(userId: string) {
-    const notifications = await this.getUserNotifications(userId, 100)
-    await Promise.all(notifications.documents.filter((item) => !item.isRead).map((item) => this.markAsRead(item.$id)))
+    await apiJson('/api/notifications/inbox', { method: 'PATCH' })
     return true
+  },
+
+  async deleteNotification(notificationId: string) {
+    await apiJson(`/api/notifications/${encodeURIComponent(notificationId)}`, { method: 'DELETE' })
+    return true
+  },
+
+  async clearRead() {
+    const response = await apiJson<{ data: { deleted: number } }>('/api/notifications/inbox?mode=read', { method: 'DELETE' })
+    return response.data?.deleted || 0
   },
 
   subscribeToNotifications(userId: string, callback: (notification: NotificationDocument) => void) {

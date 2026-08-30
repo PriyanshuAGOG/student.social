@@ -10,6 +10,7 @@ import { normalizeAppwriteEndpoint } from "@/lib/env"
 import { scanUploadMeta } from "@/lib/upload-security"
 import { generateLiveKitToken } from "@/lib/livekit-service"
 import { fuzzyIncludes } from "@/lib/search-utils"
+import { humanTextError, normalizeHumanText } from "@/lib/validation/human-text"
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || "peerspark-main-db"
 const PROFILES_COLLECTION_ID = process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || "profiles"
@@ -553,7 +554,11 @@ export async function POST(request: NextRequest, ctx: Params) {
 
     if (path.length === 0) {
       const name = String(body.name || "").trim()
-      if (name.length < 3) throw new ApiError(400, "INVALID_POD", "Pod name must be at least 3 characters.")
+      const nameError = humanTextError("Pod name", name, 3)
+      if (nameError) throw new ApiError(400, "INVALID_POD_NAME", nameError)
+      const category = normalizeHumanText(body.category || "General", 80)
+      const categoryError = humanTextError("Pod category", category, 2)
+      if (categoryError) throw new ApiError(400, "INVALID_POD_CATEGORY", categoryError)
       const shortOutcome = String(body.shortOutcome || body.outcome || "").trim()
       if (shortOutcome.length < 10 || shortOutcome.length > 180) throw new ApiError(400, "INVALID_POD", "Short outcome must be between 10 and 180 characters.")
       const description = String(body.description || "").trim()
@@ -564,7 +569,7 @@ export async function POST(request: NextRequest, ctx: Params) {
         slug,
         shortOutcome,
         description,
-        category: String(body.category || "General"),
+        category,
         difficulty: String(body.difficulty || "beginner").toLowerCase(),
         language: String(body.language || "English"),
         coverImageId: "",
@@ -948,6 +953,16 @@ export async function PATCH(request: NextRequest, ctx: Params) {
       await assertPodRole(databases, pod.$id, auth.userId, ["owner", "mentor"])
       const allowed = ["name", "shortOutcome", "description", "category", "difficulty", "tags", "visibility", "approvalRequired", "maxMembers", "weeklyRhythm", "defaultSessionDay", "defaultSessionTime", "timezone", "status"]
       const update = Object.fromEntries(Object.entries(body).filter(([key]) => allowed.includes(key)))
+      if ('name' in update) {
+        const message = humanTextError("Pod name", update.name, 3)
+        if (message) throw new ApiError(400, "INVALID_POD_NAME", message)
+        update.name = normalizeHumanText(update.name, 100)
+      }
+      if ('category' in update) {
+        const message = humanTextError("Pod category", update.category, 2)
+        if (message) throw new ApiError(400, "INVALID_POD_CATEGORY", message)
+        update.category = normalizeHumanText(update.category, 80)
+      }
       const visibility = update.visibility ?? pod.visibility
       const updated = await databases.updateDocument(
         DATABASE_ID,

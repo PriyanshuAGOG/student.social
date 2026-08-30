@@ -17,6 +17,7 @@ import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/server/appwrite';
 import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
+import { humanTextError, normalizeHumanText } from '@/lib/validation/human-text';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const PODS_COLLECTION_ID = (process.env.NEXT_PUBLIC_PODS_COLLECTION_ID || 'pods');
@@ -58,6 +59,18 @@ export async function POST(request: NextRequest) {
   const { data, error } = await withErrorHandling(async () => {
     const body = requestBody;
     const { name, description, userId, metadata = {} } = body;
+    const nameError = humanTextError('Pod name', name, 3);
+    const category = normalizeHumanText(metadata.category || metadata.subject || 'General', 80);
+    const categoryError = humanTextError('Pod category', category, 2);
+    if (nameError || categoryError) {
+      throw new AppError({
+        code: 'VALIDATION_ERROR',
+        message: nameError || categoryError || 'Invalid pod details',
+        userMessage: nameError || categoryError || 'Please check the pod details.',
+        severity: ErrorSeverity.LOW,
+        category: ErrorCategory.VALIDATION,
+      });
+    }
 
     // Validate input
     validateInput(
@@ -137,7 +150,7 @@ export async function POST(request: NextRequest) {
         memberCount: 1,
         isActive: true,
         isPublic: metadata.isPublic !== false,
-        subject: metadata.subject || '',
+        subject: category,
         difficulty: metadata.difficulty || 'Beginner',
         tags: normalizedTags,
         matchingTags: normalizedTags,

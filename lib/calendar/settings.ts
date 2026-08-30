@@ -25,7 +25,7 @@ export type CalendarSyncSettings = {
 }
 
 const DEFAULT_CALENDAR_SYNC_SETTINGS: CalendarSyncSettings = {
-  feedName: 'Peerspark Calendar',
+  feedName: 'Student.social Calendar',
   privacyMode: 'full',
   includeClasses: true,
   includeStudySessions: true,

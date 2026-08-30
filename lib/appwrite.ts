@@ -3471,7 +3471,7 @@ export const commentService = {
       }
     } catch (error) {
       console.error("Get comments error:", error)
-      return { documents: [], total: 0 }
+      throw error
     }
   },
 
@@ -3627,7 +3627,8 @@ export const calendarService = {
         }),
       })
 
-      const event = response.event
+      const event = response.data?.event || response.event
+      if (!event?.$id) throw new Error('Calendar event was not returned by the server')
 
       // Notify pod members if event is for a pod
       if (metadata.podId) {
@@ -3696,12 +3697,11 @@ export const calendarService = {
   // Get user events
   async getUserEvents(userId: string, startDate?: string, endDate?: string) {
     try {
-      const queries = [Query.equal('userId', userId)]
-
-      if (startDate) queries.push(Query.greaterThanEqual('startTime', startDate))
-      if (endDate) queries.push(Query.lessThanEqual('endTime', endDate))
-
-      return await databases.listDocuments(DATABASE_ID, COLLECTIONS.CALENDAR_EVENTS, queries)
+      const params = new URLSearchParams({ userId, limit: '100' })
+      if (startDate) params.set('startDate', startDate)
+      if (endDate) params.set('endDate', endDate)
+      const response = await apiJson(`/api/calendar/events?${params.toString()}`)
+      return { documents: response.data?.events || response.events || [], total: response.data?.total || response.total || 0 }
     } catch (error) {
       console.error("Get user events error:", error)
       return { documents: [] }
@@ -3722,10 +3722,11 @@ export const calendarService = {
   // Update event
   async updateEvent(eventId: string, updates: any) {
     try {
-      return await databases.updateDocument(DATABASE_ID, COLLECTIONS.CALENDAR_EVENTS, eventId, {
-        ...updates,
-        updatedAt: new Date().toISOString(),
+      const response = await apiJson(`/api/calendar/events/${encodeURIComponent(eventId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
       })
+      return response.data?.event || response.event
     } catch (error) {
       console.error("Update event error:", error)
       throw error
@@ -3735,7 +3736,8 @@ export const calendarService = {
   // Delete event
   async deleteEvent(eventId: string) {
     try {
-      return await databases.deleteDocument(DATABASE_ID, COLLECTIONS.CALENDAR_EVENTS, eventId)
+      const response = await apiJson(`/api/calendar/events/${encodeURIComponent(eventId)}`, { method: 'DELETE' })
+      return response.data || response
     } catch (error: any) {
       // Handle 404 errors gracefully (event may have already been deleted or never existed in DB)
       if (error?.code === 404 || error?.type === "document_not_found") {

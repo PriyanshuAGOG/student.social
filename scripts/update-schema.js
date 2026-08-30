@@ -306,6 +306,9 @@ const collections = [
       { key: 'updatedAt', type: 'string', size: 255 },
       { key: 'replyTo', type: 'string', size: 255 },
     ],
+    indexes: [
+      { key: 'idx_comments_post_time', type: 'key', attributes: ['postId', 'timestamp'], orders: ['ASC', 'ASC'] },
+    ],
   },
   {
     id: 'saved_posts',
@@ -711,6 +714,10 @@ const collections = [
       { key: 'updatedAt', type: 'string', size: 255 },
       { key: 'isCompleted', type: 'boolean' },
     ],
+    indexes: [
+      { key: 'idx_calendar_user_start', type: 'key', attributes: ['userId', 'startTime'], orders: ['ASC', 'ASC'] },
+      { key: 'idx_calendar_start', type: 'key', attributes: ['startTime'], orders: ['ASC'] },
+    ],
   },
   {
     id: 'chat_rooms',
@@ -733,6 +740,26 @@ const collections = [
     indexes: [
       { key: 'idx_chat_rooms_type_activity', type: 'key', attributes: ['type', 'lastMessageTime'], orders: ['ASC', 'DESC'] },
       { key: 'idx_chat_rooms_pod', type: 'key', attributes: ['podId'], orders: ['ASC'] },
+    ],
+  },
+  {
+    id: 'calendar_reminder_deliveries',
+    name: 'Calendar Reminder Deliveries',
+    attrs: [
+      { key: 'deliveryKey', type: 'string', size: 500, required: true },
+      { key: 'eventId', type: 'string', size: 255, required: true },
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'reminderMinutes', type: 'integer', required: true },
+      { key: 'channel', type: 'string', size: 32, required: true },
+      { key: 'status', type: 'string', size: 32, required: true },
+      { key: 'deliveredAt', type: 'string', size: 255 },
+      { key: 'error', type: 'string', size: 1000 },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+      { key: 'updatedAt', type: 'string', size: 255, required: true },
+    ],
+    indexes: [
+      { key: 'idx_reminder_delivery_key', type: 'unique', attributes: ['deliveryKey'], orders: ['ASC'] },
+      { key: 'idx_reminder_user_created', type: 'key', attributes: ['userId', 'createdAt'], orders: ['ASC', 'DESC'] },
     ],
   },
   {

@@ -20,6 +20,7 @@ import {
   Zap,
   Loader2,
   RefreshCw,
+  Trash2,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { podService } from "@/lib/appwrite"
@@ -27,6 +28,7 @@ import { notificationService } from "@/lib/appwrite/notifications"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 import { AppPageHeader } from "@/components/internal/AppPageHeader"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 interface Notification {
   $id: string
@@ -48,6 +50,7 @@ interface Notification {
 function formatRelativeTime(dateString: string): string {
   try {
     const date = new Date(dateString)
+    if (!Number.isFinite(date.getTime())) return "Recently"
     const now = new Date()
     const diffInMs = now.getTime() - date.getTime()
     const diffInMinutes = Math.floor(diffInMs / (1000 * 60))
@@ -97,11 +100,11 @@ export default function NotificationsPage() {
       const transformedNotifications = result.documents.map((doc: any) => ({
         $id: doc.$id,
         userId: doc.userId,
-        title: doc.title,
-        message: doc.message,
+        title: doc.title || "Student.social update",
+        message: doc.message || doc.body || "You have a new update.",
         type: doc.type || "info",
         isRead: doc.isRead || false,
-        timestamp: doc.timestamp,
+        timestamp: doc.timestamp || doc.createdAt || new Date().toISOString(),
         actionUrl: doc.actionUrl,
         actionText: doc.actionText,
         imageUrl: doc.imageUrl,
@@ -195,6 +198,28 @@ export default function NotificationsPage() {
         description: "Failed to mark all notifications as read",
         variant: "destructive",
       })
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      await notificationService.deleteNotification(id)
+      setNotifications((current) => current.filter((notification) => notification.$id !== id))
+      toast({ title: "Notification removed" })
+    } catch (error) {
+      console.error("Failed to delete notification:", error)
+      toast({ title: "Notification was not removed", description: "Please try again.", variant: "destructive" })
+    }
+  }
+
+  const handleClearRead = async () => {
+    try {
+      const deleted = await notificationService.clearRead()
+      setNotifications((current) => current.filter((notification) => !notification.isRead))
+      toast({ title: deleted ? `${deleted} read notification${deleted === 1 ? "" : "s"} cleared` : "Nothing to clear" })
+    } catch (error) {
+      console.error("Failed to clear read notifications:", error)
+      toast({ title: "Notifications were not cleared", description: "Please try again.", variant: "destructive" })
     }
   }
 
@@ -364,7 +389,7 @@ export default function NotificationsPage() {
         <AppPageHeader
           title="Notifications"
           meta={<span>{unreadCount} unread</span>}
-          actions={<><Button onClick={handleMarkAllAsRead} disabled={unreadCount === 0}><Check />Mark all read</Button><Button variant="outline" onClick={() => loadNotifications(true)} disabled={isRefreshing}><RefreshCw className={isRefreshing ? "animate-spin" : ""} />Refresh</Button></>}
+          actions={<><Button onClick={handleMarkAllAsRead} disabled={unreadCount === 0}><Check />Mark all read</Button><Button variant="outline" onClick={handleClearRead} disabled={!notifications.some((item) => item.isRead)}><Trash2 />Clear read</Button><Button variant="outline" onClick={() => loadNotifications(true)} disabled={isRefreshing}><RefreshCw className={isRefreshing ? "animate-spin" : ""} />Refresh</Button></>}
         />
       </div>
 
@@ -454,9 +479,13 @@ export default function NotificationsPage() {
                                 <Check className="w-4 h-4" />
                               </Button>
                             )}
-                            <Button variant="ghost" size="sm" aria-label={`Open actions for ${notification.title}`}>
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild><Button variant="ghost" size="sm" aria-label={`Open actions for ${notification.title}`}><MoreHorizontal className="w-4 h-4" /></Button></DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {!notification.isRead ? <DropdownMenuItem onClick={() => handleMarkAsRead(notification.$id)}><Check className="mr-2 h-4 w-4" />Mark as read</DropdownMenuItem> : null}
+                                <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(notification.$id)}><Trash2 className="mr-2 h-4 w-4" />Delete</DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </div>
 

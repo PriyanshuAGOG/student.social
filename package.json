@@ -24,6 +24,7 @@
     "test:backend": "node --experimental-strip-types --test tests/backend-reliability.test.ts",
     "test:pods": "node --test tests.pods.mjs",
     "test:courses": "node --experimental-strip-types --test tests/pod-course-domain.test.ts",
+    "test:reliability": "node --experimental-strip-types --test tests/reliability-domain.test.ts",
     "audit:mutations": "node scripts/audit-mutations.mjs --strict",
     "web-push:keys": "web-push generate-vapid-keys"
   },

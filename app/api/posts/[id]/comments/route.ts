@@ -9,12 +9,12 @@ import { Query } from 'node-appwrite';
 import { createAdminClient } from '@/lib/server/appwrite';
 import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
+import { createServerNotification } from '@/lib/server/notifications';
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
 const POSTS_COLLECTION_ID = (process.env.NEXT_PUBLIC_POSTS_COLLECTION_ID || 'posts');
 const COMMENTS_COLLECTION_ID = (process.env.NEXT_PUBLIC_COMMENTS_COLLECTION_ID || 'comments');
 const PROFILES_COLLECTION_ID = (process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles');
-const NOTIFICATIONS_COLLECTION_ID = (process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications');
 
 /**
  * POST /api/posts/[id]/comments - Create a comment
@@ -155,20 +155,17 @@ export async function POST(
     // Create notification for post author (if not self-comment)
     if (post.authorId !== userId) {
       try {
-        await databases.createDocument(
-          DATABASE_ID,
-          NOTIFICATIONS_COLLECTION_ID,
-          'unique()',
-          {
-            userId: post.authorId,
-            type: 'comment',
-            actor: userId,
-            postId: postId,
-            message: `${authorName} commented on your post`,
-            isRead: false,
-            timestamp: new Date().toISOString(),
-          }
-        );
+        await createServerNotification({
+          userId: post.authorId,
+          title: 'New comment',
+          message: `${authorName} commented on your post`,
+          type: 'comment',
+          actorId: userId,
+          actorName: authorName,
+          actorAvatar: authorAvatar,
+          actionUrl: `/app/feed?post=${encodeURIComponent(postId)}`,
+          metadata: { postId },
+        });
       } catch (notifError) {
         console.error('Failed to create comment notification:', notifError);
       }
@@ -178,31 +175,18 @@ export async function POST(
     if (parentComment) {
       try {
         if (parentComment.authorId !== userId) {
-          await databases.createDocument(
-            DATABASE_ID,
-            NOTIFICATIONS_COLLECTION_ID,
-            'unique()',
-            {
-              userId: parentComment.authorId,
-              type: 'reply',
-              actor: userId,
-              postId: postId,
-              message: `${authorName} replied to your comment`,
-              isRead: false,
-              timestamp: new Date().toISOString(),
-            }
-          );
+          await createServerNotification({
+            userId: parentComment.authorId,
+            title: 'New reply',
+            message: `${authorName} replied to your comment`,
+            type: 'reply',
+            actorId: userId,
+            actorName: authorName,
+            actorAvatar: authorAvatar,
+            actionUrl: `/app/feed?post=${encodeURIComponent(postId)}`,
+            metadata: { postId, commentId: parentComment.$id },
+          });
         }
-
-        // Update parent comment reply count
-        await databases.updateDocument(
-          DATABASE_ID,
-          COMMENTS_COLLECTION_ID,
-          parentComment.$id,
-          {
-            replies: (parentComment.replies || 0) + 1,
-          }
-        );
       } catch (parentError) {
         console.error('Failed to handle parent comment:', parentError);
       }
@@ -233,8 +217,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const searchParams = request.nextUrl.searchParams;
-  const limit = parseInt(searchParams.get('limit') || '50', 10);
-  const offset = parseInt(searchParams.get('offset') || '0', 10);
+  const requestedLimit = parseInt(searchParams.get('limit') || '50', 10);
+  const requestedOffset = parseInt(searchParams.get('offset') || '0', 10);
+  const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 50;
+  const offset = Number.isFinite(requestedOffset) ? Math.max(requestedOffset, 0) : 0;
 
   const { data, error } = await withErrorHandling(async () => {
     const { id: postId } = await params;
@@ -248,9 +234,8 @@ export async function GET(
       COMMENTS_COLLECTION_ID,
       [
         Query.equal('postId', postId),
-        Query.equal('isDeleted', false),
         Query.orderDesc('timestamp'),
-        Query.limit(Math.min(limit, 100)),
+        Query.limit(limit),
         Query.offset(offset),
       ]
     ).catch((error: any) => {
@@ -261,7 +246,12 @@ export async function GET(
       throw error
     });
 
-    const allComments = Array.isArray(comments.documents) ? comments.documents : []
+    // Older and current comment schemas do not contain an `isDeleted`
+    // attribute. Querying that missing field caused Appwrite to reject the
+    // entire request and the client then rendered a false empty state.
+    const allComments = Array.isArray(comments.documents)
+      ? comments.documents.filter((comment: any) => comment.isDeleted !== true)
+      : []
     const commentsById = new Map<string, any>()
     const roots: any[] = []
 

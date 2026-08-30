@@ -5,11 +5,11 @@ export function buildCalendar({ feedSettings, events, generatedAt = new Date() }
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Peerspark//Calendar Sync//EN',
+    'PRODID:-//Student.social//Calendar Sync//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    `X-WR-CALNAME:${escapeICSText(feedSettings?.feedName || 'Peerspark Calendar')}`,
-    'X-WR-CALDESC:Your Peerspark classes, study sessions, deadlines, and progress reviews.',
+    `X-WR-CALNAME:${escapeICSText(feedSettings?.feedName || 'Student.social Calendar')}`,
+    'X-WR-CALDESC:Your Student.social classes, study sessions, deadlines, and progress reviews.',
   ]
 
   for (const e of events) {
@@ -35,7 +35,7 @@ export function buildCalendar({ feedSettings, events, generatedAt = new Date() }
     if (feedSettings?.includeReminders && Number.isFinite(feedSettings?.defaultReminderMinutes)) {
       lines.push('BEGIN:VALARM')
       lines.push('ACTION:DISPLAY')
-      lines.push(foldICSLine(`DESCRIPTION:${escapeICSText(`Peerspark reminder: ${sanitizeTitle(e.title || 'Event')}`)}`))
+      lines.push(foldICSLine(`DESCRIPTION:${escapeICSText(`Student.social reminder: ${sanitizeTitle(e.title || 'Event')}`)}`))
       lines.push(`TRIGGER:-PT${feedSettings.defaultReminderMinutes}M`)
       lines.push('END:VALARM')
     }

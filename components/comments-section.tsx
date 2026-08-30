@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Card, CardContent } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,6 +69,13 @@ function addReplyToTree(items: Comment[], parentId: string, reply: Comment): Com
 }
 
 function buildCommentTree(items: Comment[]): Comment[] {
+  if (items.some((item) => Array.isArray(item.replies))) {
+    return items.map((item) => ({
+      ...item,
+      replies: Array.isArray(item.replies) ? buildCommentTree(item.replies) : [],
+    }))
+  }
+
   const byId = new Map<string, Comment>()
   const roots: Comment[] = []
 
@@ -231,29 +237,35 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
   const [newComment, setNewComment] = useState("")
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [isExpanded, setIsExpanded] = useState(false)
+  const [hasLoaded, setHasLoaded] = useState(false)
+  const [loadError, setLoadError] = useState("")
   const { toast } = useToast()
   const { user } = useAuth()
   const visibleCommentCount = comments.length > 0 ? countComments(comments) : initialCommentCount
 
   // Fetch comments when expanded
   useEffect(() => {
-    if (isExpanded && comments.length === 0) {
-      loadComments()
+    if (isExpanded && !hasLoaded) {
+      void loadComments()
     }
-  }, [isExpanded])
+  }, [hasLoaded, isExpanded])
 
   const loadComments = async () => {
     setIsLoading(true)
+    setLoadError("")
     try {
       const response = await commentService.getComments(postId)
       const allComments = (response.documents || []) as unknown as Comment[]
       const tree = buildCommentTree(allComments)
       setComments(tree)
+      setHasLoaded(true)
       onCommentCountChange?.(countComments(tree))
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Failed to load comments:", error)
+      setLoadError(error instanceof Error ? error.message : "Comments could not be loaded.")
       toast({
         title: "Failed to load comments",
+        description: "Your comments are still safe. Please retry the connection.",
         variant: "destructive",
       })
     } finally {
@@ -398,7 +410,7 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
         className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
       >
         <MessageCircle className="h-4 w-4" />
-        {isExpanded ? "Hide comments" : `View ${visibleCommentCount || 0} comment${visibleCommentCount !== 1 ? 's' : ''}`}
+        {isExpanded ? "Hide comments" : `View all ${visibleCommentCount || 0} comment${visibleCommentCount !== 1 ? 's' : ''}`}
       </button>
 
       {isExpanded && (
@@ -443,6 +455,14 @@ export function CommentsSection({ postId, initialCommentCount = 0, onCommentCoun
           {isLoading ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : loadError ? (
+            <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm">
+              <p className="font-medium">Comments could not be displayed.</p>
+              <p className="mt-1 text-muted-foreground">{loadError}</p>
+              <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void loadComments()}>
+                Try again
+              </Button>
             </div>
           ) : comments.length === 0 ? (
             <p className="text-center text-sm text-muted-foreground py-4">
