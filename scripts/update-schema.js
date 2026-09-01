@@ -662,6 +662,7 @@ const collections = [
       { key: 'settingsJson', type: 'string', size: 5000 },
       { key: 'privacyMode', type: 'string', size: 32 },
       { key: 'lastFetchedAt', type: 'string', size: 255 },
+      { key: 'lastTokenRotatedAt', type: 'string', size: 255 },
       { key: 'fetchCount', type: 'integer' },
       { key: 'createdAt', type: 'string', size: 255, required: true },
       { key: 'updatedAt', type: 'string', size: 255, required: true },

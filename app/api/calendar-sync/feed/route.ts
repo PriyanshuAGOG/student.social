@@ -8,18 +8,38 @@ import { createAdminClient } from '@/lib/server/appwrite'
 import { normalizeCalendarSyncSettings } from '@/lib/calendar/settings'
 
 const secret = process.env.CALENDAR_FEED_SECRET || process.env.SESSION_COOKIE_SECRET || process.env.APPWRITE_API_KEY || 'dev-secret'
+const legacySecrets = (process.env.CALENDAR_LEGACY_FEED_SECRETS || 'dev-secret')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean)
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const CALENDAR_FEED_SETTINGS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALENDAR_FEED_SETTINGS_COLLECTION_ID || 'calendar_feed_settings'
 const CALENDAR_EVENTS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALENDAR_EVENTS_COLLECTION_ID || 'calendar_events'
 
-async function getFeedByTokenHash(tokenHash: string) {
+async function getFeedByToken(token: string) {
   const { databases } = createAdminClient()
-  const response = await databases.listDocuments(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, [
-    Query.equal('tokenHash', tokenHash),
-    Query.limit(1),
-  ])
+  const secrets = [secret, ...legacySecrets].filter((value, index, values) => value && values.indexOf(value) === index)
 
-  return response.documents[0] as any | undefined
+  for (let index = 0; index < secrets.length; index += 1) {
+    const tokenHash = hashCalendarToken(token, secrets[index])
+    const response = await databases.listDocuments(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, [
+      Query.equal('tokenHash', tokenHash),
+      Query.limit(1),
+    ])
+
+    const feed = response.documents[0] as any | undefined
+    if (!feed) continue
+
+    if (index > 0) {
+      await databases.updateDocument(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, feed.$id, {
+        tokenHash: hashCalendarToken(token, secret),
+        updatedAt: new Date().toISOString(),
+      }).catch(() => undefined)
+    }
+    return feed
+  }
+
+  return undefined
 }
 
 async function getEventsForUser(userId: string, startDate: Date, endDate: Date) {
@@ -46,8 +66,7 @@ async function getEventsForUser(userId: string, startDate: Date, endDate: Date) 
 export async function GET(request: Request) {
   const token = new URL(request.url).searchParams.get('token') || ''
   if (!/^pscal_v1_[A-Za-z0-9_-]+$/.test(token)) return new Response('not found', { status: 404 })
-  const tHash = hashCalendarToken(token, secret)
-  const feed = await getFeedByTokenHash(tHash)
+  const feed = await getFeedByToken(token)
   if (!feed) return new Response('not found', { status: 404 })
   if (feed.status !== 'active') return new Response('feed disabled', { status: 410 })
 

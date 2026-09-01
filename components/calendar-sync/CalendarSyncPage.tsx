@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { CalendarDays, Check, Copy, ExternalLink, Loader2, Plus, RefreshCw } from 'lucide-react'
+import { AlertTriangle, CalendarDays, Check, Copy, ExternalLink, Loader2, Plus, RefreshCw, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { getDefaultCalendarSyncSettings, type CalendarSyncSettings } from '@/lib/calendar/settings'
@@ -10,7 +10,7 @@ import FeedSettingsPanel from './FeedSettingsPanel'
 import SecurityPanel from './SecurityPanel'
 import CalendarPreview, { type CalendarPreviewEvent } from './CalendarPreview'
 
-type FeedStatus = 'loading' | 'not_enabled' | 'active' | 'disabled' | 'revoked'
+type FeedStatus = 'loading' | 'error' | 'not_enabled' | 'active' | 'disabled' | 'revoked'
 
 type FeedData = {
   status: FeedStatus
@@ -20,6 +20,16 @@ type FeedData = {
   settings?: CalendarSyncSettings
   fetchCount?: number
   lastFetchedAt?: string | null
+}
+
+class CalendarRequestError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+    readonly correlationId?: string,
+  ) {
+    super(message)
+  }
 }
 
 async function calendarRequest<T>(url: string, init?: RequestInit): Promise<T> {
@@ -33,7 +43,11 @@ async function calendarRequest<T>(url: string, init?: RequestInit): Promise<T> {
   })
   const payload = await response.json().catch(() => null)
   if (!response.ok || !payload?.success) {
-    throw new Error(payload?.error?.message || 'Calendar sync could not be updated.')
+    throw new CalendarRequestError(
+      payload?.error?.message || 'Calendar sync could not be updated.',
+      payload?.error?.code,
+      response.headers.get('x-correlation-id') || undefined,
+    )
   }
   return payload.data as T
 }
@@ -45,16 +59,20 @@ export default function CalendarSyncPage() {
   const [preview, setPreview] = useState<CalendarPreviewEvent[]>([])
   const [workingAction, setWorkingAction] = useState('')
   const [copied, setCopied] = useState(false)
+  const [loadError, setLoadError] = useState<CalendarRequestError | null>(null)
 
   const loadFeed = useCallback(async () => {
     setFeed((current) => ({ ...current, status: 'loading' }))
+    setLoadError(null)
     try {
       const data = await calendarRequest<FeedData>('/api/calendar-sync/manage')
       setFeed(data)
       if (data.settings) setSettings(data.settings)
     } catch (error) {
-      setFeed({ status: 'not_enabled' })
-      toast({ title: 'Calendar sync unavailable', description: error instanceof Error ? error.message : 'Please try again.', variant: 'destructive' })
+      const requestError = error instanceof CalendarRequestError ? error : new CalendarRequestError(error instanceof Error ? error.message : 'Please try again.')
+      setFeed({ status: 'error' })
+      setLoadError(requestError)
+      toast({ title: 'Calendar sync unavailable', description: requestError.message, variant: 'destructive' })
     }
   }, [toast])
 
@@ -77,6 +95,7 @@ export default function CalendarSyncPage() {
     try {
       const data = await calendarRequest<FeedData>(`/api/calendar-sync/manage?action=${action}`, { method: 'POST' })
       setFeed((current) => ({ ...current, ...data }))
+      setLoadError(null)
       if (data.settings) setSettings(data.settings)
       setCopied(false)
       toast({ title: action === 'create' ? 'Calendar feed created' : action === 'rotate' ? 'Private link regenerated' : action === 'disable' ? 'Calendar feed paused' : 'Calendar feed enabled' })
@@ -104,9 +123,13 @@ export default function CalendarSyncPage() {
 
   const copyFeedUrl = async () => {
     if (!feed.feedUrl) return
-    await navigator.clipboard.writeText(feed.feedUrl)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 2500)
+    try {
+      await navigator.clipboard.writeText(feed.feedUrl)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2500)
+    } catch {
+      toast({ title: 'Could not copy the link', description: 'Select the calendar link and copy it manually.', variant: 'destructive' })
+    }
   }
 
   if (feed.status === 'loading') {
@@ -131,7 +154,25 @@ export default function CalendarSyncPage() {
         <Button variant="outline" size="sm" onClick={loadFeed} aria-label="Refresh calendar sync status"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
       </header>
 
-      {!enabled ? (
+      {feed.status === 'error' ? (
+        <section className="overflow-hidden rounded-2xl border border-destructive/25 bg-card shadow-sm" role="alert">
+          <div className="grid gap-5 p-6 sm:p-8 md:grid-cols-[1fr_auto] md:items-center">
+            <div>
+              <div className="flex items-center gap-2 text-destructive"><AlertTriangle className="h-5 w-5" /><h2 className="text-lg font-semibold">Calendar connection needs attention</h2></div>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{loadError?.message || 'We could not load your private calendar link.'}</p>
+              {loadError?.correlationId ? <p className="mt-2 text-xs text-muted-foreground">Support reference: {loadError.correlationId}</p> : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => void loadFeed()}><RefreshCw className="mr-2 h-4 w-4" />Try again</Button>
+              {loadError?.code === 'CALENDAR_FEED_REPAIR_REQUIRED' ? (
+                <Button onClick={() => void runAction('rotate')} disabled={workingAction === 'rotate'}>
+                  {workingAction === 'rotate' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}Regenerate link
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : !enabled ? (
         <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
           <div className="grid gap-6 p-6 sm:p-8 md:grid-cols-[1fr_auto] md:items-center">
             <div>

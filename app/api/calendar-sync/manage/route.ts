@@ -1,14 +1,18 @@
 import crypto from 'crypto'
 import { z } from 'zod'
-import { ApiError, jsonError, jsonOk, parseJsonBody, requireUser } from '@/lib/api-security'
+import { ApiError, enforceRateLimit, enforceSameOrigin, jsonError, jsonOk, parseJsonBody, requireVerifiedUser } from '@/lib/api-security'
 import { REMINDER_MINUTES_ALLOWED } from '@/lib/calendar/constants'
 import { getDefaultCalendarSyncSettings, normalizeCalendarSyncSettings } from '@/lib/calendar/settings'
-import { decryptCalendarToken, encryptCalendarToken, generateCalendarToken, hashCalendarToken } from '@/lib/calendar/token'
+import { decryptCalendarTokenWithFallback, encryptCalendarToken, generateCalendarToken, hashCalendarToken } from '@/lib/calendar/token'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { Query } from 'node-appwrite'
 
 const secret = process.env.CALENDAR_FEED_SECRET || process.env.SESSION_COOKIE_SECRET || process.env.APPWRITE_API_KEY || 'dev-secret'
 const encKey = process.env.CALENDAR_TOKEN_ENCRYPTION_KEY || process.env.SESSION_COOKIE_SECRET || process.env.APPWRITE_API_KEY || 'dev-encryption-key'
+const legacyEncryptionKeys = (process.env.CALENDAR_LEGACY_TOKEN_ENCRYPTION_KEYS || 'dev-encryption-key')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean)
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db'
 const CALENDAR_FEED_SETTINGS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALENDAR_FEED_SETTINGS_COLLECTION_ID || 'calendar_feed_settings'
@@ -16,10 +20,10 @@ const CALENDAR_FEED_SETTINGS_COLLECTION_ID = process.env.NEXT_PUBLIC_CALENDAR_FE
 const settingsSchema = z.object({
   feedName: z.string().min(1).max(120).optional(),
   privacyMode: z.enum(['full', 'minimal', 'title_only', 'busy_only']).optional(),
-  defaultReminderMinutes: z.number().refine((v) => REMINDER_MINUTES_ALLOWED.includes(v)).optional(),
-  pastWindowDays: z.number().min(0).max(365).optional(),
-  futureWindowDays: z.number().min(7).max(730).optional(),
-  maxEventsPerFeed: z.number().min(10).max(3000).optional(),
+  defaultReminderMinutes: z.number().int().refine((v) => REMINDER_MINUTES_ALLOWED.includes(v)).optional(),
+  pastWindowDays: z.number().int().min(0).max(365).optional(),
+  futureWindowDays: z.number().int().min(7).max(730).optional(),
+  maxEventsPerFeed: z.number().int().min(10).max(3000).optional(),
   includeClasses: z.boolean().optional(),
   includeStudySessions: z.boolean().optional(),
   includeDeadlines: z.boolean().optional(),
@@ -35,7 +39,7 @@ const settingsSchema = z.object({
   includeLocations: z.boolean().optional(),
   includeReminders: z.boolean().optional(),
   includeDeepLinks: z.boolean().optional(),
-})
+}).strict()
 
 type CalendarFeedRecord = {
   $id: string
@@ -100,13 +104,42 @@ async function getFeedRecord(userId: string) {
   }
 }
 
-async function findFeedByTokenHash(tokenHash: string) {
-  const databases = await getFeedCollection()
-  const result = await databases.listDocuments(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, [
-    Query.equal('tokenHash', tokenHash),
-    Query.limit(1),
-  ])
-  return result.documents[0] as unknown as CalendarFeedRecord | undefined
+function logCalendarSyncError(error: unknown, correlationId: string, request: Request) {
+  const value = error as { code?: unknown; type?: unknown; status?: unknown; message?: unknown }
+  console.error('[calendar-sync/manage]', {
+    correlationId,
+    method: request.method,
+    action: new URL(request.url).searchParams.get('action') || (request.method === 'POST' ? 'create' : 'status'),
+    status: error instanceof ApiError ? error.status : value?.status,
+    code: error instanceof ApiError ? error.code : value?.code,
+    type: value?.type,
+    message: error instanceof Error ? error.message : String(value?.message || 'Unknown calendar sync error'),
+  })
+}
+
+async function resolveFeedToken(record: CalendarFeedRecord) {
+  if (!record.encryptedToken) {
+    throw new ApiError(409, 'CALENDAR_FEED_REPAIR_REQUIRED', 'This calendar link needs to be regenerated.')
+  }
+
+  try {
+    const { token, keyIndex } = decryptCalendarTokenWithFallback(record.encryptedToken, [encKey, ...legacyEncryptionKeys])
+    if (!/^pscal_v1_[A-Za-z0-9_-]+$/.test(token)) throw new Error('Calendar token format is invalid')
+
+    if (keyIndex > 0) {
+      const databases = await getFeedCollection()
+      await databases.updateDocument(DATABASE_ID, CALENDAR_FEED_SETTINGS_COLLECTION_ID, record.$id, {
+        encryptedToken: encryptCalendarToken(token, encKey),
+        tokenHash: hashCalendarToken(token, secret),
+        updatedAt: new Date().toISOString(),
+      } as any)
+    }
+
+    return token
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    throw new ApiError(409, 'CALENDAR_FEED_REPAIR_REQUIRED', 'This calendar link was created with an older security key and needs to be regenerated.')
+  }
 }
 
 function parseSettings(record?: CalendarFeedRecord) {
@@ -125,7 +158,7 @@ function parseSettings(record?: CalendarFeedRecord) {
 export async function GET(request: Request) {
   const c = request.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
-    const auth = requireUser(request)
+    const auth = await requireVerifiedUser(request)
     const action = new URL(request.url).searchParams.get('action') || 'status'
     const rec = await getFeedRecord(auth.userId)
     if (!rec) return jsonOk({ status: 'not_enabled' }, 200, c)
@@ -135,13 +168,14 @@ export async function GET(request: Request) {
     }
 
     if (action === 'download') {
-      const raw = decryptCalendarToken(rec.encryptedToken, encKey)
+      const raw = await resolveFeedToken(rec)
       return jsonOk({ ...buildUrls(raw, request.url), tokenPrefix: rec.tokenPrefix, status: rec.status, settings: parseSettings(rec) }, 200, c)
     }
 
-    const raw = decryptCalendarToken(rec.encryptedToken, encKey)
+    const raw = await resolveFeedToken(rec)
     return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: parseSettings(rec), fetchCount: rec.fetchCount || 0, lastFetchedAt: rec.lastFetchedAt || null, ...buildUrls(raw, request.url) }, 200, c)
   } catch (e) {
+    logCalendarSyncError(e, c, request)
     return jsonError(e, c)
   }
 }
@@ -149,14 +183,16 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const c = request.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
-    const auth = requireUser(request)
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: 'calendar-sync-manage', max: 20, windowMs: 60_000 })
+    const auth = await requireVerifiedUser(request)
     const action = new URL(request.url).searchParams.get('action') || 'create'
     const databases = await getFeedCollection()
     const existing = await getFeedRecord(auth.userId)
 
     if (action === 'create') {
       if (existing) {
-        const raw = decryptCalendarToken(existing.encryptedToken, encKey)
+        const raw = await resolveFeedToken(existing)
         return jsonOk({ status: existing.status, tokenPrefix: existing.tokenPrefix, settings: parseSettings(existing), ...buildUrls(raw, request.url) }, 200, c)
       }
       const raw = generateCalendarToken()
@@ -196,6 +232,7 @@ export async function POST(request: Request) {
     }
     throw new ApiError(400, 'BAD_ACTION', 'Unsupported action')
   } catch (e) {
+    logCalendarSyncError(e, c, request)
     return jsonError(e, c)
   }
 }
@@ -203,7 +240,9 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const c = request.headers.get('x-correlation-id') || crypto.randomUUID()
   try {
-    const auth = requireUser(request)
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: 'calendar-sync-settings', max: 30, windowMs: 60_000 })
+    const auth = await requireVerifiedUser(request)
     const databases = await getFeedCollection()
     const rec = await getFeedRecord(auth.userId)
     if (!rec) throw new ApiError(404, 'NOT_FOUND', 'Feed not found')
@@ -215,6 +254,7 @@ export async function PATCH(request: Request) {
     } as any)
     return jsonOk({ status: rec.status, tokenPrefix: rec.tokenPrefix, settings: nextSettings }, 200, c)
   } catch (e) {
+    logCalendarSyncError(e, c, request)
     return jsonError(e, c)
   }
 }
