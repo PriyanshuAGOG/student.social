@@ -261,25 +261,28 @@ test('post mutation routes enforce authenticated ownership and reply integrity',
   assert.match(commentsRoute, /INVALID_PARENT_COMMENT/)
 })
 
-test('follow route uses authenticated ownership and profile counts are numeric', () => {
+test('follow route uses verified auth and durable relationship records', () => {
   const followRoute = fs.readFileSync('app/api/users/[id]/follow/route.ts', 'utf8')
-  const ownProfile = fs.readFileSync('app/app/profile/page.tsx', 'utf8')
-  const publicProfile = fs.readFileSync('app/app/profile/[username]/page.tsx', 'utf8')
-  assert.match(followRoute, /requireUser\(request\)/)
-  assert.match(followRoute, /requireOwnership\(requestedUserId, auth\.userId\)/)
-  assert.match(followRoute, /Array\.from\(new Set\(followerProfile\.following/)
-  assert.match(followRoute, /followerCount: newFollowers\.length/)
-  assert.match(ownProfile, /relationshipCount\(profile\?\.followers/)
-  assert.match(publicProfile, /relationshipCount\(profile\.following/)
-  assert.match(publicProfile, /typeof data\.followerCount === "number"/)
+  const overview = fs.readFileSync('app/api/profiles/[id]/overview/route.ts', 'utf8')
+  assert.match(followRoute, /requireVerifiedUser\(request\)/)
+  assert.match(followRoute, /COLLECTIONS\.follows/)
+  assert.match(followRoute, /Query\.equal\('followerId', userId\)/)
+  assert.match(followRoute, /Query\.equal\('followingId', targetUserId\)/)
+  assert.match(followRoute, /followerCount: followers\.total/)
+  assert.match(overview, /followers: followers\.total/)
+  assert.match(overview, /following: following\.total/)
 })
 
 test('profile message and comment routes avoid dead post paths', () => {
   const ownProfile = fs.readFileSync('app/app/profile/page.tsx', 'utf8')
   const publicProfile = fs.readFileSync('app/app/profile/[username]/page.tsx', 'utf8')
-  assert.match(ownProfile, /\/app\/feed\?post=/)
-  assert.doesNotMatch(ownProfile, /\/app\/post\//)
-  assert.match(publicProfile, /\/app\/messages\/\$\{userProfile\.userId\}/)
+  const experience = fs.readFileSync('components/profile/ProfileExperience.tsx', 'utf8')
+  const overview = fs.readFileSync('app/api/profiles/[id]/overview/route.ts', 'utf8')
+  assert.match(ownProfile, /ProfileExperience/)
+  assert.match(publicProfile, /ProfileExperience/)
+  assert.match(overview, /\/app\/feed\?post=/)
+  assert.doesNotMatch(experience, /\/app\/post\//)
+  assert.match(experience, /\/app\/messages\/\$\{profile\.id\}/)
 })
 
 test('pods2 reactions are authenticated and server-backed', () => {
@@ -326,22 +329,21 @@ test('notification routes use verified auth context and prevent userId override'
   const notificationRead = fs.readFileSync('app/api/notifications/[id]/read/route.ts', 'utf8')
   assert.match(inbox, /requireUser\(req\)/)
   assert.doesNotMatch(inbox, /x-user-id/)
-  assert.match(preferences, /const \{ userId \} = requireUser\(req\)/)
+  assert.match(preferences, /const \{ userId \} = await requireVerifiedUser\(req\)/)
   assert.match(preferences, /const \{ userId: _ignoredUserId, \$id: _ignoredId, \.\.\.safeBody \}/)
   assert.match(preferences, /\.\.\.safeBody,\s*userId,/s)
   assert.match(notificationDelete, /requireUser\(req\)/)
   assert.match(notificationRead, /enforceSameOrigin\(req\)/)
 })
 
-test('analytics and leaderboard pages are data-backed', () => {
+test('retired analytics redirects to data-backed profile progress and challenges are server-backed', () => {
   const analytics = fs.readFileSync('app/app/analytics/page.tsx', 'utf8')
   const leaderboard = fs.readFileSync('app/app/leaderboard/page.tsx', 'utf8')
-  const scoring = fs.readFileSync('lib/engagement-scoring.ts', 'utf8')
-  assert.match(analytics, /profileService\.getProfile/)
-  assert.match(analytics, /calendarService\.getUserEvents/)
-  assert.match(leaderboard, /profileService\.getAllProfiles/)
-  assert.match(scoring, /export function buildAnalyticsSnapshot/)
-  assert.match(scoring, /export function rankLearners/)
+  const challengeRoute = fs.readFileSync('app/api/challenges/route.ts', 'utf8')
+  assert.match(analytics, /redirect\('\/app\/profile\?tab=progress'\)/)
+  assert.match(leaderboard, /fetch\("\/api\/challenges"/)
+  assert.match(challengeRoute, /COLLECTIONS\.challengeParticipants/)
+  assert.match(challengeRoute, /requireVerifiedUser/)
 })
 
 test('payments and certificates are not placeholder flows', () => {

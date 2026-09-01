@@ -678,6 +678,33 @@
 
 .student-account-button { border: 1px solid transparent; color: rgba(246, 239, 228, 0.82) !important; }
 .student-account-button:hover { border-color: rgba(255, 250, 242, 0.1); background: rgba(255, 255, 255, 0.05) !important; color: #fffaf2 !important; }
+.student-sidebar-toggle { color: rgba(246, 239, 228, 0.58) !important; }
+.student-sidebar-toggle:hover { background: rgba(255, 255, 255, 0.055) !important; color: #fffaf2 !important; }
+
+/* Collapsed desktop navigation is a deliberate icon rail, not a compressed sidebar. */
+[data-collapsible="icon"] .student-sidebar-header,
+[data-collapsible="icon"] [data-sidebar="footer"] { align-items: center; }
+[data-collapsible="icon"] [data-sidebar="group"] { padding-inline: 0.35rem; }
+[data-collapsible="icon"] .student-sidebar-link {
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-inline: auto;
+  padding: 0 !important;
+  justify-content: center;
+  overflow: visible;
+  transform: none !important;
+}
+[data-collapsible="icon"] .student-sidebar-link > span:not(.student-nav-icon),
+[data-collapsible="icon"] .student-sidebar-link > svg,
+[data-collapsible="icon"] .student-brand-button > span:not(.student-brand-mark-wrap),
+[data-collapsible="icon"] .student-beta { display: none; }
+[data-collapsible="icon"] .student-sidebar-link[data-active="true"]::before { left: -0.35rem; height: 1rem; }
+[data-collapsible="icon"] .student-nav-icon { width: 1.75rem; height: 1.75rem; border-radius: 9px; }
+[data-collapsible="icon"] .student-nav-icon svg { width: 1.05rem; height: 1.05rem; }
+[data-collapsible="icon"] .student-brand-button,
+[data-collapsible="icon"] .student-account-button { margin-inline: auto; justify-content: center; overflow: visible; }
+[data-collapsible="icon"] .student-brand-mark-wrap { width: 2.25rem; height: 2.25rem; }
+[data-collapsible="icon"] .student-account-button [data-slot="avatar"] { width: 2.15rem; height: 2.15rem; }
 
 .student-mobile-nav {
   position: fixed;

@@ -619,15 +619,10 @@ export const authService = {
   // Delete the current authenticated account
   async deleteAccount() {
     try {
-      if (typeof (account as any).delete === 'function') {
-        return await (account as any).delete()
-      }
-
-      const response = await fetch((endpoint || "https://fra.cloud.appwrite.io/v1") + '/account', {
+      const response = await fetch('/api/settings/account', {
         method: 'DELETE',
-        headers: {
-          'X-Appwrite-Project': projectId || ''
-        },
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation: 'DELETE' }),
         credentials: 'include',
       })
       const data = await response.json().catch(() => ({}))
@@ -1039,99 +1034,33 @@ export const profileService = {
 
   // Follow a user - creates two-way relationship
   async followUser(followerId: string, followingId: string) {
-    try {
-      if (!followerId || !followingId) {
-        throw new Error("Both user IDs are required")
-      }
-
-      if (followerId === followingId) {
-        throw new Error("You cannot follow yourself")
-      }
-
-      const followerProfile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, followerId)
-      const followingProfile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, followingId)
-
-      const following = Array.isArray(followerProfile.following) ? followerProfile.following : []
-      if (following.includes(followingId)) {
-        return { success: true, message: "Already following" }
-      }
-
-      const newFollowing = [...following, followingId]
-      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, followerId, {
-        following: newFollowing,
-        followingCount: newFollowing.length,
-      })
-
-      const followers = Array.isArray(followingProfile.followers) ? followingProfile.followers : []
-      const newFollowers = [...followers, followerId]
-      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, followingId, {
-        followers: newFollowers,
-        followerCount: newFollowers.length,
-      })
-
-      // Create notification (standardized fields)
-      try {
-        await notificationService.createNotification(
-          followingId,
-          "New Follower",
-          `${followerProfile.name} started following you`,
-          "follow",
-          {
-            actorId: followerId,
-            actorName: followerProfile.name,
-            actorAvatar: followerProfile.avatar,
-          }
-        )
-      } catch (e) {
-        console.error("Failed to create follow notification:", e)
-      }
-
-      return { success: true }
-    } catch (error) {
-      console.error("Follow user error:", error)
-      throw error
-    }
+    if (!followerId || !followingId) throw new Error("Both user IDs are required")
+    const response = await fetch(`/api/users/${encodeURIComponent(followingId)}/follow`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'follow' }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok || !payload?.success) throw new Error(payload?.error || 'Could not follow this student')
+    return payload
   },
 
   // Unfollow a user - removes two-way relationship
   async unfollowUser(followerId: string, followingId: string) {
-    try {
-      if (!followerId || !followingId) {
-        throw new Error("Both user IDs are required")
-      }
-
-      const followerProfile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, followerId)
-      const followingProfile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, followingId)
-
-      const following = Array.isArray(followerProfile.following) ? followerProfile.following : []
-      const newFollowing = following.filter((id: string) => id !== followingId)
-
-      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, followerId, {
-        following: newFollowing,
-        followingCount: newFollowing.length,
-      })
-
-      const followers = Array.isArray(followingProfile.followers) ? followingProfile.followers : []
-      const newFollowers = followers.filter((id: string) => id !== followerId)
-
-      await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, followingId, {
-        followers: newFollowers,
-        followerCount: newFollowers.length,
-      })
-
-      return { success: true }
-    } catch (error) {
-      console.error("Unfollow user error:", error)
-      throw error
-    }
+    if (!followerId || !followingId) throw new Error("Both user IDs are required")
+    const response = await fetch(`/api/users/${encodeURIComponent(followingId)}/follow`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'unfollow' }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok || !payload?.success) throw new Error(payload?.error || 'Could not unfollow this student')
+    return payload
   },
 
   // Check if user follows another
   async isFollowing(followerId: string, followingId: string): Promise<boolean> {
     try {
-      const profile = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROFILES, followerId)
-      const following = Array.isArray(profile.following) ? profile.following : []
-      return following.includes(followingId)
+      if (!followerId || !followingId || followerId === followingId) return false
+      const response = await fetch(`/api/users/${encodeURIComponent(followingId)}/follow`, { credentials: 'include', cache: 'no-store' })
+      const payload = await response.json().catch(() => null)
+      return response.ok && Boolean(payload?.isFollowing)
     } catch (error) {
       const message = String((error as any)?.message || '').toLowerCase()
       if (!(message.includes('could not be found') || message.includes('not found'))) {

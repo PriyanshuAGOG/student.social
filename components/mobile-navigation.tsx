@@ -20,7 +20,7 @@ export function MobileNavigation() {
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`) || (href === "/app/feed" && pathname === "/app")
   const isPodWorkspace = /^\/app\/pods\/(?!create(?:\/|$)|join(?:\/|$)|invites(?:\/|$))[^/]+/.test(pathname)
   const legacyConversation = pathname.startsWith("/app/messages/")
-  const navigationHidden = pathname.startsWith("/app/ai") || isPodWorkspace || legacyConversation || (pathname.startsWith("/app/chat") && chatConversationOpen)
+  const navigationHidden = pathname.startsWith("/app/ai") || pathname.startsWith("/app/focus") || isPodWorkspace || legacyConversation || (pathname.startsWith("/app/chat") && chatConversationOpen)
 
   useEffect(() => {
     const handleChatFocus = (event: Event) => {

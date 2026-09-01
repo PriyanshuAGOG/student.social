@@ -162,8 +162,8 @@ export default function Dashboard() {
         id: "log-progress",
         title: "Log a 2-minute recap",
         description: "Note wins and blockers to keep your streak meaningful.",
-        actionLabel: "Open analytics",
-        actionHref: "/app/analytics",
+        actionLabel: "Open progress",
+        actionHref: "/app/profile?tab=progress",
         status: "pending",
       })
     }
@@ -657,7 +657,7 @@ export default function Dashboard() {
               <Button
                 variant="outline"
                 className="w-full justify-start bg-transparent"
-                onClick={() => router.push("/app/analytics")}
+                onClick={() => router.push("/app/profile?tab=progress")}
               >
                 <BarChart3 className="w-4 h-4 mr-2" />
                 View Analytics

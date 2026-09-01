@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ID, Permission, Role } from 'node-appwrite'
+import { ID, Permission, Query, Role } from 'node-appwrite'
 import { InputFile } from 'node-appwrite/file'
 import { ApiError, enforceRateLimit, enforceSameOrigin, requireVerifiedUser } from '@/lib/api-security'
 import { createAdminClient, getDatabaseId } from '@/lib/server/appwrite'
@@ -108,6 +108,24 @@ export async function POST(request: NextRequest) {
       avatarFileId: uploaded.$id,
       updatedAt: new Date().toISOString(),
     })
+
+    // Posts, comments, and messages store display metadata for fast rendering.
+    // Keep those snapshots aligned so a new profile picture appears everywhere,
+    // while treating propagation as best-effort so it never rolls back the upload.
+    const propagate = async (collectionId: string, field: string, valueField: string) => {
+      let offset = 0
+      while (offset < 1000) {
+        const page = await databases.listDocuments(databaseId, collectionId, [Query.equal(field, userId), Query.limit(100), Query.offset(offset)])
+        await Promise.allSettled(page.documents.map((document) => databases.updateDocument(databaseId, collectionId, document.$id, { [valueField]: avatar })))
+        offset += page.documents.length
+        if (page.documents.length < 100) break
+      }
+    }
+    await Promise.allSettled([
+      propagate(process.env.NEXT_PUBLIC_POSTS_COLLECTION_ID || 'posts', 'authorId', 'authorAvatar'),
+      propagate(process.env.NEXT_PUBLIC_COMMENTS_COLLECTION_ID || 'comments', 'authorId', 'authorAvatar'),
+      propagate(process.env.NEXT_PUBLIC_MESSAGES_COLLECTION_ID || 'messages', 'senderId', 'senderAvatar'),
+    ])
 
     const previousFileId = String(profile.avatarFileId || '')
     if (previousFileId && previousFileId !== uploaded.$id) {

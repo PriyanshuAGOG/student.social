@@ -99,4 +99,10 @@ export const COLLECTIONS = {
   notifications: process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications',
   notificationPreferences: process.env.NEXT_PUBLIC_NOTIFICATION_PREFERENCES_COLLECTION_ID || 'notification_preferences',
   calendarEvents: process.env.NEXT_PUBLIC_CALENDAR_EVENTS_COLLECTION_ID || 'calendar_events',
+  follows: process.env.NEXT_PUBLIC_FOLLOWS_COLLECTION_ID || 'follows',
+  focusSessions: process.env.NEXT_PUBLIC_FOCUS_SESSIONS_COLLECTION_ID || 'focus_sessions',
+  challenges: process.env.NEXT_PUBLIC_CHALLENGES_COLLECTION_ID || 'challenges',
+  challengeParticipants: process.env.NEXT_PUBLIC_CHALLENGE_PARTICIPANTS_COLLECTION_ID || 'challenge_participants',
+  userAchievements: process.env.NEXT_PUBLIC_USER_ACHIEVEMENTS_COLLECTION_ID || 'user_achievements',
+  userSettings: process.env.NEXT_PUBLIC_USER_SETTINGS_COLLECTION_ID || 'user_settings',
 } as const

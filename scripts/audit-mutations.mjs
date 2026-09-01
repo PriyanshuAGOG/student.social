@@ -18,11 +18,14 @@ const OWNERSHIP_NOT_APPLICABLE = new Set([
 const BODY_NOT_REQUIRED = new Set([
   'app/api/auth/logout/route.ts:POST',
   'app/api/auth/refresh-token/route.ts:POST',
+  'app/api/notifications/inbox/route.ts:PATCH',
+  'app/api/notifications/inbox/route.ts:DELETE',
   'app/api/notifications/[id]/read/route.ts:PATCH',
   'app/api/notifications/[id]/route.ts:DELETE',
   'app/api/pods/[id]/join/route.ts:POST',
   'app/api/pods/[id]/leave/route.ts:POST',
   'app/api/resources/[id]/like/route.ts:POST',
+  'app/api/users/[id]/follow/route.ts:POST',
 ])
 
 function walk(directory) {
@@ -40,11 +43,12 @@ for (const file of walk('app/api').filter((name) => name.endsWith('route.ts'))) 
     const route = file.split(path.sep).join('/')
     const key = `${route}:${method}`
     const publicAuth = PUBLIC_AUTH_MUTATIONS.has(key)
-    const actorBound = /auth\.userId|\{\s*userId\s*\}\s*=\s*requireUser|requireOwnership\(|requireRoomMember\(|requireSessionParticipant\(|assertPodRole\(|members\.includes/.test(source)
+    const verifiedActor = /requireVerifiedUser\s*\(/.test(source)
+    const actorBound = verifiedActor || /auth\.userId|\{\s*userId\s*\}\s*=\s*requireUser|requireOwnership\(|requireRoomMember\(|requireSessionParticipant\(|assertPodRole\(|members\.includes/.test(source)
     rows.push({
       route,
       method,
-      authentication: publicAuth || /requireUser\(|withAdminApi\(|requireAdmin/.test(source),
+      authentication: publicAuth || /requireUser\(|requireVerifiedUser\(|withAdminApi\(|requireAdmin/.test(source),
       authenticationMode: publicAuth ? 'public-auth-contract' : 'session',
       sameOrigin: 'global-proxy',
       durableRateLimit: 'global-proxy',

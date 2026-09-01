@@ -10,9 +10,12 @@ export default [
   {
     ignores: [
       "node_modules/**",
-      ".next/**",
+      ".next*/**",
       "dist/**",
       "coverage/**",
+      "work/**",
+      "playwright-report/**",
+      "test-results/**",
       "pnpm-lock.yaml",
       "scripts/**",
     ],

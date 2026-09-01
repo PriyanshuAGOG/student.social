@@ -1,145 +1,97 @@
-/**
- * USER FOLLOW/UNFOLLOW API
- * POST /api/users/[id]/follow - Follow/Unfollow a user
- */
+import { NextRequest, NextResponse } from 'next/server'
+import { ID, Query } from 'node-appwrite'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireVerifiedUser } from '@/lib/api-security'
+import { COLLECTIONS, createAdminClient, getDatabaseId } from '@/lib/server/appwrite'
+import { createServerNotification } from '@/lib/server/notifications'
 
-import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/server/appwrite';
-import { withErrorHandling, validateInput, AppError, ErrorSeverity, ErrorCategory } from '@/lib/error-handler';
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireOwnership, requireUser } from '@/lib/api-security';
+async function countConnections(databases: ReturnType<typeof createAdminClient>['databases'], userId: string) {
+  const [followers, following] = await Promise.all([
+    databases.listDocuments(getDatabaseId(), COLLECTIONS.follows, [Query.equal('followingId', userId), Query.limit(1)]),
+    databases.listDocuments(getDatabaseId(), COLLECTIONS.follows, [Query.equal('followerId', userId), Query.limit(1)]),
+  ])
+  return { followerCount: followers.total, followingCount: following.total }
+}
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID || process.env.NEXT_PUBLIC_DATABASE_ID || 'peerspark-main-db';
-const PROFILES_COLLECTION_ID = (process.env.NEXT_PUBLIC_PROFILES_COLLECTION_ID || 'profiles');
-const NOTIFICATIONS_COLLECTION_ID = (process.env.NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID || 'notifications');
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  let authUserId = ''
-  let requestedUserId = ''
-
+async function findProfile(databases: ReturnType<typeof createAdminClient>['databases'], userId: string) {
   try {
-    enforceSameOrigin(request);
-    enforceRateLimit(request, { key: 'users:follow', max: 30, windowMs: 60 * 1000 });
-    const body = await request.json().catch(() => ({}));
-    const auth = requireUser(request);
-    authUserId = auth.userId;
-    requestedUserId = body?.userId || auth.userId;
-    requireOwnership(requestedUserId, auth.userId);
+    return await databases.getDocument(getDatabaseId(), COLLECTIONS.profiles, userId)
+  } catch (error: any) {
+    if (error?.code !== 404) throw error
+    const result = await databases.listDocuments(getDatabaseId(), COLLECTIONS.profiles, [Query.equal('userId', userId), Query.limit(1)])
+    return result.documents[0] || null
+  }
+}
+
+function apiError(error: unknown) {
+  if (error instanceof ApiError) {
+    return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
+  }
+  console.error('[follow] Relationship request failed', error)
+  return NextResponse.json({ success: false, error: 'Could not update this connection' }, { status: 500 })
+}
+
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { userId } = await requireVerifiedUser(request)
+    const { id: targetUserId } = await params
+    const { databases } = createAdminClient()
+    const relationship = targetUserId === userId
+      ? { documents: [] }
+      : await databases.listDocuments(getDatabaseId(), COLLECTIONS.follows, [
+          Query.equal('followerId', userId), Query.equal('followingId', targetUserId), Query.limit(1),
+        ])
+    return NextResponse.json({ success: true, isFollowing: relationship.documents.length > 0, ...(await countConnections(databases, targetUserId)) })
   } catch (error) {
-    if (error instanceof ApiError) {
-      return NextResponse.json(
-        { success: false, error: error.message, code: error.code },
-        { status: error.status }
-      );
-    }
-
-    return NextResponse.json(
-      { success: false, error: 'Invalid request body' },
-      { status: 400 }
-    );
+    return apiError(error)
   }
+}
 
-  const { data, error } = await withErrorHandling(async () => {
-    const { id: targetUserId } = await params;
-    const userId = requestedUserId || authUserId; // Current user
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    enforceSameOrigin(request)
+    enforceRateLimit(request, { key: 'users:follow', max: 40, windowMs: 60_000 })
+    const { userId } = await requireVerifiedUser(request)
+    const { id: targetUserId } = await params
+    const body = await request.json().catch(() => ({}))
+    const action = body?.action === 'follow' || body?.action === 'unfollow' ? body.action : 'toggle'
+    if (!targetUserId) throw new ApiError(400, 'INVALID_INPUT', 'A profile is required')
+    if (targetUserId === userId) throw new ApiError(400, 'CANNOT_FOLLOW_SELF', 'You cannot follow yourself')
 
-    validateInput({ targetUserId, userId }, {
-      targetUserId: { required: true },
-      userId: { required: true },
-    });
+    const { databases } = createAdminClient()
+    const [actor, target] = await Promise.all([findProfile(databases, userId), findProfile(databases, targetUserId)])
+    if (!target) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'This profile is no longer available')
 
-    if (targetUserId === userId) {
-      throw new AppError({
-        code: 'CANNOT_FOLLOW_SELF',
-        message: 'You cannot follow yourself',
-        userMessage: 'You cannot follow yourself',
-        severity: ErrorSeverity.LOW,
-        category: ErrorCategory.VALIDATION,
-      });
+    const existing = await databases.listDocuments(getDatabaseId(), COLLECTIONS.follows, [
+      Query.equal('followerId', userId), Query.equal('followingId', targetUserId), Query.limit(1),
+    ])
+    let isFollowing = Boolean(existing.documents[0])
+    if (existing.documents[0] && action !== 'follow') {
+      await databases.deleteDocument(getDatabaseId(), COLLECTIONS.follows, existing.documents[0].$id)
+      isFollowing = false
+    } else if (!existing.documents[0] && action !== 'unfollow') {
+      await databases.createDocument(getDatabaseId(), COLLECTIONS.follows, ID.unique(), {
+        followerId: userId, followingId: targetUserId, createdAt: new Date().toISOString(),
+      })
+      isFollowing = true
+      await createServerNotification({
+        userId: targetUserId,
+        title: 'New learning connection',
+        message: `${actor?.name || 'A student'} started following you.`,
+        type: 'follow',
+        actionUrl: `/app/profile/${encodeURIComponent(actor?.username || userId)}`,
+        actorId: userId,
+        actorName: actor?.name || 'A student',
+        actorAvatar: actor?.avatar || '',
+      }).catch((error) => console.error('[follow] Notification failed', error))
     }
 
-    const { databases } = await createAdminClient();
-
-    // Get both profiles
-    const [followerProfile, targetProfile] = await Promise.all([
-      databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, userId),
-      databases.getDocument(DATABASE_ID, PROFILES_COLLECTION_ID, targetUserId),
-    ]);
-
-    const following: string[] = Array.isArray(followerProfile.following) ? Array.from(new Set(followerProfile.following as string[])) : [];
-    const isFollowing = following.includes(targetUserId);
-
-    if (isFollowing) {
-      // Unfollow
-      const newFollowing = following.filter((id: string) => id !== targetUserId);
-      await databases.updateDocument(DATABASE_ID, PROFILES_COLLECTION_ID, userId, {
-        following: newFollowing,
-        followingCount: newFollowing.length,
-      });
-
-      const followers: string[] = Array.isArray(targetProfile.followers) ? Array.from(new Set(targetProfile.followers as string[])) : [];
-      const newFollowers = followers.filter((id: string) => id !== userId);
-      await databases.updateDocument(DATABASE_ID, PROFILES_COLLECTION_ID, targetUserId, {
-        followers: newFollowers,
-        followerCount: newFollowers.length,
-      });
-
-      return {
-        success: true,
-        isFollowing: false,
-        followerCount: newFollowers.length,
-        followingCount: newFollowing.length,
-        message: `Unfollowed ${targetProfile.name || 'user'}`,
-      };
-    } else {
-      // Follow
-      const newFollowing = [...following, targetUserId];
-      await databases.updateDocument(DATABASE_ID, PROFILES_COLLECTION_ID, userId, {
-        following: newFollowing,
-        followingCount: newFollowing.length,
-      });
-
-      const followers: string[] = Array.isArray(targetProfile.followers) ? Array.from(new Set(targetProfile.followers as string[])) : [];
-      const newFollowers = [...followers, userId];
-      await databases.updateDocument(DATABASE_ID, PROFILES_COLLECTION_ID, targetUserId, {
-        followers: newFollowers,
-        followerCount: newFollowers.length,
-      });
-
-      // Create notification
-      try {
-        await databases.createDocument(DATABASE_ID, NOTIFICATIONS_COLLECTION_ID, 'unique()', {
-          userId: targetUserId,
-          type: 'follow',
-          actor: userId,
-          actorName: followerProfile.name || 'Someone',
-          actorAvatar: followerProfile.avatar || '',
-          message: `${followerProfile.name || 'Someone'} started following you`,
-          isRead: false,
-          timestamp: new Date().toISOString(),
-        });
-      } catch (notifError) {
-        console.error('Failed to create follow notification:', notifError);
-      }
-
-      return {
-        success: true,
-        isFollowing: true,
-        followerCount: newFollowers.length,
-        followingCount: newFollowing.length,
-        message: `Following ${targetProfile.name || 'user'}`,
-      };
-    }
-  }, { operation: 'toggleFollow' });
-
-  if (error) {
-    return NextResponse.json(
-      { success: false, error: error.userMessage, details: error },
-      { status: error.code === 'VALIDATION_ERROR' || error.code === 'CANNOT_FOLLOW_SELF' ? 400 : error.code === 'RESOURCE_NOT_FOUND' ? 404 : 500 }
-    );
+    return NextResponse.json({
+      success: true,
+      isFollowing,
+      ...(await countConnections(databases, targetUserId)),
+      message: isFollowing ? `You are now following ${target.name || 'this student'}` : `You unfollowed ${target.name || 'this student'}`,
+    })
+  } catch (error) {
+    return apiError(error)
   }
-
-  return NextResponse.json(data);
 }

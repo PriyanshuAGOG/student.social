@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, Bot, User, Sparkles, BookOpen, Calculator, Code, Lightbulb, Mic, Paperclip, MoreVertical, Copy, ThumbsUp, ThumbsDown, RefreshCw, ArrowLeft, Plus, Loader2, X } from 'lucide-react'
+import { Send, Bot, User, Mic, Paperclip, MoreVertical, Copy, ThumbsUp, ThumbsDown, RefreshCw, ArrowLeft, Loader2, X, BookOpen, CalendarDays } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { toast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
+import { Message as AIMessage, MessageContent, MessageResponse } from "@/components/ai-elements/message"
 
 interface Message {
   id: string
@@ -32,45 +32,6 @@ interface AIAttachment {
   extractedText: string
 }
 
-interface Suggestion {
-  id: string
-  title: string
-  description: string
-  icon: any
-  category: string
-}
-
-const suggestions: Suggestion[] = [
-  {
-    id: "1",
-    title: "Explain a concept",
-    description: "Get detailed explanations on any topic",
-    icon: BookOpen,
-    category: "Learning",
-  },
-  {
-    id: "2",
-    title: "Solve math problems",
-    description: "Step-by-step solutions for equations",
-    icon: Calculator,
-    category: "Math",
-  },
-  {
-    id: "3",
-    title: "Code assistance",
-    description: "Debug, explain, or write code",
-    icon: Code,
-    category: "Programming",
-  },
-  {
-    id: "4",
-    title: "Study tips",
-    description: "Personalized learning strategies",
-    icon: Lightbulb,
-    category: "Study",
-  },
-]
-
 function createWelcomeMessage(): Message {
   return {
     id: "welcome",
@@ -88,6 +49,7 @@ export default function AIAssistantPage() {
   const [voiceSeconds, setVoiceSeconds] = useState(0)
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
   const [pendingAttachment, setPendingAttachment] = useState<AIAttachment | null>(null)
+  const [contextEnabled, setContextEnabled] = useState({ resources: true, calendar: true })
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const attachmentInputRef = useRef<HTMLInputElement>(null)
@@ -152,7 +114,7 @@ export default function AIAssistantPage() {
           content: m.content,
         })),
         system: "Help students with explanations, problem-solving, coding, study strategies, and more. Be concise, helpful, and encouraging. Use markdown formatting for code and structured content.",
-        context: { resources: true, calendar: true },
+        context: contextEnabled,
       }
 
       const resp = await fetch("/api/ai/chat", {
@@ -194,11 +156,6 @@ export default function AIAssistantPage() {
     }
   }
 
-  const handleSuggestionClick = (suggestion: Suggestion) => {
-    setInputValue(suggestion.title)
-    textareaRef.current?.focus()
-  }
-
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -227,7 +184,7 @@ export default function AIAssistantPage() {
               content: m.content,
             })),
             system: "Help students with explanations, problem-solving, coding, study strategies, and more. Be concise, helpful, and encouraging.",
-            context: { resources: true, calendar: true },
+            context: contextEnabled,
           }
 
           const resp = await fetch("/api/ai/chat", {
@@ -370,53 +327,36 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Desktop Header */}
-      <div className="student-ai-header hidden md:block border-b bg-card p-4">
+      <div className="student-ai-header hidden md:block border-b bg-card px-4 py-2.5">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Avatar className="h-10 w-10">
+            <Avatar className="h-8 w-8">
               <AvatarImage src="/placeholder.svg?height=40&width=40&text=AI" />
               <AvatarFallback className="bg-primary text-primary-foreground">
-                <Bot className="h-5 w-5" />
+                <Bot className="h-4 w-4" />
               </AvatarFallback>
             </Avatar>
-            <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-green-500 rounded-full border-2 border-background" />
+            <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 bg-[#3f6f6b] rounded-full border-2 border-background" />
           </div>
           <div>
-            <h1 className="font-semibold">AI Study Assistant</h1>
-            <p className="text-sm text-muted-foreground">Always ready to help you learn</p>
+            <h1 className="text-sm font-semibold">AI</h1>
+            <p className="text-xs text-muted-foreground">Your connected learning workspace</p>
           </div>
-          <div className="ml-auto">
-            <Badge variant="secondary" className="gap-1">
-              <Sparkles className="h-3 w-3" />
-              Online
-            </Badge>
-          </div>
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => { setMessages([createWelcomeMessage()]); setInputValue("") }}>New conversation</Button>
         </div>
       </div>
 
       <div className="student-ai-body">
-        <aside className="student-ai-rail hidden lg:flex">
-          <Button onClick={() => { setMessages([createWelcomeMessage()]); setInputValue("") }} className="student-ai-new"><Plus />New conversation</Button>
-          <div className="student-ai-rail-label">START WITH A MODE</div>
-          <div className="student-ai-modes">
-            {suggestions.map((suggestion) => (
-              <button key={suggestion.id} type="button" onClick={() => handleSuggestionClick(suggestion)}>
-                <span><suggestion.icon aria-hidden="true" /></span>
-                <div><strong>{suggestion.title}</strong><small>{suggestion.description}</small></div>
-              </button>
-            ))}
-          </div>
-          <div className="student-ai-note"><Sparkles /><strong>Built for learning</strong><p>Ask for a hint, a plan, a critique, or a simpler explanation—not just an answer.</p></div>
-        </aside>
         <section className="student-ai-conversation">
       {/* Messages */}
       <div className="flex-1 overflow-hidden relative">
         <ScrollArea className="h-full">
           <div className="p-4 pb-4 space-y-4 max-w-4xl mx-auto">
             {messages.map((message) => (
-            <div
+            <AIMessage
               key={message.id}
-              className={`flex gap-3 ${message.sender === "user" ? "justify-end" : "justify-start"}`}
+              from={message.sender === "ai" ? "assistant" : "user"}
+              className={`relative flex-row gap-3 ${message.sender === "user" ? "justify-end" : "justify-start"}`}
             >
               {message.sender === "ai" && (
                 <Avatar className="h-8 w-8 mt-1">
@@ -426,7 +366,7 @@ export default function AIAssistantPage() {
                 </Avatar>
               )}
 
-              <div
+              <MessageContent
                 className={`max-w-[85%] md:max-w-[80%] ${
                   message.sender === "user"
                     ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md"
@@ -434,7 +374,7 @@ export default function AIAssistantPage() {
                 } p-3 relative group`}
               >
                 {message.attachmentName ? <div className="mb-2 inline-flex max-w-full items-center gap-2 rounded-xl bg-black/10 px-2.5 py-1.5 text-xs"><Paperclip className="h-3.5 w-3.5" /><span className="truncate">{message.attachmentName}</span></div> : null}
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                {message.sender === "ai" ? <MessageResponse>{message.content}</MessageResponse> : <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>}
                 <p className="text-xs opacity-70 mt-2">
                   {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </p>
@@ -469,7 +409,7 @@ export default function AIAssistantPage() {
                     </DropdownMenu>
                   </div>
                 )}
-              </div>
+              </MessageContent>
 
               {message.sender === "user" && (
                 <Avatar className="h-8 w-8 mt-1">
@@ -478,7 +418,7 @@ export default function AIAssistantPage() {
                   </AvatarFallback>
                 </Avatar>
               )}
-            </div>
+            </AIMessage>
           ))}
 
           {isLoading && (
@@ -505,34 +445,11 @@ export default function AIAssistantPage() {
       {/* Input Area */}
       <div className="student-ai-composer sticky bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm supports-[backdrop-filter]:bg-card/80 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-4">
         <div className="max-w-4xl mx-auto">
-          {/* Suggestions (show when no messages or few messages) */}
-          {messages.length <= 1 && (
-            <div className="mb-3 md:mb-4">
-              <p className="text-xs md:text-sm text-muted-foreground mb-2 md:mb-3">Try asking about:</p>
-              <div className="grid grid-cols-2 gap-1.5 md:gap-2">
-                {suggestions.map((suggestion) => (
-                  <Button
-                    key={suggestion.id}
-                    variant="outline"
-                    className="h-auto p-2 md:p-3 text-left justify-start bg-transparent hover:bg-muted/50"
-                    onClick={() => handleSuggestionClick(suggestion)}
-                  >
-                    <div className="flex items-center gap-1.5 md:gap-2 w-full">
-                      <div className="p-1 md:p-1.5 bg-primary/10 rounded-md flex-shrink-0">
-                        <suggestion.icon className="h-3 w-3 text-primary" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-xs truncate">{suggestion.title}</p>
-                        <p className="text-xs text-muted-foreground truncate hidden sm:block">{suggestion.description}</p>
-                      </div>
-                    </div>
-                  </Button>
-                ))}
-              </div>
-              <Separator className="my-3 md:my-4" />
-            </div>
-          )}
-
+          <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-0.5" aria-label="AI context sources">
+            <button type="button" onClick={() => setContextEnabled((value) => ({ ...value, resources: !value.resources }))} aria-pressed={contextEnabled.resources} className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${contextEnabled.resources ? "border-[#3f6f6b]/30 bg-[#dcebe7] text-[#315e59]" : "border-border bg-transparent text-muted-foreground"}`}><BookOpen className="size-3.5" />Vault {contextEnabled.resources ? "connected" : "off"}</button>
+            <button type="button" onClick={() => setContextEnabled((value) => ({ ...value, calendar: !value.calendar }))} aria-pressed={contextEnabled.calendar} className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${contextEnabled.calendar ? "border-[#76556d]/25 bg-[#eee4ec] text-[#62465b]" : "border-border bg-transparent text-muted-foreground"}`}><CalendarDays className="size-3.5" />Calendar {contextEnabled.calendar ? "connected" : "off"}</button>
+            <span className="shrink-0 text-[10px] text-muted-foreground">Only items you can access are included.</span>
+          </div>
           {/* Message Input */}
           {isListening ? (
             <div className="mb-2 flex min-h-12 items-center gap-2 rounded-2xl border border-[#76556d]/25 bg-[#76556d]/[0.07] px-3 py-2 text-xs" role="status">

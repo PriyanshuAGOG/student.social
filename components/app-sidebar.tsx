@@ -9,6 +9,7 @@ import {
   BookOpen,
   Bot,
   Calendar,
+  Focus,
   Flame,
   Home,
   LogOut,
@@ -42,6 +43,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
@@ -53,7 +55,8 @@ const navigation = [
     items: [
       { title: "Learning feed", url: "/app/feed", icon: Home },
       { title: "Study pods", url: "/app/pods", icon: Users },
-      { title: "AI tutor", url: "/app/ai", icon: Bot, accent: true },
+      { title: "Focus", url: "/app/focus", icon: Focus },
+      { title: "AI", url: "/app/ai", icon: Bot, accent: true },
     ],
   },
   {
@@ -68,7 +71,6 @@ const navigation = [
     label: "Progress",
     items: [
       { title: "Leaderboard", url: "/app/leaderboard", icon: Trophy },
-      { title: "Analytics", url: "/app/analytics", icon: BarChart3 },
       { title: "Notifications", url: "/app/notifications", icon: Bell },
       { title: "Settings", url: "/app/settings", icon: Settings },
     ],
@@ -101,10 +103,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar collapsible="icon" variant="floating" {...props}>
-      <SidebarHeader className="student-sidebar-header p-3">
+      <SidebarHeader className="student-sidebar-header p-3 group-data-[collapsible=icon]:p-2">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild className="student-brand-button h-14 rounded-2xl px-2">
+            <SidebarMenuButton size="lg" asChild tooltip="Student.social" className="student-brand-button h-14 rounded-2xl px-2 group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:p-0!">
               <Link href="/app/feed" prefetch={false} aria-label="Student.social learning feed">
                 <span className="student-brand-mark-wrap" style={{ border: 0, background: "transparent" }}><BrandLogo variant="icon" tone="inverse" decorative className="h-10 w-10 object-contain" /></span>
                 <span className="grid flex-1 text-left leading-tight">
@@ -154,16 +156,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
 
       <SidebarFooter className="gap-2 p-3">
-        <Link href="/app/ai" prefetch={false} className="student-focus-card group-data-[collapsible=icon]:hidden">
-          <span><Flame className="size-4" /> Focus companion</span>
-          <strong>Turn “stuck” into a next step.</strong>
-          <small>Ask the tutor →</small>
+        <Link href="/app/focus" prefetch={false} className="student-focus-card group-data-[collapsible=icon]:hidden">
+          <span><Flame className="size-4" /> Focus space</span>
+          <strong>Protect one block of attention.</strong>
+          <small>Start a session →</small>
         </Link>
+        <SidebarTrigger className="student-sidebar-toggle h-9 w-full justify-start gap-3 rounded-xl px-3 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0" aria-label="Collapse or expand navigation"><span className="group-data-[collapsible=icon]:sr-only">Collapse navigation</span></SidebarTrigger>
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuButton size="lg" className="student-account-button h-14 rounded-2xl data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground" aria-label="Open account menu">
+                <SidebarMenuButton size="lg" tooltip={displayName} className="student-account-button h-14 rounded-2xl data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:p-0!" aria-label="Open account menu">
                   <Avatar className="h-9 w-9 rounded-xl">
                     <AvatarImage src={profile?.avatar || "/placeholder.svg"} alt={displayName} />
                     <AvatarFallback className="rounded-xl bg-[#78815f] text-[#fffaf2]">{userInitials || "S"}</AvatarFallback>

@@ -26,11 +26,11 @@ const pageNames: Record<string, string> = {
   feed: "Learning feed",
   pods: "Study pods",
   ai: "AI tutor",
+  focus: "Focus",
   chat: "Messages",
   vault: "Resource vault",
   calendar: "Calendar",
   leaderboard: "Leaderboard",
-  analytics: "Analytics",
   notifications: "Notifications",
   profile: "Profile",
   settings: "Settings",
@@ -48,7 +48,7 @@ export function AppWorkspace({ children }: { children: React.ReactNode }) {
   const [greeting, setGreeting] = useState("Hello")
   const section = pathname.split("/").filter(Boolean)[1] || "feed"
   const title = pageNames[section] || "Student.social"
-  const immersive = pathname.startsWith("/app/chat") || pathname.startsWith("/app/messages/") || pathname.startsWith("/app/ai") || pathname.startsWith("/app/search") || pathname.startsWith("/app/calendar") || /^\/app\/pods\/[^/]+/.test(pathname)
+  const immersive = pathname.startsWith("/app/chat") || pathname.startsWith("/app/messages/") || pathname.startsWith("/app/ai") || pathname.startsWith("/app/focus") || pathname.startsWith("/app/search") || pathname.startsWith("/app/calendar") || /^\/app\/pods\/[^/]+/.test(pathname)
   const displayName = profile?.name || user?.name || "Student"
   const firstName = displayName.trim().split(/\s+/)[0] || "Student"
   const initials = displayName.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "S"

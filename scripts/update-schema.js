@@ -36,6 +36,7 @@ const DATABASE_ID = env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || env.APPWRITE_DATABAS
 const API_KEY = env.APPWRITE_API_KEY || process.env.APPWRITE_API_KEY
 const ALLOW_DESTRUCTIVE_SCHEMA_CHANGES = (process.env.ALLOW_DESTRUCTIVE_SCHEMA_CHANGES || env.ALLOW_DESTRUCTIVE_SCHEMA_CHANGES) === 'true'
 const APPLY_COLLECTION_PERMISSIONS = (process.env.APPLY_COLLECTION_PERMISSIONS || env.APPLY_COLLECTION_PERMISSIONS) === 'true'
+const SCHEMA_COLLECTIONS = String(process.env.SCHEMA_COLLECTIONS || '').split(',').map((value) => value.trim()).filter(Boolean)
 
 if (!ENDPOINT || !PROJECT_ID || !DATABASE_ID || !API_KEY) {
   console.error('Missing Appwrite configuration. Set NEXT_PUBLIC_APPWRITE_ENDPOINT, NEXT_PUBLIC_APPWRITE_PROJECT_ID, NEXT_PUBLIC_APPWRITE_DATABASE_ID, APPWRITE_API_KEY.')
@@ -133,6 +134,7 @@ const collections = [
     attrs: [
       { key: 'userId', type: 'string', size: 255, required: true },
       { key: 'name', type: 'string', size: 255, required: true },
+      { key: 'username', type: 'string', size: 120 },
       { key: 'email', type: 'string', size: 255, required: true },
       { key: 'bio', type: 'string', size: 1000 },
       { key: 'location', type: 'string', size: 255 },
@@ -156,6 +158,10 @@ const collections = [
       { key: 'totalPoints', type: 'integer' },
       { key: 'level', type: 'integer' },
       { key: 'badges', type: 'string', size: 100, array: true },
+    ],
+    indexes: [
+      { key: 'idx_profiles_username', type: 'unique', attributes: ['username'], orders: ['ASC'] },
+      { key: 'idx_profiles_name', type: 'fulltext', attributes: ['name'] },
     ],
   },
   {
@@ -191,6 +197,9 @@ const collections = [
       { key: 'moderatedBy', type: 'string', size: 255 },
       { key: 'moderatedAt', type: 'string', size: 255 },
     ],
+    indexes: [
+      { key: 'idx_posts_author_time', type: 'key', attributes: ['authorId', 'timestamp'], orders: ['ASC', 'DESC'] },
+    ],
   },
   {
     id: 'messages',
@@ -223,6 +232,7 @@ const collections = [
     indexes: [
       { key: 'idx_messages_room_created', type: 'key', attributes: ['roomId', 'timestamp'], orders: ['ASC', 'DESC'] },
       { key: 'idx_messages_room_client', type: 'key', attributes: ['roomId', 'clientMessageId'], orders: ['ASC', 'ASC'] },
+      { key: 'idx_messages_sender_time', type: 'key', attributes: ['senderId', 'timestamp'], orders: ['ASC', 'DESC'] },
     ],
   },
   {
@@ -308,6 +318,7 @@ const collections = [
     ],
     indexes: [
       { key: 'idx_comments_post_time', type: 'key', attributes: ['postId', 'timestamp'], orders: ['ASC', 'ASC'] },
+      { key: 'idx_comments_author_time', type: 'key', attributes: ['authorId', 'timestamp'], orders: ['ASC', 'DESC'] },
     ],
   },
   {
@@ -378,6 +389,10 @@ const collections = [
       { key: 'moderationStatus', type: 'string', size: 80 },
       { key: 'moderatedBy', type: 'string', size: 255 },
       { key: 'moderatedAt', type: 'string', size: 255 },
+    ],
+    indexes: [
+      { key: 'idx_resources_author_time', type: 'key', attributes: ['authorId', 'uploadedAt'], orders: ['ASC', 'DESC'] },
+      { key: 'idx_resources_pod_time', type: 'key', attributes: ['podId', 'uploadedAt'], orders: ['ASC', 'DESC'] },
     ],
   },
   {
@@ -1143,6 +1158,118 @@ const collections = [
       { key: 'createdAt', type: 'string', size: 255, required: true },
     ],
   },
+  {
+    id: 'follows',
+    name: 'Profile Follows',
+    attrs: [
+      { key: 'followerId', type: 'string', size: 255, required: true },
+      { key: 'followingId', type: 'string', size: 255, required: true },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+    ],
+    indexes: [
+      { key: 'idx_follows_pair', type: 'unique', attributes: ['followerId', 'followingId'], orders: ['ASC', 'ASC'] },
+      { key: 'idx_follows_follower_time', type: 'key', attributes: ['followerId', 'createdAt'], orders: ['ASC', 'DESC'] },
+      { key: 'idx_follows_following_time', type: 'key', attributes: ['followingId', 'createdAt'], orders: ['ASC', 'DESC'] },
+    ],
+  },
+  {
+    id: 'focus_sessions',
+    name: 'Focus Sessions',
+    attrs: [
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'title', type: 'string', size: 255, required: true },
+      { key: 'plannedMinutes', type: 'integer', required: true },
+      { key: 'actualMinutes', type: 'integer' },
+      { key: 'status', type: 'string', size: 50, required: true },
+      { key: 'podId', type: 'string', size: 255 },
+      { key: 'startedAt', type: 'string', size: 255, required: true },
+      { key: 'endedAt', type: 'string', size: 255 },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+      { key: 'updatedAt', type: 'string', size: 255, required: true },
+    ],
+    indexes: [
+      { key: 'idx_focus_user_time', type: 'key', attributes: ['userId', 'startedAt'], orders: ['ASC', 'DESC'] },
+      { key: 'idx_focus_user_status', type: 'key', attributes: ['userId', 'status'], orders: ['ASC', 'ASC'] },
+      { key: 'idx_focus_pod_time', type: 'key', attributes: ['podId', 'startedAt'], orders: ['ASC', 'DESC'] },
+    ],
+  },
+  {
+    id: 'challenges',
+    name: 'Learning Challenges',
+    attrs: [
+      { key: 'title', type: 'string', size: 255, required: true },
+      { key: 'description', type: 'string', size: 2000 },
+      { key: 'creatorId', type: 'string', size: 255, required: true },
+      { key: 'scope', type: 'string', size: 50, required: true },
+      { key: 'podId', type: 'string', size: 255 },
+      { key: 'metric', type: 'string', size: 80, required: true },
+      { key: 'goalValue', type: 'integer', required: true },
+      { key: 'durationDays', type: 'integer', required: true },
+      { key: 'points', type: 'integer', required: true },
+      { key: 'visibility', type: 'string', size: 50, required: true },
+      { key: 'status', type: 'string', size: 50, required: true },
+      { key: 'startsAt', type: 'string', size: 255, required: true },
+      { key: 'endsAt', type: 'string', size: 255, required: true },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+      { key: 'updatedAt', type: 'string', size: 255, required: true },
+    ],
+    indexes: [
+      { key: 'idx_challenges_status_start', type: 'key', attributes: ['status', 'startsAt'], orders: ['ASC', 'DESC'] },
+      { key: 'idx_challenges_scope_time', type: 'key', attributes: ['scope', 'createdAt'], orders: ['ASC', 'DESC'] },
+      { key: 'idx_challenges_pod_time', type: 'key', attributes: ['podId', 'createdAt'], orders: ['ASC', 'DESC'] },
+    ],
+  },
+  {
+    id: 'challenge_participants',
+    name: 'Challenge Participants',
+    attrs: [
+      { key: 'challengeId', type: 'string', size: 255, required: true },
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'progress', type: 'integer', required: true },
+      { key: 'status', type: 'string', size: 50, required: true },
+      { key: 'points', type: 'integer', required: true },
+      { key: 'joinedAt', type: 'string', size: 255, required: true },
+      { key: 'completedAt', type: 'string', size: 255 },
+      { key: 'updatedAt', type: 'string', size: 255, required: true },
+    ],
+    indexes: [
+      { key: 'idx_challenge_participant', type: 'unique', attributes: ['challengeId', 'userId'], orders: ['ASC', 'ASC'] },
+      { key: 'idx_challenge_rank', type: 'key', attributes: ['challengeId', 'points'], orders: ['ASC', 'DESC'] },
+      { key: 'idx_participant_user_time', type: 'key', attributes: ['userId', 'joinedAt'], orders: ['ASC', 'DESC'] },
+    ],
+  },
+  {
+    id: 'user_achievements',
+    name: 'User Achievements',
+    attrs: [
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'achievementKey', type: 'string', size: 120, required: true },
+      { key: 'title', type: 'string', size: 255, required: true },
+      { key: 'description', type: 'string', size: 1000 },
+      { key: 'progress', type: 'integer', required: true },
+      { key: 'target', type: 'integer', required: true },
+      { key: 'earnedAt', type: 'string', size: 255 },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+      { key: 'updatedAt', type: 'string', size: 255, required: true },
+    ],
+    indexes: [
+      { key: 'idx_achievement_user_key', type: 'unique', attributes: ['userId', 'achievementKey'], orders: ['ASC', 'ASC'] },
+      { key: 'idx_achievement_user_time', type: 'key', attributes: ['userId', 'earnedAt'], orders: ['ASC', 'DESC'] },
+    ],
+  },
+  {
+    id: 'user_settings',
+    name: 'User Settings',
+    attrs: [
+      { key: 'userId', type: 'string', size: 255, required: true },
+      { key: 'preferences', type: 'string', size: 10000, required: true },
+      { key: 'createdAt', type: 'string', size: 255, required: true },
+      { key: 'updatedAt', type: 'string', size: 255, required: true },
+    ],
+    indexes: [
+      { key: 'idx_user_settings_user', type: 'unique', attributes: ['userId'], orders: ['ASC'] },
+    ],
+  },
 ]
 
 const buckets = [
@@ -1352,7 +1479,8 @@ async function main() {
   
   await ensureDatabase()
 
-  for (const col of collections) {
+  const selectedCollections = SCHEMA_COLLECTIONS.length ? collections.filter((collection) => SCHEMA_COLLECTIONS.includes(collection.id)) : collections
+  for (const col of selectedCollections) {
     try {
       await ensureCollection(col)
       for (const attr of col.attrs) {
@@ -1371,7 +1499,7 @@ async function main() {
     }
   }
 
-  for (const bucket of buckets) {
+  for (const bucket of SCHEMA_COLLECTIONS.length ? [] : buckets) {
     try {
       await ensureBucket(bucket)
     } catch (bucketErr) {

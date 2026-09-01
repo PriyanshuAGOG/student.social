@@ -45,7 +45,10 @@ export default function SettingsPage() {
       }
 
       try {
-        const profile = await profileService.getProfile(user.$id)
+        const [profile, notificationResponse] = await Promise.all([
+          profileService.getProfile(user.$id),
+          fetch('/api/notifications/preferences', { credentials: 'include', cache: 'no-store' }).then((response) => response.ok ? response.json() : null).catch(() => null),
+        ])
         const persisted = normalizePeerSparkSettings((user.prefs as Record<string, any> | undefined)?.[PEERSPARK_SETTINGS_PREF_KEY])
         const flatSettings = flattenPeerSparkSettings(persisted)
         if (flatSettings["language.timezone"] === "auto" && typeof Intl !== "undefined") {
@@ -55,6 +58,13 @@ export default function SettingsPage() {
           ...flatSettings,
           "profile.display-name": user.name || profile?.name || "",
           "profile.bio": profile?.bio || "",
+          ...(notificationResponse?.data ? {
+            "notifications.push-notifications": Boolean(notificationResponse.data.pushEnabled),
+            "notifications.email-notifications": Boolean(notificationResponse.data.emailEnabled),
+            "notifications.pod-notifications": notificationResponse.data.studyPush !== false,
+            "notifications.message-notifications": notificationResponse.data.socialPush !== false,
+            "notifications.calendar-reminders": notificationResponse.data.calendarPush !== false,
+          } : {}),
         })
 
         if (persisted.appearance.theme && persisted.appearance.theme !== theme) {
@@ -124,6 +134,23 @@ export default function SettingsPage() {
         await refreshUser()
       } else if (sectionId === "profile" && itemId === "bio") {
         await profileService.updateProfile(user.$id, { bio: String(value) })
+      } else if (sectionId === "notifications") {
+        const keyMap: Record<string, string> = {
+          "push-notifications": "pushEnabled",
+          "email-notifications": "emailEnabled",
+          "pod-notifications": "studyPush",
+          "message-notifications": "socialPush",
+          "calendar-reminders": "calendarPush",
+        }
+        const preferenceKey = keyMap[itemId]
+        if (preferenceKey) {
+          const response = await fetch('/api/notifications/preferences', {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [preferenceKey]: value }),
+          })
+          const payload = await response.json().catch(() => null)
+          if (!response.ok) throw new Error(payload?.error || 'Notification preference was not saved')
+        }
+        await persistPrefs({ ...settings, [settingKey]: value })
       } else {
         await persistPrefs({ ...settings, [settingKey]: value })
       }
@@ -234,10 +261,11 @@ export default function SettingsPage() {
           return
         }
         case "account.deactivate-account":
+          await persistPrefs({ ...settings, "profile.profile-visibility": "private" })
           await handleLogout()
           return
         case "account.delete-account":
-          if (!window.confirm("Delete your account permanently? This cannot be undone.")) return
+          if (window.prompt("This permanently deletes your account and learning data. Type DELETE to continue.") !== "DELETE") return
           await authService.deleteAccount()
           router.push("/register")
           return
@@ -325,7 +353,8 @@ export default function SettingsPage() {
           <Input
             id={item.id}
             value={String(currentValue)}
-            onChange={(event) => handleSettingChange(sectionId, item.id, event.target.value)}
+            onChange={(event) => setSettings((previous) => ({ ...previous, [settingKey]: event.target.value }))}
+            onBlur={(event) => handleSettingChange(sectionId, item.id, event.target.value)}
             placeholder={item.description}
             disabled={isSaving}
           />

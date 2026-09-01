@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ID, Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/server/appwrite'
 import { getEnv } from '@/lib/env'
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireVerifiedUser } from '@/lib/api-security'
 import { z } from 'zod'
 import { parseJsonBody } from '@/lib/api-security'
 
@@ -22,7 +22,7 @@ const preferenceSchema = z.record(z.union([z.boolean(), z.number(), z.string().m
 export async function GET(req: NextRequest) {
   try {
     const { databases } = await createAdminClient()
-    const { userId } = requireUser(req)
+    const { userId } = await requireVerifiedUser(req)
 
     let response
     try {
@@ -31,10 +31,7 @@ export async function GET(req: NextRequest) {
         NOTIFICATION_PREFERENCES_COLLECTION_ID,
         [Query.equal('userId', userId)]
       )
-    } catch (lookupError: any) {
-      console.warn('[API] Notification preferences lookup unavailable:', lookupError?.message || lookupError)
-      return NextResponse.json({ success: true, data: null })
-    }
+    } catch (lookupError: any) { throw lookupError }
 
     if (response.documents.length === 0) {
       return NextResponse.json({
@@ -53,7 +50,7 @@ export async function GET(req: NextRequest) {
     }
 
     console.error('[API] Error fetching preferences:', error)
-    return NextResponse.json({ success: true, data: null })
+    return NextResponse.json({ success: false, error: 'Notification preferences could not be loaded' }, { status: 500 })
   }
 }
 
@@ -62,7 +59,7 @@ export async function POST(req: NextRequest) {
     enforceSameOrigin(req)
     enforceRateLimit(req, { key: 'notifications:preferences', max: 20, windowMs: 60 * 1000 })
     const { databases } = await createAdminClient()
-    const { userId } = requireUser(req)
+    const { userId } = await requireVerifiedUser(req)
 
     const body = await parseJsonBody(req, preferenceSchema)
     const { userId: _ignoredUserId, $id: _ignoredId, ...safeBody } = body || {}
@@ -75,17 +72,7 @@ export async function POST(req: NextRequest) {
         NOTIFICATION_PREFERENCES_COLLECTION_ID,
         [Query.equal('userId', userId)]
       )
-    } catch (lookupError: any) {
-      console.warn('[API] Notification preferences save fallback:', lookupError?.message || lookupError)
-      return NextResponse.json({
-        success: true,
-        data: {
-          userId,
-          ...body,
-          updatedAt: new Date().toISOString(),
-        },
-      })
-    }
+    } catch (lookupError: any) { throw lookupError }
 
     let result
     if (existing.documents.length > 0) {
@@ -125,13 +112,6 @@ export async function POST(req: NextRequest) {
     }
 
     console.error('[API] Error updating preferences:', error)
-    return NextResponse.json({
-      success: true,
-      data: {
-        userId: req.headers.get('x-user-id'),
-        ...(await req.json().catch(() => ({}))),
-        updatedAt: new Date().toISOString(),
-      },
-    })
+    return NextResponse.json({ success: false, error: 'Notification preferences were not saved' }, { status: 500 })
   }
 }
