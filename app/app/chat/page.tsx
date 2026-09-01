@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -35,6 +36,8 @@ interface ChatRoom {
   isOnline?: boolean;
   participants?: string[];
   podId?: string | null;
+  description?: string;
+  access?: "invite_only" | "members_can_invite";
 }
 
 function roomParticipants(room: any): string[] {
@@ -140,6 +143,8 @@ export default function PremiumChatPage() {
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [newChatMode, setNewChatMode] = useState<"direct" | "group">("direct");
   const [groupName, setGroupName] = useState("");
+  const [groupDescription, setGroupDescription] = useState("");
+  const [groupAccess, setGroupAccess] = useState<"invite_only" | "members_can_invite">("invite_only");
   const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
   const [availableProfiles, setAvailableProfiles] = useState<ChatProfile[]>([]);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
@@ -874,6 +879,8 @@ export default function PremiumChatPage() {
   const openNewChat = () => {
     setSelectedProfileIds([]);
     setGroupName("");
+    setGroupDescription("");
+    setGroupAccess("invite_only");
     setNewChatMode("direct");
     setIsNewChatOpen(true);
   };
@@ -891,14 +898,19 @@ export default function PremiumChatPage() {
 
   const createNewChat = async () => {
     if (!user?.$id || selectedProfileIds.length === 0) return;
+    if (newChatMode === "group" && groupName.trim().length < 2) {
+      toast({ title: "Name your group", description: "Use at least two characters so everyone can recognise it.", variant: "destructive" });
+      return;
+    }
     setIsCreatingChat(true);
     try {
       const room =
         newChatMode === "direct"
           ? await chatService.getOrCreateDirectRoom(user.$id, selectedProfileIds[0])
           : await chatService.createGroupRoom(
-              groupName.trim() || "New group",
+              groupName.trim(),
               Array.from(new Set([user.$id, ...selectedProfileIds])),
+              { description: groupDescription.trim(), access: groupAccess },
             );
 
       const normalizedRoom: ChatRoom = {
@@ -914,6 +926,8 @@ export default function PremiumChatPage() {
         isOnline: room.isOnline || false,
         participants: room.participants || room.memberIds || [user.$id, ...selectedProfileIds],
         podId: room.podId,
+        description: room.description || groupDescription.trim(),
+        access: room.access || groupAccess,
       };
 
       setRooms((prev) => {
@@ -923,6 +937,9 @@ export default function PremiumChatPage() {
           : [normalizedRoom, ...prev];
       });
       setSelectedRoom(normalizedRoom);
+      const nextSearchParams = new URLSearchParams(searchParams.toString());
+      nextSearchParams.set("room", normalizedRoom.$id);
+      router.replace(`/app/chat?${nextSearchParams.toString()}`, { scroll: false });
       setShowMobileChatList(false);
       setIsNewChatOpen(false);
       toast({ title: "Chat ready", description: normalizedRoom.name });
@@ -1148,14 +1165,14 @@ export default function PremiumChatPage() {
         </div>
       )}
 
-      {isNewChatOpen && (
+      {isNewChatOpen && typeof document !== "undefined" ? createPortal((
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 backdrop-blur-sm sm:items-center sm:p-4"
           role="dialog"
           aria-modal="true"
           aria-label="Start a new chat"
         >
-          <div className="w-full max-w-lg rounded-t-[28px] border border-border/60 bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[28px] sm:p-6">
+          <div className="max-h-[calc(100%-0.75rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-t-[28px] border border-border/60 bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:max-h-[min(90dvh,780px)] sm:rounded-[28px] sm:p-6">
             <div className="mb-5 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-semibold tracking-[-0.025em] text-foreground">New conversation</h2>
@@ -1193,12 +1210,21 @@ export default function PremiumChatPage() {
               </button>
             </div>
             {newChatMode === "group" && (
-              <input
-                value={groupName}
-                onChange={(event) => setGroupName(event.target.value)}
-                placeholder="Study group name"
-                className="mb-4 h-11 w-full rounded-full border border-border/60 bg-background px-4 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
-              />
+              <div className="mb-4 grid gap-3 rounded-2xl border border-border/55 bg-background/70 p-3">
+                <label className="grid gap-1.5 text-xs font-semibold text-foreground">Group name
+                  <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="e.g. Java sprint circle" maxLength={80} className="h-11 w-full rounded-xl border border-border/60 bg-background px-3 text-sm font-normal outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10" />
+                </label>
+                <label className="grid gap-1.5 text-xs font-semibold text-foreground">Description <span className="font-normal text-muted-foreground">(optional)</span>
+                  <textarea value={groupDescription} onChange={(event) => setGroupDescription(event.target.value)} placeholder="What will this group learn or build together?" maxLength={500} rows={2} className="w-full resize-none rounded-xl border border-border/60 bg-background px-3 py-2.5 text-sm font-normal outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10" />
+                </label>
+                <fieldset>
+                  <legend className="mb-1.5 text-xs font-semibold text-foreground">Who can add members?</legend>
+                  <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/65 p-1">
+                    <button type="button" onClick={() => setGroupAccess("invite_only")} className={groupAccess === "invite_only" ? "rounded-lg bg-background px-2 py-2 text-xs font-semibold shadow-sm" : "rounded-lg px-2 py-2 text-xs text-muted-foreground"}>Admins only</button>
+                    <button type="button" onClick={() => setGroupAccess("members_can_invite")} className={groupAccess === "members_can_invite" ? "rounded-lg bg-background px-2 py-2 text-xs font-semibold shadow-sm" : "rounded-lg px-2 py-2 text-xs text-muted-foreground"}>All members</button>
+                  </div>
+                </fieldset>
+              </div>
             )}
             <div className="max-h-[42dvh] space-y-1 overflow-y-auto rounded-2xl border border-border/55 bg-background p-1.5 sm:max-h-72">
               {availableProfiles.length === 0 ? (
@@ -1239,7 +1265,7 @@ export default function PremiumChatPage() {
               <button
                 type="button"
                 onClick={createNewChat}
-                disabled={isCreatingChat || selectedProfileIds.length === 0}
+                disabled={isCreatingChat || selectedProfileIds.length === 0 || (newChatMode === "group" && groupName.trim().length < 2)}
                 className="h-11 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
                 {isCreatingChat ? "Creating…" : "Create chat"}
@@ -1247,7 +1273,7 @@ export default function PremiumChatPage() {
             </div>
           </div>
         </div>
-      )}
+      ), document.body) : null}
 
       {/* Empty state for desktop without room selected */}
       {!selectedRoom && isDesktop && (

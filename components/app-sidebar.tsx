@@ -53,8 +53,8 @@ const navigation = [
   {
     label: "Your day",
     items: [
-      { title: "Learning feed", url: "/app/feed", icon: Home },
-      { title: "Study pods", url: "/app/pods", icon: Users },
+      { title: "Feed", url: "/app/feed", icon: Home },
+      { title: "Pods", url: "/app/pods", icon: Users },
       { title: "Focus", url: "/app/focus", icon: Focus },
       { title: "AI", url: "/app/ai", icon: Bot, accent: true },
     ],

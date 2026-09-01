@@ -742,6 +742,8 @@ const collections = [
       { key: 'type', type: 'string', size: 50, required: true },
       { key: 'podId', type: 'string', size: 255 },
       { key: 'name', type: 'string', size: 255 },
+      { key: 'description', type: 'string', size: 500 },
+      { key: 'access', type: 'string', size: 32 },
       { key: 'members', type: 'string', size: 255, array: true },
       { key: 'participants', type: 'string', size: 255, array: true },
       { key: 'admins', type: 'string', size: 255, array: true },
@@ -751,6 +753,7 @@ const collections = [
       { key: 'lastMessageTime', type: 'string', size: 255 },
       { key: 'lastMessageSenderId', type: 'string', size: 255 },
       { key: 'createdAt', type: 'string', size: 255, required: true },
+      { key: 'updatedAt', type: 'string', size: 255 },
       { key: 'isActive', type: 'boolean' },
     ],
     indexes: [

@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, Bot, User, Mic, Paperclip, MoreVertical, Copy, ThumbsUp, ThumbsDown, RefreshCw, ArrowLeft, Loader2, X, BookOpen, CalendarDays } from 'lucide-react'
+import { Send, Bot, User, Mic, Paperclip, MoreVertical, Copy, ThumbsUp, ThumbsDown, RefreshCw, ArrowLeft, Loader2, X, BookOpen, CalendarDays, BrainCircuit, ListChecks, Map, Network, Plus, TimerReset } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { toast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
@@ -41,6 +41,13 @@ function createWelcomeMessage(): Message {
   }
 }
 
+const assistantModes = [
+  { label: "Explain a concept", detail: "Make a difficult idea click", icon: BrainCircuit, prompt: "Explain this concept simply, then test my understanding: " },
+  { label: "Quiz me", detail: "Practice from easy to difficult", icon: ListChecks, prompt: "Quiz me on this topic one question at a time: " },
+  { label: "Build a study plan", detail: "Turn a goal into clear steps", icon: Map, prompt: "Create a realistic study plan for this goal: " },
+  { label: "Prepare a Pod session", detail: "Learn it together with people", icon: Network, prompt: "Help me prepare a collaborative Pod session about: " },
+]
+
 export default function AIAssistantPage() {
   const [messages, setMessages] = useState<Message[]>(() => [createWelcomeMessage()])
   const [inputValue, setInputValue] = useState("")
@@ -57,6 +64,18 @@ export default function AIAssistantPage() {
   const audioChunksRef = useRef<Blob[]>([])
   const discardVoiceRef = useRef(false)
   const router = useRouter()
+
+  const startNewConversation = () => {
+    setMessages([createWelcomeMessage()])
+    setInputValue("")
+    setPendingAttachment(null)
+    window.setTimeout(() => textareaRef.current?.focus(), 0)
+  }
+
+  const chooseMode = (prompt: string) => {
+    setInputValue(prompt)
+    window.setTimeout(() => textareaRef.current?.focus(), 0)
+  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -299,7 +318,7 @@ export default function AIAssistantPage() {
   }
 
   return (
-    <div className="student-ai-page flex flex-col h-screen bg-background">
+    <div className="student-ai-page flex flex-col bg-background">
       {/* Mobile Header */}
       <div className="student-ai-mobile-header md:hidden sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border">
         <div className="flex items-center gap-2.5">
@@ -316,8 +335,8 @@ export default function AIAssistantPage() {
             <div className="absolute -bottom-1 -right-1 h-3 w-3 bg-green-500 rounded-full border-2 border-background" />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="student-ai-mobile-title truncate">AI assistant</h1>
-            <p className="truncate text-[10px] text-muted-foreground">Ready to help</p>
+            <h1 className="student-ai-mobile-title truncate">AI</h1>
+            <p className="truncate text-[10px] text-muted-foreground">Connected to your learning space</p>
           </div>
           <Badge variant="secondary" className="h-7 gap-1 px-2 text-[10px]">
             <span className="h-1.5 w-1.5 rounded-full bg-[#3f6f6b]" />
@@ -339,19 +358,36 @@ export default function AIAssistantPage() {
             <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 bg-[#3f6f6b] rounded-full border-2 border-background" />
           </div>
           <div>
-            <h1 className="text-sm font-semibold">AI</h1>
-            <p className="text-xs text-muted-foreground">Your connected learning workspace</p>
+            <h1 className="text-sm font-semibold">AI workspace</h1>
+            <p className="text-xs text-muted-foreground">Ask, practise, plan, and learn with your people</p>
           </div>
-          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => { setMessages([createWelcomeMessage()]); setInputValue("") }}>New conversation</Button>
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={startNewConversation}><Plus className="size-4" />New conversation</Button>
         </div>
       </div>
 
       <div className="student-ai-body">
+        <aside className="student-ai-rail hidden lg:flex" aria-label="AI learning tools">
+          <Button type="button" className="student-ai-new rounded-xl" onClick={startNewConversation}><Plus className="size-4" />New conversation</Button>
+          <p className="student-ai-rail-label">LEARNING MODES</p>
+          <div className="student-ai-modes">
+            {assistantModes.map((mode) => (
+              <button key={mode.label} type="button" onClick={() => chooseMode(mode.prompt)}>
+                <span><mode.icon /></span>
+                <div><strong>{mode.label}</strong><small>{mode.detail}</small></div>
+              </button>
+            ))}
+          </div>
+          <div className="student-ai-note">
+            <Network />
+            <strong>Built for social learning.</strong>
+            <p>Your profile, active Pods, focus progress, Vault, and calendar can shape an answer—without exposing anything you cannot access.</p>
+          </div>
+        </aside>
         <section className="student-ai-conversation">
       {/* Messages */}
       <div className="flex-1 overflow-hidden relative">
         <ScrollArea className="h-full">
-          <div className="p-4 pb-4 space-y-4 max-w-4xl mx-auto">
+          <div className="mx-auto max-w-4xl space-y-4 p-3 pb-5 sm:p-5 lg:px-8">
             {messages.map((message) => (
             <AIMessage
               key={message.id}
@@ -421,6 +457,17 @@ export default function AIAssistantPage() {
             </AIMessage>
           ))}
 
+          {messages.length === 1 ? (
+            <div className="student-ai-starters" aria-label="Suggested ways to start">
+              {assistantModes.map((mode) => (
+                <button key={mode.label} type="button" onClick={() => chooseMode(mode.prompt)}>
+                  <mode.icon />
+                  <span><strong>{mode.label}</strong><small>{mode.detail}</small></span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           {isLoading && (
             <div className="flex gap-3 justify-start">
               <Avatar className="h-8 w-8 mt-1">
@@ -443,11 +490,12 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Input Area */}
-      <div className="student-ai-composer sticky bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm supports-[backdrop-filter]:bg-card/80 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-4">
+      <div className="student-ai-composer z-20 border-t bg-card/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm supports-[backdrop-filter]:bg-card/80 md:p-4">
         <div className="max-w-4xl mx-auto">
-          <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-0.5" aria-label="AI context sources">
+          <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-0.5 lg:flex-wrap lg:overflow-visible" aria-label="AI context sources">
             <button type="button" onClick={() => setContextEnabled((value) => ({ ...value, resources: !value.resources }))} aria-pressed={contextEnabled.resources} className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${contextEnabled.resources ? "border-[#3f6f6b]/30 bg-[#dcebe7] text-[#315e59]" : "border-border bg-transparent text-muted-foreground"}`}><BookOpen className="size-3.5" />Vault {contextEnabled.resources ? "connected" : "off"}</button>
             <button type="button" onClick={() => setContextEnabled((value) => ({ ...value, calendar: !value.calendar }))} aria-pressed={contextEnabled.calendar} className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${contextEnabled.calendar ? "border-[#76556d]/25 bg-[#eee4ec] text-[#62465b]" : "border-border bg-transparent text-muted-foreground"}`}><CalendarDays className="size-3.5" />Calendar {contextEnabled.calendar ? "connected" : "off"}</button>
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#78815f]/25 bg-[#e8eadf] px-3 py-1.5 text-[11px] font-semibold text-[#586044]"><TimerReset className="size-3.5" />Pods + progress connected</span>
             <span className="shrink-0 text-[10px] text-muted-foreground">Only items you can access are included.</span>
           </div>
           {/* Message Input */}

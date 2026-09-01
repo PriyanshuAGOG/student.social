@@ -23,9 +23,9 @@ import { useAuth } from "@/lib/auth-context"
 import { AppPageTransition } from "./AppPageTransition"
 
 const pageNames: Record<string, string> = {
-  feed: "Learning feed",
-  pods: "Study pods",
-  ai: "AI tutor",
+  feed: "Feed",
+  pods: "Pods",
+  ai: "AI",
   focus: "Focus",
   chat: "Messages",
   vault: "Resource vault",
@@ -107,7 +107,7 @@ export function AppWorkspace({ children }: { children: React.ReactNode }) {
                 <DropdownMenuItem asChild><Link href="/app/pods/create" prefetch={false}><Users />Create a study pod</Link></DropdownMenuItem>
                 <DropdownMenuItem asChild><Link href="/app/calendar" prefetch={false}><CalendarDays />Schedule a session</Link></DropdownMenuItem>
                 <DropdownMenuItem asChild><Link href="/app/vault" prefetch={false}><FileUp />Share a resource</Link></DropdownMenuItem>
-                <DropdownMenuItem asChild><Link href="/app/ai" prefetch={false}><Bot />Ask the AI tutor</Link></DropdownMenuItem>
+                <DropdownMenuItem asChild><Link href="/app/ai" prefetch={false}><Bot />Ask AI</Link></DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Button asChild variant="ghost" className="student-global-search"><Link href="/app/search" prefetch={false} aria-label="Search posts, pods, and people"><Search aria-hidden="true" /><span>Search posts, pods, or people…</span><kbd>⌘K</kbd></Link></Button>
@@ -118,7 +118,7 @@ export function AppWorkspace({ children }: { children: React.ReactNode }) {
 
       <AppPageTransition>{children}</AppPageTransition>
 
-      {showTutorLauncher ? <Link href="/app/ai" prefetch={false} className="student-ai-launcher" aria-label="Open AI Tutor"><span><Bot aria-hidden="true" /></span><strong>AI Tutor</strong></Link> : null}
+      {showTutorLauncher ? <Link href="/app/ai" prefetch={false} className="student-ai-launcher" aria-label="Open AI"><span><Bot aria-hidden="true" /></span><strong>AI</strong></Link> : null}
 
       <CreatePostModal
         trigger={false}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/server/appwrite'
-import { ApiError, enforceRateLimit, enforceSameOrigin, requireUser } from '@/lib/api-security'
+import { ApiError, enforceRateLimit, enforceSameOrigin, requireVerifiedUser } from '@/lib/api-security'
 import { z } from 'zod'
 import { parseJsonBody } from '@/lib/api-security'
 import { ID, Permission, Role } from 'node-appwrite'
@@ -18,11 +18,16 @@ export async function POST(req: NextRequest) {
   try {
     enforceSameOrigin(req)
     enforceRateLimit(req, { key: 'messages:group-room', max: 20, windowMs: 60 * 1000 })
-    const auth = requireUser(req)
+    const auth = await requireVerifiedUser(req)
     const durableLimit = await checkDurableRateLimit(`messages:group-room:${auth.userId}`, 20, 60_000)
     if (!durableLimit.allowed) throw new ApiError(429, 'RATE_LIMITED', 'Too many group creation requests')
-    const body = await parseJsonBody(req, z.object({ name: z.string().trim().max(80).optional(), memberIds: z.array(z.string().min(1).max(255)).min(1).max(100) }))
-    const name = body.name || ''
+    const body = await parseJsonBody(req, z.object({
+      name: z.string().trim().min(2).max(80),
+      description: z.string().trim().max(500).optional().default(''),
+      access: z.enum(['invite_only', 'members_can_invite']).optional().default('invite_only'),
+      memberIds: z.array(z.string().min(1).max(255)).min(1).max(100),
+    }))
+    const name = body.name
     const requestedMembers = uniqueStrings(body.memberIds)
     const members = uniqueStrings([auth.userId, ...requestedMembers])
 
@@ -33,13 +38,17 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString()
     const { databases } = await createAdminClient()
     const room = await databases.createDocument(DATABASE_ID, CHAT_ROOMS_COLLECTION_ID, ID.unique(), {
-      name: name || `Group chat (${members.length})`,
+      name,
+      description: body.description,
+      access: body.access,
       type: 'group',
       members,
       participants: members,
+      admins: [auth.userId],
       ownerId: auth.userId,
       createdBy: auth.userId,
       createdAt: now,
+      updatedAt: now,
       lastMessageTime: now,
       lastMessage: 'Group created',
       isActive: true,
@@ -50,7 +59,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof ApiError) {
       return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status })
     }
-    console.error('[messages/group-room] Failed to create group chat:', error)
+    console.error('[messages/group-room] Failed to create group chat:', { message: error?.message, code: error?.code, type: error?.type })
     return NextResponse.json({ success: false, error: 'Failed to create group chat' }, { status: 500 })
   }
 }

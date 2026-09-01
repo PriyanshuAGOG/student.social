@@ -106,6 +106,7 @@ test('auth verification resend is ownership-protected and session checks are har
 test('chat routes enforce authenticated ownership and membership', () => {
   const sendRoute = fs.readFileSync('app/api/messages/send/route.ts', 'utf8')
   const roomRoute = fs.readFileSync('app/api/messages/room/[roomId]/route.ts', 'utf8')
+  const groupRoomRoute = fs.readFileSync('app/api/messages/group-room/route.ts', 'utf8')
   const chatPage = fs.readFileSync('app/app/chat/page.tsx', 'utf8')
   assert.match(sendRoute, /requireVerifiedUser\(request\)/)
   assert.match(sendRoute, /requireOwnership\(senderId, auth\.userId\)/)
@@ -122,6 +123,13 @@ test('chat routes enforce authenticated ownership and membership', () => {
   assert.match(roomRoute, /deriveDeliveryState/)
   assert.doesNotMatch(roomRoute, /updateDocument\(/)
   assert.match(sendRoute, /Permission\.read\(Role\.user/)
+  assert.match(sendRoute, /\['direct', 'dm', 'group'\]/)
+  assert.match(sendRoute, /room\.type === 'group'/)
+  assert.match(groupRoomRoute, /requireVerifiedUser\(req\)/)
+  assert.match(groupRoomRoute, /z\.enum\(\['invite_only', 'members_can_invite'\]\)/)
+  assert.match(groupRoomRoute, /admins: \[auth\.userId\]/)
+  assert.match(chatPage, /description: groupDescription\.trim\(\)/)
+  assert.match(chatPage, /nextSearchParams\.set\("room", normalizedRoom\.\$id\)/)
 })
 
 test('messages use authenticated realtime, recovery polling, notifications, and journey receipts', () => {

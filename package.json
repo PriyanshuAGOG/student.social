@@ -5,6 +5,7 @@
   "scripts": {
     "setup-appwrite": "node scripts/setup-appwrite.js",
     "update-schema": "node scripts/update-schema.js",
+    "migrate:chat-room-metadata": "node --env-file=.env.local scripts/migrate-chat-room-metadata.mjs",
     "appwrite:verify": "node scripts/verify-appwrite.js",
     "appwrite:verify-uploads": "node --env-file=.env.local scripts/verify-upload-pipeline.mjs",
     "livekit:verify": "node --env-file=.env.local scripts/verify-livekit.mjs",

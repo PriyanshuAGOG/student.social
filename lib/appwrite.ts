@@ -2105,14 +2105,14 @@ export const chatService = {
   },
 
 
-  async createGroupRoom(name: string, memberIds: string[]) {
+  async createGroupRoom(name: string, memberIds: string[], options: { description?: string; access?: 'invite_only' | 'members_can_invite' } = {}) {
     if (!Array.isArray(memberIds) || memberIds.length === 0) {
       throw new Error('Select at least one member')
     }
 
     const response = await apiJson('/api/messages/group-room', {
       method: 'POST',
-      body: JSON.stringify({ name, memberIds }),
+      body: JSON.stringify({ name, memberIds, description: options.description || '', access: options.access || 'invite_only' }),
     })
 
     return response.room || response.data || response

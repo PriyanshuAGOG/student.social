@@ -363,19 +363,20 @@ export async function GET(request: NextRequest) {
     try {
       const { databases } = await createAdminClient();
 
-      // Get all DM rooms where user is a member
+      // Get conversations where the user is a member. Pod rooms are loaded by
+      // the Pod service; this endpoint owns direct and standalone group rooms.
       const allRooms = await databases.listDocuments(
         DATABASE_ID,
         CHAT_ROOMS_COLLECTION_ID,
         [
           Query.orderDesc('lastMessageTime'),
-          Query.limit(100),
+          Query.limit(500),
         ]
       );
 
       // Filter rooms where user is a member
       const userRooms = (allRooms?.documents || []).filter((room: any) => {
-        if (!['direct', 'dm'].includes(room.type)) return false;
+        if (!['direct', 'dm', 'group'].includes(room.type)) return false;
         const members = Array.isArray(room.members)
           ? room.members
           : typeof room.members === 'string'
@@ -392,6 +393,11 @@ export async function GET(request: NextRequest) {
           : typeof room.members === 'string'
             ? (() => { try { return JSON.parse(room.members) } catch { return [] } })()
             : [];
+        if (room.type === 'group') {
+          enrichedRooms.push({ ...room, members, participants: members });
+          continue;
+        }
+
         const otherUserId = members.find((id: string) => id !== userId);
 
         if (otherUserId) {
