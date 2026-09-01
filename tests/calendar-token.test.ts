@@ -1,13 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 // @ts-expect-error -- Node 22's strip-types test runner requires the explicit .ts suffix.
-import {
-  decryptCalendarToken,
-  decryptCalendarTokenWithFallback,
-  encryptCalendarToken,
-  generateCalendarToken,
-  hashCalendarToken,
-} from '../lib/calendar/token.ts'
+import { decryptCalendarToken, decryptCalendarTokenWithFallback, encryptCalendarToken, generateCalendarToken, hashCalendarToken } from '../lib/calendar/token.ts'
 
 test('calendar tokens round-trip with the active key', () => {
   const token = generateCalendarToken()
