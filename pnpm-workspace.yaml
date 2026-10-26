@@ -17,3 +17,6 @@ minimumReleaseAgeExclude:
 overrides:
   nanoid: 3.3.18
   qs: 6.15.2
+allowBuilds:
+  # ESLint's native resolver verifies its platform binary during postinstall.
+  unrs-resolver@1.11.1: true
