@@ -21,6 +21,9 @@ importers:
       '@livekit/components-styles':
         specifier: 1.2.0
         version: 1.2.0
+      '@mediapipe/tasks-vision':
+        specifier: 0.10.32
+        version: 0.10.32
       '@radix-ui/react-accordion':
         specifier: 1.2.2
         version: 1.2.2(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -705,6 +708,9 @@ packages:
 
   '@livekit/protocol@1.46.5':
     resolution: {integrity: sha512-36HStbKFt6wQIJtWLSoPG/Gh2hN/AJhiH1B0BprfTe3KSak0wExUZmlRmh5SP0gi6Y8sFy6rPE4zGfpY9yK5Rw==}
+
+  '@mediapipe/tasks-vision@0.10.32':
+    resolution: {integrity: sha512-3tiAZnmKloYnRXYoO3dKltTUGnqeCwzC4lV03uY0vCsE+aveJTyEVQyZHOlQGQNsjK+gRHzkf9q08C99Qm2K0Q==}
 
   '@mermaid-js/parser@1.2.1':
     resolution: {integrity: sha512-n12NohV3mrUyUL2o93IgG/ifeW9FTyeJn3zDxkhwa8MJ9Fxg3HQMlA3RiGmD/3UnJvheztkjjQAjA2T4LmUcpw==}
@@ -5620,6 +5626,8 @@ snapshots:
   '@livekit/protocol@1.46.5':
     dependencies:
       '@bufbuild/protobuf': 1.10.1
+
+  '@mediapipe/tasks-vision@0.10.32': {}
 
   '@mermaid-js/parser@1.2.1':
     dependencies:

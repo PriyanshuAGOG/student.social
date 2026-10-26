@@ -168,7 +168,7 @@ export async function proxy(req: NextRequest) {
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      `script-src 'self' 'unsafe-inline'${production ? '' : " 'unsafe-eval'"}`,
+      `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${production ? '' : " 'unsafe-eval'"}`,
       "style-src 'self' 'unsafe-inline' fonts.googleapis.com",
       "font-src 'self' fonts.gstatic.com",
       "img-src 'self' data: blob: https:",

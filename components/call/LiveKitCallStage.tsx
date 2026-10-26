@@ -27,11 +27,14 @@ import {
   PhoneOff,
   Search,
   Settings2,
+  Sparkles,
   UserPlus,
   X,
 } from 'lucide-react'
 import { callService } from '@/lib/appwrite/calls'
 import { playCallParticipantTone } from './use-incoming-call-alerts'
+import { useCallEffects } from './effects/useCallEffects'
+import { CallEffectsPanel, TileReaction } from './effects/CallEffectsPanel'
 
 interface LiveKitCallStageProps {
   sessionId: string
@@ -115,13 +118,16 @@ function StableCallConference({
   layoutMode,
   onLayoutModeChange,
   onDeviceError,
+  onEffectsIssue,
 }: {
   layoutMode: 'speaker' | 'equal'
   onLayoutModeChange: () => void
   onDeviceError: (message: string) => void
+  onEffectsIssue: (message: string) => void
 }) {
   const room = useRoomContext()
   const participants = useParticipants()
+  const effects = useCallEffects(onEffectsIssue)
   const tracks = useTracks([
     { source: Track.Source.ScreenShare, withPlaceholder: false },
     { source: Track.Source.Camera, withPlaceholder: true },
@@ -164,6 +170,7 @@ function StableCallConference({
           return (
             <div key={`${identity}:${source}`} className="peer-stable-call-tile" data-local={identity === localIdentity} data-source={source}>
               <ParticipantTile trackRef={track} />
+              {source === Track.Source.Camera && <TileReaction reaction={effects.reactions.find(reaction => reaction.identity === identity)} reduceMotion={effects.reduceMotion} />}
             </div>
           )
         })}
@@ -176,6 +183,10 @@ function StableCallConference({
       ) : null}
 
       {participantNotice ? <div className="peer-call-participant-notice" role="status" aria-live="polite">{participantNotice}</div> : null}
+      <button type="button" className="call-effects-trigger" aria-label="Reactions and camera effects" aria-expanded={effects.panelOpen} onClick={() => effects.setPanelOpen(true)}><Sparkles />{effects.loading ? 'Preparing…' : 'Reactions'}{effects.error ? <span aria-label="Effects need attention">·</span> : null}</button>
+      {effects.camera.hidden && !effects.panelOpen && <button type="button" className="call-effects-visible-again" onClick={effects.restore}>You’re invisible · Return</button>}
+      {effects.reactions.length > 0 && !participantNotice && <div className="call-effects-caption" role="status" aria-live="polite">{effects.reactions.at(-1)?.name} {effects.reactions.at(-1)?.kind === 'hand' ? 'would like to speak' : effects.reactions.at(-1)?.kind === 'heart' ? 'sent a little love' : effects.reactions.at(-1)?.kind === 'thumbs-up' ? 'says: got it' : 'is celebrating'}</div>}
+      <CallEffectsPanel effects={effects} />
 
       <ControlBar
         variation="minimal"
@@ -624,6 +635,7 @@ export function LiveKitCallStage({
             <StableCallConference
               layoutMode={layoutMode}
               onLayoutModeChange={() => setLayoutMode((current) => current === 'speaker' ? 'equal' : 'speaker')}
+              onEffectsIssue={(message) => reportCallIssue('camera-effects', message)}
               onDeviceError={(message) => {
                 const friendlyMessage = `Unable to change the call device. ${message}`
                 setError(friendlyMessage)
